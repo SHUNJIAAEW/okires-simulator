@@ -49,14 +49,90 @@ export function ResultScreen({ state, onRestart }: Props) {
   if (!state.military.pac3Ishigaki || !state.military.pac3Miyako) bottlenecks.push('PAC3が一部エリアに未配備だった');
   if (prepLevel <= 2) bottlenecks.push(`事前準備Lv.${prepLevel}が低すぎ、モード移行・輸送能力が著しく制限された`);
 
-  // 学習ポイント
-  const lessons: string[] = [
-    '飛行機が主力輸送手段。空港の安全確保が最重要。',
-    '要援護者（青コマ）は船のみ輸送可能。船便の確保が必要。',
-    '竹富町以西（与那国・西表・波照間等）はX+3日が避難期限。',
-    '石垣港→石垣島→本土が最大のボトルネック。',
-    '大雨・強風で全港湾停止。台風シーズンは特に危険。',
-    `事前準備Lv.${prepLevel}での今回の避難率: ${evacuationRate.toFixed(1)}%`,
+  // 地域別盲点データ
+  const regionalInsights: {
+    id: AreaId;
+    name: string;
+    color: string;
+    icon: string;
+    blindspots: string[];
+    lessons: string[];
+  }[] = [
+    {
+      id: 'yonaguni',
+      name: '与那国島',
+      color: '#ef4444',
+      icon: '🔴',
+      blindspots: [
+        '台湾まで111km——有事認定前の段階から既に脅威圏内に入る。「X-3日」開始時点で実質的な安全が保障されない',
+        '空港滑走路は1,500m（ATR機クラスのみ対応）。C-130等の大型輸送機は着陸不可能で航空輸送量に構造的な上限がある',
+        '島の人口2,000人のうち高齢化率は約40%超。自力での港・空港移動が困難な住民が想定以上に多い',
+        '与那国→石垣のフェリーは週3便程度（約4時間）。有事での増便体制が整っていない',
+        '島外に生活拠点を持たない世帯が多く、避難先での仮住まい・仕事を確保できないとして「避難拒否」するケースが現実には存在する',
+      ],
+      lessons: [
+        '「住民2コマ」という数字は小さく見えるが、離島の脆弱性・孤立リスクは他の島の数倍',
+        'X-3日の準有事段階では民間フェリーのみ。早期避難勧告が出ても輸送手段が事実上存在しない日がある',
+        '台湾有事では与那国が最初の攻撃目標になり得る。「避難中の攻撃」というリスクはシミュレーションに含まれていない',
+      ],
+    },
+    {
+      id: 'taketomi',
+      name: '竹富町全島',
+      color: '#f97316',
+      icon: '🟠',
+      blindspots: [
+        '竹富町は西表・竹富・波照間・小浜・黒島など11の有人島で構成。各島から石垣港まで集めるだけで1日以上かかる',
+        'X+3日の避難期限（72時間）は現実的に不可能に近い。特に波照間島は最南端で定期便が1日1往復しかなく、悪天候で即座に孤立する',
+        '黒島・小浜島・鳩間島などは港湾整備が不十分で、大型船が着岸できない島がある',
+        '西表島は面積が大きく山間部の住民は港まで数時間かかる道路事情がある。島内の「集結」自体がボトルネック',
+        '観光客の多くは旅行中でパスポートや重要書類を宿に預けている。非常時の身分確認・搭乗手続きに時間がかかる',
+        'ペット・家畜（西表には農業従事者が多い）を残して避難できないとする住民は現実に存在する',
+      ],
+      lessons: [
+        '「竹富町15コマ」は15の地区に分散。石垣への集結コストがシミュレーションでは単純化されている',
+        '波照間・与那国は「X+3日期限内に本土へ」という目標が、交通網だけ見ても達成困難なことを示している',
+        '島ごとの住民把握（特に観光客）が事前に行われていないと、避難完了の確認自体できない',
+      ],
+    },
+    {
+      id: 'ishigaki',
+      name: '石垣島',
+      color: '#3b82f6',
+      icon: '🔵',
+      blindspots: [
+        'ハブ機能を担いながら島民自身も避難する二重負荷が発生。与那国・竹富からの避難民受け入れと島民脱出が同時進行',
+        '新石垣空港は滑走路が1本のみ。爆撃や誤射で滑走路1カ所が破損すれば航空機能は完全停止',
+        '石垣港（離島ターミナル）は市街地に近く、混雑・交通渋滞が避難をさらに遅らせるリスク',
+        '外国人観光客（特に台湾・中国・韓国・欧米）が常時数千人規模で滞在。多言語対応・出国手続きの混乱は未考慮',
+        'PAC3（地対空ミサイル）が配備されても、中国巡航ミサイルの飽和攻撃には対処しきれない可能性がある',
+        '医療：八重山病院が1カ所しかなく、重症患者の本土搬送が輸送能力を圧迫する',
+      ],
+      lessons: [
+        '石垣は「すべての避難の中継点」。石垣が詰まれば沖縄全体の避難が詰まる。石垣の港・空港容量こそが最大のボトルネック',
+        '輸送機の発着時間・民間機の増便だけでなく、「誰が捌くか」という地上オペレーションの人員計画が欠如している',
+        '有事になってからの準備は遅すぎる。施設・人員・訓練はX-3日より前、平時から整備する必要がある',
+      ],
+    },
+    {
+      id: 'miyako',
+      name: '宮古島・多良間',
+      color: '#22c55e',
+      icon: '🟢',
+      blindspots: [
+        '49コマ（49,000人）と最大規模だが、石垣と異なる独立ルートを持つ。「独立しているから安全」ではなく、むしろ孤立した状態で自力で対処する必要がある',
+        '下地島空港は有事になれば自衛隊使用が優先され、民間機の発着枠が大幅に制限される可能性がある',
+        '平良港は台湾有事において、中国海軍潜水艦による機雷封鎖リスクがある。機雷1つで港が使用不能になる',
+        '多良間島は宮古島から約67km離れており、有事時は小型船の往来が危険になる。多良間の住民1,000人超が孤立するリスクがある',
+        '宮古島の医療体制は本土と比較して非常に脆弱。重症患者の域外搬送は天候・有事状況に左右される',
+        '島内の交通インフラ（バス・タクシー）が少なく、車を持たない高齢者・観光客が港や空港へ自力移動できない',
+      ],
+      lessons: [
+        '宮古島は「直接本土へ」というルートを持つ点が石垣と異なる強み。しかし平良港の機雷リスクがこれを無効化しうる',
+        '下地島空港の軍民共用化が議論されているが、有事においては軍優先になるトレードオフが存在する',
+        '多良間島の避難は宮古への集結→本土という二段階。X+3日期限内の対処は現実的に見て極めて困難',
+      ],
+    },
   ];
 
   // Day-by-day chart data
@@ -258,18 +334,62 @@ export function ResultScreen({ state, onRestart }: Props) {
         </div>
       )}
 
-      {/* 学習ポイント */}
+      {/* 地域別 盲点・学習ポイント */}
       <div style={styles.card}>
-        <h2 style={styles.cardTitle}>📚 このシミュレーションから学ぶこと</h2>
-        {lessons.map((lesson, i) => (
-          <div key={i} style={styles.lessonRow}>
-            <span style={styles.lessonNum}>{i + 1}</span>
-            <span>{lesson}</span>
-          </div>
-        ))}
+        <h2 style={styles.cardTitle}>📚 このシミュレーションから学ぶこと — 地域別の盲点と見えていないリスク</h2>
         <div style={styles.policyNote}>
           <strong>日本政府の避難計画：</strong>「1日2万人、6日間で12万人避難完了」
-          —— このシミュレーションを通じて、その達成可能性を検証してください。
+          —— このシミュレーションはAIが最適行動をとった場合の結果です。現実の避難はさらに多くの不確実性を含みます。
+        </div>
+
+        {regionalInsights.map((region) => {
+          const area = areas[region.id];
+          const remaining = area.residents + area.tourists + area.vulnerable + area.stagingPort;
+          return (
+            <div key={region.id} style={{ ...styles.regionBlock, borderLeft: `4px solid ${region.color}` }}>
+              <div style={{ ...styles.regionHeader, color: region.color }}>
+                {region.icon} {region.name}
+                <span style={styles.regionResult}>
+                  {remaining === 0 ? '✅ 避難完了' : `⚠️ ${remaining}コマ残存`}
+                </span>
+              </div>
+
+              <div style={styles.regionSubtitle}>🔍 シミュレーションに含まれていない盲点</div>
+              {region.blindspots.map((bp, i) => (
+                <div key={i} style={styles.blindspotRow}>
+                  <span style={{ ...styles.blindspotDot, background: region.color }} />
+                  <span>{bp}</span>
+                </div>
+              ))}
+
+              <div style={{ ...styles.regionSubtitle, marginTop: 12 }}>💡 このシミュレーションから得られる学び</div>
+              {region.lessons.map((lesson, i) => (
+                <div key={i} style={styles.lessonRow}>
+                  <span style={{ ...styles.lessonNum, background: region.color }}>{i + 1}</span>
+                  <span>{lesson}</span>
+                </div>
+              ))}
+            </div>
+          );
+        })}
+
+        <div style={{ ...styles.regionBlock, borderLeft: '4px solid #8b5cf6', marginTop: 8 }}>
+          <div style={{ ...styles.regionHeader, color: '#8b5cf6' }}>
+            🟣 シミュレーション全体で見えていないこと
+          </div>
+          {[
+            '避難拒否者の存在：「島を守る」「財産を残せない」として避難しない住民が現実には一定数いる。強制力は現行法では非常に限定的',
+            '情報伝達の崩壊：停電・通信遮断・デマの拡散により、住民が正確な避難情報を受け取れない事態は未考慮',
+            '燃料の枯渇：有事初日から燃料の奪い合いが起きる。航空機・船舶への給油が確保できなければ輸送能力はゼロになる',
+            '本土受け入れ体制：「避難先の九州での住居・生活支援・医療」の計画がなければ避難は完結しない。12万人の受け入れ準備は現状ほぼ未整備',
+            '外国人観光客：中国・台湾・韓国・欧米からの観光客への対応言語、出国手続き、大使館との連携はシミュレーション外',
+            '二次避難後の生活再建：「避難」はゴールではなく、長期的な生活再建・精神的支援・帰島の判断まで含めた計画が必要',
+          ].map((item, i) => (
+            <div key={i} style={styles.blindspotRow}>
+              <span style={{ ...styles.blindspotDot, background: '#8b5cf6' }} />
+              <span>{item}</span>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -329,9 +449,15 @@ const styles: Record<string, React.CSSProperties> = {
   areaFatigue: { fontSize: 11, color: '#94a3b8', marginTop: 4 },
   bottleneckRow: { display: 'flex', gap: 8, padding: '6px 0', borderBottom: '1px solid #f1f5f9', color: '#dc2626', fontSize: 13 },
   bottleneckBullet: { fontWeight: 700, flexShrink: 0 },
-  lessonRow: { display: 'flex', gap: 12, padding: '6px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13, color: '#334155' },
+  lessonRow: { display: 'flex', gap: 12, padding: '6px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13, color: '#334155', alignItems: 'flex-start' },
   lessonNum: { background: '#3b82f6', color: '#fff', width: 22, height: 22, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 },
-  policyNote: { background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: 12, marginTop: 12, fontSize: 13, color: '#92400e' },
+  policyNote: { background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 13, color: '#92400e' },
+  regionBlock: { background: '#f8fafc', borderRadius: 8, padding: '12px 14px', marginTop: 12, border: '1px solid #e2e8f0' },
+  regionHeader: { fontSize: 16, fontWeight: 800, marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' as const, gap: 8 },
+  regionResult: { fontSize: 12, fontWeight: 600, color: '#475569' },
+  regionSubtitle: { fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 6, marginTop: 4 },
+  blindspotRow: { display: 'flex', gap: 10, padding: '5px 0', borderBottom: '1px solid #f1f5f9', fontSize: 12, color: '#374151', lineHeight: 1.6, alignItems: 'flex-start' },
+  blindspotDot: { width: 8, height: 8, borderRadius: '50%', flexShrink: 0, marginTop: 5 },
   restartBtn: { padding: 18, background: 'linear-gradient(135deg, #1e40af, #3b82f6)', color: '#fff', border: 'none', borderRadius: 12, fontSize: 18, fontWeight: 700, cursor: 'pointer' },
   footer: { textAlign: 'center', color: '#94a3b8', fontSize: 11 },
   // Chart styles
