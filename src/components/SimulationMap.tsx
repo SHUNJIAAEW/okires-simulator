@@ -5,6 +5,25 @@ import type { AreaId, AreaState } from '../types';
 import { getEffectiveActions } from '../constants';
 import { useWindowWidth } from '../hooks/useWindowWidth';
 
+// ─────────────────────────────────────────────────
+//  Design tokens
+// ─────────────────────────────────────────────────
+const C = {
+  bgDeep:    '#060d18',
+  bgPanel:   '#0d1b2a',
+  bgCard:    '#112233',
+  border:    '#1e3a5f',
+  borderHi:  '#2a6496',
+  green:     '#00ff88',
+  amber:     '#ffb300',
+  red:       '#ff3b3b',
+  dimText:   '#4a7a9b',
+  bodyText:  '#8eb8d4',
+  brightText:'#c8e6f8',
+  white:     '#e8f4ff',
+  gridLine:  'rgba(0,255,136,0.06)',
+} as const;
+
 interface Props {
   areas: Record<AreaId, AreaState>;
   selectedHour?: number;
@@ -21,22 +40,24 @@ interface GridCell {
 }
 
 // ─────────────────────────────────────────────────
-//  コマ（ピース）表示
+//  コマ（ピース）表示 — NATO-style rectangle tokens
 // ─────────────────────────────────────────────────
 function Piece({ kind, size = 14 }: { kind: 'r' | 't' | 'v'; size?: number }) {
   const cfg = {
-    r: { bg: '#ffffff', border: '#555', label: '住' },
-    t: { bg: '#fde68a', border: '#d97706', label: '観' },
-    v: { bg: '#93c5fd', border: '#1d4ed8', label: '要' },
+    r: { bg: C.brightText, border: '#4a9fd4', label: '住' },
+    t: { bg: C.amber,      border: '#996800', label: '観' },
+    v: { bg: '#ff6b6b',    border: '#cc2222', label: '要' },
   }[kind];
+  const w = Math.round(size * 1.2);
+  const h = size;
   return (
     <div style={{
-      width: size, height: size, borderRadius: '50%',
+      width: w, height: h, borderRadius: 2,
       border: `1.5px solid ${cfg.border}`, background: cfg.bg,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: Math.max(5, size - 8), fontWeight: 900, color: '#222',
-      flexShrink: 0, boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
-      userSelect: 'none',
+      fontSize: Math.max(5, size - 8), fontWeight: 900, color: '#111',
+      flexShrink: 0, boxShadow: `0 0 4px ${cfg.border}55`,
+      userSelect: 'none', fontFamily: 'monospace',
     }}>{cfg.label}</div>
   );
 }
@@ -51,7 +72,7 @@ interface CellProps {
   cellSize?: number;
 }
 
-function Cell({ cell, islandColor, islandBgLight, cellSize = 32 }: CellProps) {
+function Cell({ cell, islandColor, cellSize = 32 }: CellProps) {
   const CELL = cellSize;
   const GAP = 2;
 
@@ -64,24 +85,24 @@ function Cell({ cell, islandColor, islandBgLight, cellSize = 32 }: CellProps) {
         width: CELL * 2 + GAP, height: CELL, flexShrink: 0,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: 7, fontWeight: 700, color: islandColor,
-        background: 'transparent',
+        background: 'transparent', fontFamily: 'monospace',
       }}>{cell.label}</div>
     );
   }
 
   const isStagingAir = cell.type === 'staging_air';
   const isStagingSea = cell.type === 'staging_sea';
-  const isShelter = cell.type === 'shelter';
-  const isStaging = isStagingAir || isStagingSea || isShelter;
+  const isShelter    = cell.type === 'shelter';
+  const isStaging    = isStagingAir || isStagingSea || isShelter;
 
-  const bg = isStagingAir ? '#dbeafe'
-    : isStagingSea ? '#d1fae5'
-    : isShelter ? '#fef3c7'
-    : islandBgLight;
+  const bg = isStagingAir ? '#0a1f0a'
+    : isStagingSea ? '#0a1020'
+    : isShelter    ? '#1a1000'
+    : C.bgPanel;
 
-  const borderColor = isStagingAir ? '#3b82f6'
-    : isStagingSea ? '#16a34a'
-    : isShelter ? '#d97706'
+  const borderColor = isStagingAir ? C.green
+    : isStagingSea ? C.borderHi
+    : isShelter    ? C.amber
     : islandColor;
 
   const icon = isStagingAir ? '✈' : isStagingSea ? '⚓' : isShelter ? '🏠' : null;
@@ -92,8 +113,7 @@ function Cell({ cell, islandColor, islandBgLight, cellSize = 32 }: CellProps) {
   return (
     <div style={{
       width: CELL, height: CELL, flexShrink: 0,
-      border: `1.5px solid ${borderColor}`,
-      borderStyle: isStaging ? 'dashed' : 'solid',
+      border: `1.5px ${isStaging ? 'dashed' : 'solid'} ${borderColor}`,
       background: bg,
       borderRadius: 3,
       display: 'flex', flexDirection: 'column',
@@ -105,7 +125,11 @@ function Cell({ cell, islandColor, islandBgLight, cellSize = 32 }: CellProps) {
         <span style={{ fontSize: cellSize <= 20 ? 7 : 9, lineHeight: 1, marginBottom: 1 }}>{icon}</span>
       )}
       {cell.label && (
-        <span style={{ fontSize: cellSize <= 20 ? 4.5 : 5.5, color: '#374151', fontWeight: 700, textAlign: 'center', lineHeight: 1.1, maxWidth: CELL - 2 }}>
+        <span style={{
+          fontSize: cellSize <= 20 ? 4.5 : 5.5, color: borderColor,
+          fontWeight: 700, textAlign: 'center', lineHeight: 1.1,
+          maxWidth: CELL - 2, fontFamily: 'monospace',
+        }}>
           {cell.label}
         </span>
       )}
@@ -114,7 +138,7 @@ function Cell({ cell, islandColor, islandBgLight, cellSize = 32 }: CellProps) {
           {Array.from({ length: Math.min(cell.residents ?? 0, 2) }, (_, i) => <Piece key={`r${i}`} kind="r" size={pieceSize} />)}
           {Array.from({ length: Math.min(cell.tourists ?? 0, 1) }, (_, i) => <Piece key={`t${i}`} kind="t" size={pieceSize} />)}
           {Array.from({ length: Math.min(cell.vulnerable ?? 0, 1) }, (_, i) => <Piece key={`v${i}`} kind="v" size={pieceSize} />)}
-          {totalPieces > 4 && <span style={{ fontSize: 6, fontWeight: 700, color: '#374151' }}>+{totalPieces - 4}</span>}
+          {totalPieces > 4 && <span style={{ fontSize: 6, fontWeight: 700, color: C.amber, fontFamily: 'monospace' }}>+{totalPieces - 4}</span>}
         </div>
       )}
     </div>
@@ -135,46 +159,54 @@ interface IslandGridProps {
   compact?: boolean;
 }
 
-function IslandGrid({ title, subtitle, color, bgLight, bgDark, rows, cellSize = 32, compact = false }: IslandGridProps) {
+function IslandGrid({ title, subtitle, color, rows, cellSize = 32, compact = false }: IslandGridProps) {
   const GAP = 2;
   return (
     <div style={{
-      border: `2px solid ${color}`,
-      borderRadius: 8,
+      border: `1px solid ${C.border}`,
+      borderLeft: `4px solid ${color}`,
+      borderRadius: 4,
       overflow: 'hidden',
-      background: bgLight,
+      background: C.bgPanel,
       flexShrink: 0,
       width: '100%',
     }}>
       {/* ヘッダー */}
-      <div style={{ background: bgDark, padding: compact ? '3px 6px' : '4px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <div style={{ fontSize: compact ? 10 : 11, fontWeight: 800, color: '#fff' }}>{title}</div>
-        {subtitle && <div style={{ fontSize: 7, color: 'rgba(255,255,255,0.8)' }}>{subtitle}</div>}
+      <div style={{
+        background: C.bgCard, padding: compact ? '3px 6px' : '4px 8px',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+        borderBottom: `1px solid ${C.border}`,
+      }}>
+        <div style={{
+          fontSize: compact ? 10 : 11, fontWeight: 800, color: color,
+          fontFamily: 'monospace', letterSpacing: 1, textTransform: 'uppercase',
+        }}>{title}</div>
+        {subtitle && <div style={{ fontSize: 7, color: C.dimText, fontFamily: 'monospace' }}>{subtitle}</div>}
       </div>
       {/* グリッド */}
-      <div style={{ padding: compact ? 4 : 6, display: 'flex', flexDirection: 'column', gap: GAP }}>
+      <div style={{ padding: compact ? 4 : 6, display: 'flex', flexDirection: 'column', gap: GAP, background: C.bgPanel }}>
         {rows.map((row, ri) => (
           <div key={ri} style={{ display: 'flex', gap: GAP }}>
             {row.map((cell, ci) => (
-              <Cell key={ci} cell={cell} islandColor={color} islandBgLight={bgLight} cellSize={cellSize} />
+              <Cell key={ci} cell={cell} islandColor={color} islandBgLight={C.bgCard} cellSize={cellSize} />
             ))}
           </div>
         ))}
       </div>
       {/* 凡例（コンパクト時は省略） */}
       {!compact && (
-        <div style={{ padding: '3px 6px', background: 'rgba(0,0,0,0.07)', display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+        <div style={{ padding: '3px 6px', background: C.bgDeep, display: 'flex', gap: 5, flexWrap: 'wrap', borderTop: `1px solid ${C.border}` }}>
           {[
-            { color: bgLight, border: color, label: '市街地' },
-            { color: '#dbeafe', border: '#3b82f6', label: '空港待機', dashed: true },
-            { color: '#d1fae5', border: '#16a34a', label: '港待機', dashed: true },
+            { color: C.border,   border: C.borderHi, label: '市街地',   dashed: false },
+            { color: '#0a1f0a',  border: C.green,    label: '空港待機',  dashed: true },
+            { color: '#0a1020',  border: C.borderHi, label: '港待機',    dashed: true },
           ].map(leg => (
             <div key={leg.label} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
               <div style={{
                 width: 8, height: 8, border: `1.5px ${leg.dashed ? 'dashed' : 'solid'} ${leg.border}`,
                 background: leg.color, borderRadius: 2,
               }} />
-              <span style={{ fontSize: 7, color: '#374151' }}>{leg.label}</span>
+              <span style={{ fontSize: 7, color: C.dimText, fontFamily: 'monospace' }}>{leg.label}</span>
             </div>
           ))}
         </div>
@@ -192,17 +224,20 @@ function Arrow({ label, vertical = false, compact = false }: { label: string; ve
       <div style={{
         display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
         gap: 4, padding: compact ? '2px 4px' : '4px 8px',
-        background: 'rgba(255,255,255,0.08)', borderRadius: 6,
+        background: `${C.green}11`, borderRadius: 4, border: `1px solid ${C.green}33`,
       }}>
-        <span style={{ fontSize: compact ? 14 : 18, color: '#d1fae5', fontWeight: 900 }}>↓</span>
-        <span style={{ fontSize: compact ? 7 : 8, color: '#d1fae5', fontWeight: 700 }}>{label}</span>
+        <span style={{ fontSize: compact ? 14 : 18, color: C.green, fontWeight: 900 }}>▼</span>
+        <span style={{ fontSize: compact ? 7 : 8, color: C.green, fontWeight: 700, fontFamily: 'monospace' }}>{label}</span>
       </div>
     );
   }
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, padding: '0 2px', flexShrink: 0 }}>
-      <span style={{ fontSize: compact ? 16 : 20, color: '#d1fae5', fontWeight: 900 }}>→</span>
-      <span style={{ fontSize: 7, color: '#d1fae5', fontWeight: 700, textAlign: 'center', maxWidth: 40 }}>{label}</span>
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      gap: 2, padding: '0 2px', flexShrink: 0,
+    }}>
+      <span style={{ fontSize: compact ? 16 : 20, color: C.green, fontWeight: 900 }}>▶</span>
+      <span style={{ fontSize: 7, color: C.green, fontWeight: 700, textAlign: 'center', maxWidth: 40, fontFamily: 'monospace' }}>{label}</span>
     </div>
   );
 }
@@ -210,19 +245,22 @@ function Arrow({ label, vertical = false, compact = false }: { label: string; ve
 // ─────────────────────────────────────────────────
 //  本土ゴール表示
 // ─────────────────────────────────────────────────
-function MainlandBox({ label, sub, color, compact = false }: { label: string; sub: string; color: string; compact?: boolean }) {
+function MainlandBox({ label, sub, compact = false }: { label: string; sub: string; color: string; compact?: boolean }) {
   return (
     <div style={{
-      border: `2px dashed ${color}`,
-      borderRadius: 6,
-      background: 'rgba(255,255,255,0.12)',
+      border: `2px dashed ${C.amber}`,
+      borderRadius: 4,
+      background: '#110900',
       padding: compact ? '4px 6px' : '6px 10px',
       textAlign: 'center',
       flex: 1,
       minWidth: 0,
     }}>
-      <div style={{ fontSize: compact ? 9 : 10, fontWeight: 800, color: '#fff', textShadow: '0 1px 3px rgba(0,0,0,0.5)', whiteSpace: 'nowrap' }}>{label}</div>
-      {!compact && <div style={{ fontSize: 7.5, color: 'rgba(255,255,255,0.8)', marginTop: 2 }}>{sub}</div>}
+      <div style={{
+        fontSize: compact ? 9 : 10, fontWeight: 800, color: C.amber,
+        fontFamily: 'monospace', whiteSpace: 'nowrap', letterSpacing: 1,
+      }}>{label}</div>
+      {!compact && <div style={{ fontSize: 7.5, color: C.dimText, marginTop: 2, fontFamily: 'monospace' }}>{sub}</div>}
     </div>
   );
 }
@@ -232,16 +270,22 @@ function MainlandBox({ label, sub, color, compact = false }: { label: string; su
 // ─────────────────────────────────────────────────
 function PieceLegend({ compact = false }: { compact?: boolean }) {
   return (
-    <div style={{ display: 'flex', gap: compact ? 6 : 10, alignItems: 'center', padding: compact ? '3px 6px' : '5px 10px', background: 'rgba(255,255,255,0.15)', borderRadius: 6, flexWrap: 'wrap' }}>
-      {!compact && <span style={{ fontSize: 9, fontWeight: 700, color: '#fff' }}>コマ:</span>}
+    <div style={{
+      display: 'flex', gap: compact ? 6 : 10, alignItems: 'center',
+      padding: compact ? '3px 6px' : '5px 10px',
+      background: C.bgCard, borderRadius: 4,
+      border: `1px solid ${C.border}`,
+      flexWrap: 'wrap',
+    }}>
+      {!compact && <span style={{ fontSize: 9, fontWeight: 700, color: C.dimText, fontFamily: 'monospace' }}>UNIT:</span>}
       {[
         { kind: 'r' as const, label: '住民' },
         { kind: 't' as const, label: '観光客' },
         { kind: 'v' as const, label: '要援護者' },
       ].map(({ kind, label }) => (
-        <div key={kind} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        <div key={kind} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
           <Piece kind={kind} size={compact ? 12 : 14} />
-          <span style={{ fontSize: compact ? 8 : 8, color: 'rgba(255,255,255,0.9)' }}>{label}</span>
+          <span style={{ fontSize: compact ? 8 : 8, color: C.bodyText, fontFamily: 'monospace' }}>{label}</span>
         </div>
       ))}
     </div>
@@ -249,24 +293,33 @@ function PieceLegend({ compact = false }: { compact?: boolean }) {
 }
 
 // ─────────────────────────────────────────────────
-//  疲労バー
+//  疲労バー — military health bar
 // ─────────────────────────────────────────────────
-function FatigueBar({ area, color, compact = false }: { area: AreaState; color: string; compact?: boolean }) {
+function FatigueBar({ area, compact = false }: { area: AreaState; color?: string; compact?: boolean }) {
   const eff = getEffectiveActions(area.baseActions, area.fatigue);
   const fatigueVal = Math.max(0, area.fatigue);
   const pct = area.baseActions > 0 ? Math.min(100, (fatigueVal / area.baseActions) * 100) : 0;
+  const barColor = pct > 75 ? C.red : pct > 40 ? C.amber : C.green;
 
   return (
-    <div style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 5, padding: compact ? '3px 5px' : '4px 6px' }}>
+    <div style={{
+      background: C.bgCard, borderRadius: 3, padding: compact ? '3px 5px' : '4px 6px',
+      border: `1px solid ${C.border}`,
+    }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
-        <span style={{ fontSize: 7, color: '#fff', fontWeight: 700 }}>疲労: {area.fatigue.toFixed(1)}</span>
-        <span style={{ fontSize: 7, color: '#fff' }}>手数: {eff}/{area.baseActions}</span>
+        <span style={{ fontSize: 7, color: C.dimText, fontWeight: 700, fontFamily: 'monospace' }}>
+          STAMINA
+        </span>
+        <span style={{ fontSize: 7, color: C.bodyText, fontFamily: 'monospace' }}>
+          ACT {eff}/{area.baseActions} | FAT {area.fatigue.toFixed(1)}
+        </span>
       </div>
-      <div style={{ height: 3, background: 'rgba(255,255,255,0.2)', borderRadius: 2, overflow: 'hidden' }}>
+      <div style={{ height: 4, background: C.bgDeep, borderRadius: 2, overflow: 'hidden', border: `1px solid ${C.border}` }}>
         <div style={{
           height: '100%', width: `${pct}%`,
-          background: pct > 75 ? '#dc2626' : pct > 40 ? '#f59e0b' : color,
+          background: barColor,
           borderRadius: 2, transition: 'width 0.4s',
+          boxShadow: `0 0 6px ${barColor}88`,
         }} />
       </div>
     </div>
@@ -497,34 +550,42 @@ export function SimulationMap({ areas }: Props) {
   const ishiRows = buildIshigakiGrid(areas.ishigaki, gridCols);
   const miyaRows = buildMiyakoGrid(areas.miyako, gridCols);
 
+  // Island color assignments — tactical palette
+  const yonaColor  = '#00cc66';
+  const takeColor  = C.amber;
+  const ishiColor  = '#4a9fd4';
+  const miyaColor  = '#cc66ff';
+
   return (
     <div style={{
-      background: '#1e7ab8',
+      background: C.bgDeep,
       backgroundImage: [
-        'radial-gradient(ellipse at 20% 50%, rgba(30,58,138,0.35) 0%, transparent 60%)',
-        'radial-gradient(ellipse at 80% 50%, rgba(5,150,105,0.2) 0%, transparent 60%)',
-        'repeating-linear-gradient(0deg,transparent,transparent 30px,rgba(255,255,255,0.03) 30px,rgba(255,255,255,0.03) 31px)',
-        'repeating-linear-gradient(90deg,transparent,transparent 30px,rgba(255,255,255,0.03) 30px,rgba(255,255,255,0.03) 31px)',
+        `repeating-linear-gradient(0deg, transparent, transparent 29px, ${C.gridLine} 29px, ${C.gridLine} 30px)`,
+        `repeating-linear-gradient(90deg, transparent, transparent 29px, ${C.gridLine} 29px, ${C.gridLine} 30px)`,
       ].join(','),
-      borderRadius: 10,
-      border: '2px solid #1d4ed8',
+      borderRadius: 6,
+      border: `2px solid ${C.border}`,
       padding: isMobile ? 8 : 12,
       overflow: 'hidden',
     }}>
 
       {/* タイトル + 凡例 */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, flexWrap: 'wrap', gap: 4 }}>
-        <div style={{ fontSize: isMobile ? 11 : 13, fontWeight: 800, color: '#fff', textShadow: '0 1px 4px rgba(0,0,0,0.4)' }}>
-          🗺 先島諸島 避難マップ
+        <div style={{
+          fontSize: isMobile ? 11 : 13, fontWeight: 800, color: C.brightText,
+          fontFamily: 'monospace', letterSpacing: 2, textTransform: 'uppercase',
+          textShadow: `0 0 8px ${C.green}55`,
+        }}>
+          🗺 TACTICAL MAP — 先島諸島
         </div>
         <PieceLegend compact={isMobile} />
       </div>
 
       {/* 本土ゴール */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
-        <MainlandBox label="✈ 福岡" sub="与那国・石垣 空路" color="#fbbf24" compact={isMobile} />
-        <MainlandBox label="⚓ 鹿児島" sub="石垣・宮古 海路" color="#f87171" compact={isMobile} />
-        <MainlandBox label="✈ 鹿児島" sub="宮古 空路" color="#a78bfa" compact={isMobile} />
+        <MainlandBox label="✈ 福岡" sub="与那国・石垣 空路" color={C.amber} compact={isMobile} />
+        <MainlandBox label="⚓ 鹿児島" sub="石垣・宮古 海路" color={C.amber} compact={isMobile} />
+        <MainlandBox label="✈ 鹿児島" sub="宮古 空路" color={C.amber} compact={isMobile} />
       </div>
 
       {/* ─── レイアウト分岐 ─── */}
@@ -536,7 +597,7 @@ export function SimulationMap({ areas }: Props) {
             area={areas.yonaguni}
             title="与那国島"
             subtitle={`住${areas.yonaguni.residents} 観${areas.yonaguni.tourists} 要${areas.yonaguni.vulnerable}`}
-            color="#16a34a" bgLight="#f0fdf4" bgDark="#15803d"
+            color={yonaColor} bgLight={C.bgPanel} bgDark={C.bgCard}
             rows={yonaRows} cellSize={cellSize} compact={isSmall}
           />
           <Arrow label="フェリー → 石垣" vertical={true} compact={isSmall} />
@@ -546,7 +607,7 @@ export function SimulationMap({ areas }: Props) {
             area={areas.taketomi}
             title="竹富町全島"
             subtitle={`住${areas.taketomi.residents} 観${areas.taketomi.tourists} 要${areas.taketomi.vulnerable}`}
-            color="#f97316" bgLight="#fff7ed" bgDark="#ea580c"
+            color={takeColor} bgLight={C.bgPanel} bgDark={C.bgCard}
             rows={takeRows} cellSize={cellSize} compact={isSmall}
           />
           <Arrow label="フェリー/空路 → 石垣" vertical={true} compact={isSmall} />
@@ -556,7 +617,7 @@ export function SimulationMap({ areas }: Props) {
             area={areas.ishigaki}
             title="石垣島（ハブ）"
             subtitle={`住${areas.ishigaki.residents} 観${areas.ishigaki.tourists} 要${areas.ishigaki.vulnerable} 待${areas.ishigaki.stagingPort}`}
-            color="#2563eb" bgLight="#eff6ff" bgDark="#1d4ed8"
+            color={ishiColor} bgLight={C.bgPanel} bgDark={C.bgCard}
             rows={ishiRows} cellSize={cellSize} compact={isSmall}
           />
           <Arrow label="独立ルート" vertical={true} compact={isSmall} />
@@ -566,7 +627,7 @@ export function SimulationMap({ areas }: Props) {
             area={areas.miyako}
             title="宮古島・多良間"
             subtitle={`住${areas.miyako.residents} 観${areas.miyako.tourists} 要${areas.miyako.vulnerable} 待${areas.miyako.stagingPort}`}
-            color="#9333ea" bgLight="#faf5ff" bgDark="#7c3aed"
+            color={miyaColor} bgLight={C.bgPanel} bgDark={C.bgCard}
             rows={miyaRows} cellSize={cellSize} compact={isSmall}
           />
         </div>
@@ -577,10 +638,10 @@ export function SimulationMap({ areas }: Props) {
             <IslandGrid
               title="与那国島"
               subtitle={`住${areas.yonaguni.residents} 観${areas.yonaguni.tourists} 要${areas.yonaguni.vulnerable}`}
-              color="#16a34a" bgLight="#f0fdf4" bgDark="#15803d"
+              color={yonaColor} bgLight={C.bgPanel} bgDark={C.bgCard}
               rows={yonaRows} cellSize={cellSize}
             />
-            <FatigueBar area={areas.yonaguni} color="#16a34a" />
+            <FatigueBar area={areas.yonaguni} color={yonaColor} />
           </div>
 
           <Arrow label="フェリー" />
@@ -589,10 +650,10 @@ export function SimulationMap({ areas }: Props) {
             <IslandGrid
               title="竹富町全島"
               subtitle={`住${areas.taketomi.residents} 観${areas.taketomi.tourists} 要${areas.taketomi.vulnerable}`}
-              color="#f97316" bgLight="#fff7ed" bgDark="#ea580c"
+              color={takeColor} bgLight={C.bgPanel} bgDark={C.bgCard}
               rows={takeRows} cellSize={cellSize}
             />
-            <FatigueBar area={areas.taketomi} color="#f97316" />
+            <FatigueBar area={areas.taketomi} color={takeColor} />
           </div>
 
           <Arrow label="フェリー/空路" />
@@ -601,10 +662,10 @@ export function SimulationMap({ areas }: Props) {
             <IslandGrid
               title="石垣島（ハブ）"
               subtitle={`住${areas.ishigaki.residents} 観${areas.ishigaki.tourists} 要${areas.ishigaki.vulnerable} 待${areas.ishigaki.stagingPort}`}
-              color="#2563eb" bgLight="#eff6ff" bgDark="#1d4ed8"
+              color={ishiColor} bgLight={C.bgPanel} bgDark={C.bgCard}
               rows={ishiRows} cellSize={cellSize}
             />
-            <FatigueBar area={areas.ishigaki} color="#2563eb" />
+            <FatigueBar area={areas.ishigaki} color={ishiColor} />
           </div>
 
           <Arrow label="独立" />
@@ -613,10 +674,10 @@ export function SimulationMap({ areas }: Props) {
             <IslandGrid
               title="宮古島・多良間"
               subtitle={`住${areas.miyako.residents} 観${areas.miyako.tourists} 要${areas.miyako.vulnerable} 待${areas.miyako.stagingPort}`}
-              color="#9333ea" bgLight="#faf5ff" bgDark="#7c3aed"
+              color={miyaColor} bgLight={C.bgPanel} bgDark={C.bgCard}
               rows={miyaRows} cellSize={cellSize}
             />
-            <FatigueBar area={areas.miyako} color="#9333ea" />
+            <FatigueBar area={areas.miyako} color={miyaColor} />
           </div>
         </div>
       )}
@@ -627,20 +688,21 @@ export function SimulationMap({ areas }: Props) {
           {[
             { icon: '✈', label: '空路(民間)', color: '#818cf8' },
             { icon: '🛩', label: '空自輸送機', color: '#38bdf8' },
-            { icon: '🚁', label: '陸自ヘリ', color: '#4ade80' },
-            { icon: '⚓', label: '海自輸送艦', color: '#fb923c' },
-            { icon: '🚢', label: '海保', color: '#f472b6' },
-            { icon: '⛴', label: 'フェリー', color: '#86efac' },
+            { icon: '🚁', label: '陸自ヘリ',  color: C.green },
+            { icon: '⚓', label: '海自輸送艦', color: C.amber },
+            { icon: '🚢', label: '海保',       color: '#f472b6' },
+            { icon: '⛴', label: 'フェリー',   color: C.bodyText },
           ].map(r => (
             <div key={r.label} style={{
               display: 'flex', alignItems: 'center', gap: 2,
-              background: 'rgba(255,255,255,0.12)', borderRadius: 4, padding: '2px 5px',
+              background: C.bgCard, borderRadius: 4, padding: '2px 6px',
+              border: `1px solid ${C.border}`,
             }}>
               <span style={{ fontSize: 9 }}>{r.icon}</span>
-              <span style={{ fontSize: 7, color: r.color, fontWeight: 600 }}>{r.label}</span>
+              <span style={{ fontSize: 7, color: r.color, fontWeight: 600, fontFamily: 'monospace' }}>{r.label}</span>
             </div>
           ))}
-          <div style={{ marginLeft: 'auto', fontSize: 7, color: 'rgba(255,255,255,0.5)' }}>
+          <div style={{ marginLeft: 'auto', fontSize: 7, color: C.dimText, fontFamily: 'monospace' }}>
             ※ 要援護者は海路のみ
           </div>
         </div>

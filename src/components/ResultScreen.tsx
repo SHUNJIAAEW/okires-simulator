@@ -86,8 +86,9 @@ export function ResultScreen({ state, onRestart }: Props) {
       <div style={styles.header}>
         <div style={styles.logoRow}>
           <span style={styles.triangle}>▲</span>
-          <span style={styles.logo}>OKIRES 2026</span>
+          <span style={styles.logo}>OKIRES-2026</span>
         </div>
+        <div style={styles.aarSubtitle}>AFTER ACTION REPORT</div>
         <h1 style={styles.title}>シミュレーション結果</h1>
         <p style={styles.subtitle}>
           事前準備Lv.{prepLevel} / 抗堪性Lv.{shelterLevel} / {month}月 発生
@@ -95,7 +96,7 @@ export function ResultScreen({ state, onRestart }: Props) {
       </div>
 
       {/* スコア */}
-      <div style={{ ...styles.scoreCard, border: `3px solid ${rating.color}` }}>
+      <div style={{ ...styles.scoreCard, border: `2px solid ${rating.color}` }}>
         <div style={styles.ratingRow}>
           <span style={{ ...styles.rating, color: rating.color }}>{rating.label}</span>
           <span style={styles.score}>{score}点</span>
@@ -172,7 +173,7 @@ export function ResultScreen({ state, onRestart }: Props) {
           <div style={styles.chartLegend}>
             <span style={styles.legendBar}></span>
             <span style={styles.legendText}>実績避難数</span>
-            <span style={{ ...styles.legendLine, borderTop: '2px dashed #6366f1' }}></span>
+            <span style={{ ...styles.legendLine, borderTop: '2px dashed #ffb300' }}></span>
             <span style={styles.legendText}>政府目標（20コマ/日）</span>
           </div>
           <div style={styles.chartWrapper}>
@@ -189,7 +190,7 @@ export function ResultScreen({ state, onRestart }: Props) {
             <div style={styles.barsRow}>
               {dailyDeltas.map((d) => {
                 const barHeight = (d.delta / maxDelta) * 100;
-                const barColor = d.delta >= GOV_BENCHMARK ? '#22c55e' : d.delta > 0 ? '#3b82f6' : '#e2e8f0';
+                const barColor = d.delta >= GOV_BENCHMARK ? '#00ff88' : d.delta > 0 ? '#003d7a' : '#1e3a5f';
                 return (
                   <div key={d.dayLabel} style={styles.barColumn}>
                     <div style={styles.barOuter}>
@@ -224,16 +225,16 @@ export function ResultScreen({ state, onRestart }: Props) {
             return (
               <div key={id} style={{
                 ...styles.areaCard,
-                borderColor: remaining === 0 ? '#22c55e' : '#f97316',
-                background: remaining === 0 ? '#f0fdf4' : '#fff7ed',
+                borderColor: remaining === 0 ? '#00ff88' : '#ffb300',
+                background: remaining === 0 ? '#0a1f0a' : '#1a1200',
               }}>
                 <div style={styles.areaName}>{AREA_NAMES[id as AreaId]}</div>
                 {remaining === 0 ? (
                   <div style={styles.complete}>✓ 避難完了</div>
                 ) : (
                   <>
-                    <div style={{ color: '#f97316', fontSize: 18, fontWeight: 700 }}>{remaining}コマ残存</div>
-                    <div style={{ color: '#94a3b8', fontSize: 12 }}>({remaining * 1000}人)</div>
+                    <div style={{ color: '#ffb300', fontSize: 18, fontWeight: 700 }}>{remaining}コマ残存</div>
+                    <div style={{ color: '#8eb8d4', fontSize: 12 }}>({remaining * 1000}人)</div>
                   </>
                 )}
                 <div style={styles.areaFatigue}>
@@ -294,49 +295,50 @@ function StatCard({ label, value, sub, color, icon }: {
   label: string; value: string; sub: string; color: string; icon: string;
 }) {
   return (
-    <div style={{ background: '#fff', border: `2px solid ${color}`, borderRadius: 10, padding: 16, textAlign: 'center' }}>
+    <div style={{ background: '#0d1b2a', border: `1px solid ${color}`, borderRadius: 6, padding: 16, textAlign: 'center' }}>
       <div style={{ fontSize: 24, marginBottom: 4 }}>{icon}</div>
-      <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 12, color: '#4a7a9b', marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: 22, fontWeight: 900, color }}>{value}</div>
-      <div style={{ fontSize: 12, color: '#94a3b8' }}>{sub}</div>
+      <div style={{ fontSize: 12, color: '#8eb8d4' }}>{sub}</div>
     </div>
   );
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  container: { maxWidth: 900, margin: '0 auto', padding: 20, fontFamily: '"Noto Sans JP", sans-serif', display: 'flex', flexDirection: 'column', gap: 20 },
-  header: { textAlign: 'center', background: 'linear-gradient(135deg, #1e293b, #334155)', borderRadius: 12, padding: 32, color: '#fff' },
-  logoRow: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 12 },
-  triangle: { fontSize: 40, color: '#a78bfa' },
-  logo: { fontSize: 36, fontWeight: 900, color: '#60a5fa' },
-  title: { fontSize: 28, fontWeight: 700, margin: '8px 0' },
-  subtitle: { color: '#94a3b8', fontSize: 14 },
-  scoreCard: { background: '#fff', borderRadius: 12, padding: 24 },
+  container: { maxWidth: 900, margin: '0 auto', padding: 20, fontFamily: '"Noto Sans JP", sans-serif', display: 'flex', flexDirection: 'column', gap: 20, color: '#8eb8d4' },
+  header: { textAlign: 'center', background: 'linear-gradient(135deg, #060d18, #0d1b2a)', borderRadius: 8, padding: 32, color: '#c8e6f8', border: '1px solid #00ff88' },
+  logoRow: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 8 },
+  triangle: { fontSize: 40, color: '#00ff88' },
+  logo: { fontSize: 36, fontWeight: 900, color: '#00ff88', fontFamily: 'monospace', letterSpacing: 2 },
+  aarSubtitle: { fontFamily: 'monospace', letterSpacing: 4, color: '#ffb300', fontSize: 13, marginBottom: 8 },
+  title: { fontSize: 28, fontWeight: 700, margin: '8px 0', color: '#c8e6f8' },
+  subtitle: { color: '#4a7a9b', fontSize: 14 },
+  scoreCard: { background: '#0d1b2a', borderRadius: 8, padding: 24 },
   ratingRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   rating: { fontSize: 32, fontWeight: 900 },
-  score: { fontSize: 24, fontWeight: 700, color: '#1e293b' },
-  ratingDesc: { color: '#475569', marginBottom: 16 },
-  progressLabel: { display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 6 },
-  progressBar: { background: '#e2e8f0', borderRadius: 8, height: 16, overflow: 'hidden' },
+  score: { fontSize: 24, fontWeight: 700, color: '#c8e6f8' },
+  ratingDesc: { color: '#8eb8d4', marginBottom: 16 },
+  progressLabel: { display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 6, color: '#8eb8d4' },
+  progressBar: { background: '#1e3a5f', borderRadius: 8, height: 16, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 8, transition: 'width 1s' },
   statsGrid: { display: 'grid', gap: 12 },
-  card: { background: '#fff', borderRadius: 12, padding: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', border: '1px solid #e2e8f0' },
-  cardTitle: { fontSize: 18, fontWeight: 700, color: '#1e293b', marginBottom: 16, borderBottom: '2px solid #3b82f6', paddingBottom: 8 },
+  card: { background: '#0d1b2a', borderRadius: 8, padding: 20, border: '1px solid #1e3a5f' },
+  cardTitle: { fontSize: 18, fontWeight: 700, color: '#ffb300', marginBottom: 16, borderLeft: '4px solid #00ff88', paddingBottom: 8, paddingLeft: 10 },
   areaGrid: { display: 'grid', gap: 12 },
-  areaCard: { border: '2px solid', borderRadius: 8, padding: 12, textAlign: 'center' },
-  areaName: { fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 },
-  complete: { fontSize: 16, fontWeight: 700, color: '#22c55e' },
-  areaFatigue: { fontSize: 11, color: '#94a3b8', marginTop: 4 },
-  bottleneckRow: { display: 'flex', gap: 8, padding: '6px 0', borderBottom: '1px solid #f1f5f9', color: '#dc2626', fontSize: 13 },
+  areaCard: { border: '2px solid', borderRadius: 6, padding: 12, textAlign: 'center' },
+  areaName: { fontSize: 12, fontWeight: 600, color: '#4a7a9b', marginBottom: 6 },
+  complete: { fontSize: 16, fontWeight: 700, color: '#00ff88' },
+  areaFatigue: { fontSize: 11, color: '#4a7a9b', marginTop: 4 },
+  bottleneckRow: { display: 'flex', gap: 8, padding: '6px 0', borderBottom: '1px solid #112233', color: '#ff6b6b', fontSize: 13 },
   bottleneckBullet: { fontWeight: 700, flexShrink: 0 },
-  lessonRow: { display: 'flex', gap: 12, padding: '6px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13, color: '#334155' },
-  lessonNum: { background: '#3b82f6', color: '#fff', width: 22, height: 22, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 },
-  policyNote: { background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: 12, marginTop: 12, fontSize: 13, color: '#92400e' },
-  restartBtn: { padding: 18, background: 'linear-gradient(135deg, #1e40af, #3b82f6)', color: '#fff', border: 'none', borderRadius: 12, fontSize: 18, fontWeight: 700, cursor: 'pointer' },
-  footer: { textAlign: 'center', color: '#94a3b8', fontSize: 11 },
+  lessonRow: { display: 'flex', gap: 12, padding: '6px 0', borderBottom: '1px solid #112233', fontSize: 13, color: '#8eb8d4' },
+  lessonNum: { background: '#003d7a', color: '#00ff88', border: '1px solid #00ff88', width: 22, height: 22, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 },
+  policyNote: { background: '#0a1a00', border: '1px solid #00aa55', borderRadius: 6, padding: 12, marginTop: 12, fontSize: 13, color: '#ffb300' },
+  restartBtn: { padding: 18, background: 'linear-gradient(135deg, #003d7a 0%, #004d2a 100%)', color: '#00ff88', border: '1px solid #00ff88', borderRadius: 8, fontSize: 18, fontWeight: 700, cursor: 'pointer', fontFamily: 'monospace', letterSpacing: 1 },
+  footer: { textAlign: 'center', color: '#4a7a9b', fontSize: 11 },
   // Chart styles
-  chartLegend: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, fontSize: 12, color: '#64748b', flexWrap: 'wrap' },
-  legendBar: { display: 'inline-block', width: 16, height: 16, background: '#3b82f6', borderRadius: 3, flexShrink: 0 },
+  chartLegend: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, fontSize: 12, color: '#8eb8d4', flexWrap: 'wrap' },
+  legendBar: { display: 'inline-block', width: 16, height: 16, background: '#003d7a', borderRadius: 3, flexShrink: 0 },
   legendLine: { display: 'inline-block', width: 24, flexShrink: 0 },
   legendText: { marginRight: 12 },
   chartWrapper: { position: 'relative', paddingBottom: 8 },
@@ -344,7 +346,7 @@ const styles: Record<string, React.CSSProperties> = {
     position: 'absolute',
     left: 0,
     right: 0,
-    borderTop: '2px dashed #6366f1',
+    borderTop: '2px dashed #ffb300',
     zIndex: 1,
     pointerEvents: 'none',
   },
@@ -353,16 +355,16 @@ const styles: Record<string, React.CSSProperties> = {
     right: 0,
     top: -18,
     fontSize: 10,
-    color: '#6366f1',
+    color: '#ffb300',
     fontWeight: 700,
-    background: '#fff',
+    background: '#0d1b2a',
     padding: '0 4px',
   },
   barsRow: { display: 'flex', alignItems: 'flex-end', gap: 4, height: 180, overflowX: 'auto', paddingTop: 24 },
   barColumn: { display: 'flex', flexDirection: 'column', alignItems: 'center', flex: '1 0 32px', minWidth: 32 },
-  barOuter: { width: '100%', height: 140, display: 'flex', alignItems: 'flex-end', background: '#f8fafc', borderRadius: '4px 4px 0 0', border: '1px solid #e2e8f0', position: 'relative' },
+  barOuter: { width: '100%', height: 140, display: 'flex', alignItems: 'flex-end', background: '#112233', borderRadius: '4px 4px 0 0', border: '1px solid #1e3a5f', position: 'relative' },
   barInner: { width: '100%', borderRadius: '4px 4px 0 0', transition: 'height 0.5s ease', minHeight: 2 },
-  barValue: { fontSize: 10, color: '#475569', fontWeight: 700, marginTop: 2, textAlign: 'center' },
-  barLabel: { fontSize: 9, color: '#94a3b8', textAlign: 'center', marginTop: 2 },
-  chartNote: { fontSize: 11, color: '#94a3b8', marginTop: 12, lineHeight: 1.5 },
+  barValue: { fontSize: 10, color: '#8eb8d4', fontWeight: 700, marginTop: 2, textAlign: 'center' },
+  barLabel: { fontSize: 9, color: '#4a7a9b', textAlign: 'center', marginTop: 2 },
+  chartNote: { fontSize: 11, color: '#4a7a9b', marginTop: 12, lineHeight: 1.5 },
 };

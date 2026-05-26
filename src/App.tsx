@@ -216,13 +216,13 @@ export default function App() {
           </div>
 
           <div style={{ ...styles.miniStats, fontSize: isMobile ? 11 : 13, marginLeft: isMobile ? 0 : 'auto', flexWrap: 'wrap' }}>
-            <span style={{ color: '#22c55e' }}>避難 {gameState.evacuated}コマ</span>
+            <span style={{ color: '#00ff88' }}>避難 {gameState.evacuated}コマ</span>
             <span style={styles.divider}>|</span>
-            <span style={{ color: '#f97316' }}>残 {totalRemaining}コマ</span>
+            <span style={{ color: '#ffb300' }}>残 {totalRemaining}コマ</span>
             {gameState.dead > 0 && (
               <>
                 <span style={styles.divider}>|</span>
-                <span style={{ color: '#dc2626' }}>死亡 {gameState.dead}コマ</span>
+                <span style={{ color: '#ff3b3b' }}>死亡 {gameState.dead}コマ</span>
               </>
             )}
           </div>
@@ -238,10 +238,10 @@ export default function App() {
                 ...styles.timelineDot,
                 width: isMobile ? 8 : 12,
                 height: isMobile ? 8 : 12,
-                background: i < dayIndex ? '#22c55e' : i === dayIndex ? phaseColor : '#334155',
+                background: i < dayIndex ? '#22c55e' : i === dayIndex ? phaseColor : '#1e3a5f',
                 boxShadow: i === dayIndex ? `0 0 8px ${phaseColor}` : 'none',
               }} />
-              <span style={{ ...styles.timelineLabel, fontSize: isMobile ? 8 : 10, color: '#111' }}>{label}</span>
+              <span style={{ ...styles.timelineLabel, fontSize: isMobile ? 8 : 10, color: '#8eb8d4' }}>{label}</span>
             </div>
           ))}
         </div>
@@ -306,7 +306,7 @@ export default function App() {
                   onClick={handleFullAutoRun}
                   disabled={isSimulating}
                 >
-                  {isSimulating ? '⏳ 計算中...' : '⚡ AIで最後まで一括実行 → 結果へ'}
+                  {isSimulating ? '⏳ 計算中...' : '⚡ AI FULL AUTO — 最終結果へ'}
                 </button>
                 <button
                   style={{
@@ -318,10 +318,10 @@ export default function App() {
                   onClick={startDayPhase1}
                   disabled={isSimulating}
                 >
-                  {isSimulating ? '⏳ 処理中...' : '次の日へ →（手動で操作）'}
+                  {isSimulating ? '⏳ 処理中...' : 'NEXT DAY → 手動操作'}
                 </button>
                 <button
-                  style={{ ...styles.autoPlayBtn, background: autoPlay ? '#dc2626' : '#475569' }}
+                  style={{ ...styles.autoPlayBtn, background: autoPlay ? '#4a0000' : '#112233', border: autoPlay ? '1px solid #ff3b3b' : '1px solid #1e3a5f' }}
                   onClick={() => {
                     if (showActionPanel) return;
                     setAutoPlay(!autoPlay);
@@ -360,52 +360,58 @@ export default function App() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  appBg: { minHeight: '100vh', background: '#f1f5f9', fontFamily: '"Noto Sans JP", sans-serif' },
+  appBg: {
+    minHeight: '100vh',
+    background: '#060d18',
+    backgroundImage: 'repeating-linear-gradient(0deg, rgba(0,255,136,0.06) 0px, rgba(0,255,136,0.06) 1px, transparent 1px, transparent 40px), repeating-linear-gradient(90deg, rgba(0,255,136,0.06) 0px, rgba(0,255,136,0.06) 1px, transparent 1px, transparent 40px)',
+    fontFamily: '"Noto Sans JP", sans-serif',
+  },
   topBar: {
     position: 'sticky', top: 0, zIndex: 100,
-    background: 'linear-gradient(135deg, #0f172a, #1e293b)',
-    borderBottom: '1px solid #334155',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+    background: 'linear-gradient(180deg, #060d18 0%, #0d1b2a 100%)',
+    borderBottom: '1px solid #00ff88',
+    boxShadow: '0 0 20px rgba(0,255,136,0.15)',
   },
   topBarInner: {
     maxWidth: 1400, margin: '0 auto', padding: '10px 20px',
     display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap',
   },
   logoSmall: { display: 'flex', alignItems: 'center', gap: 8 },
-  triangle: { fontSize: 22, color: '#a78bfa' },
-  logoText: { fontSize: 18, fontWeight: 900, color: '#60a5fa', letterSpacing: -0.5 },
+  triangle: { fontSize: 22, color: '#00ff88' },
+  logoText: { fontSize: 18, fontWeight: 900, color: '#00ff88', letterSpacing: 2, fontFamily: 'monospace' },
   phaseBadge: {
-    position: 'relative', padding: '4px 14px', borderRadius: 20,
+    position: 'relative', padding: '4px 14px', borderRadius: 4,
     color: '#fff', fontSize: 13, fontWeight: 700,
     display: 'flex', alignItems: 'center', gap: 6,
+    fontFamily: 'monospace', letterSpacing: 2,
   },
   pulseRing: { display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#fff' },
-  dayBadge: { display: 'flex', alignItems: 'center', gap: 6, background: '#334155', borderRadius: 8, padding: '4px 12px' },
-  dayLabel: { color: '#94a3b8', fontSize: 11 },
-  dayValue: { color: '#f8fafc', fontSize: 18, fontWeight: 900 },
+  dayBadge: { display: 'flex', alignItems: 'center', gap: 6, background: '#0d1b2a', border: '1px solid #1e3a5f', borderRadius: 4, padding: '4px 12px' },
+  dayLabel: { color: '#4a7a9b', fontSize: 11 },
+  dayValue: { color: '#00ff88', fontSize: 18, fontWeight: 900 },
   miniStats: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, marginLeft: 'auto' },
-  divider: { color: '#475569' },
-  progressSection: { background: '#f8fafc', padding: '12px 20px', borderBottom: '2px solid #e2e8f0' },
+  divider: { color: '#1e3a5f' },
+  progressSection: { background: '#0d1b2a', padding: '12px 20px', borderBottom: '1px solid #1e3a5f' },
   timeline: {
     display: 'flex', maxWidth: 1400, margin: '0 auto 10px',
     justifyContent: 'space-between',
   },
   timelineTick: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flex: 1 },
   timelineDot: { width: 12, height: 12, borderRadius: '50%', transition: 'all 0.3s' },
-  timelineLabel: { fontSize: 10, transition: 'color 0.3s', color: '#111' },
+  timelineLabel: { fontSize: 10, transition: 'color 0.3s', color: '#8eb8d4' },
   evacuationBarWrap: {
     maxWidth: 1400, margin: '0 auto',
     display: 'flex', alignItems: 'center', gap: 12,
   },
-  evacuationBarLabel: { color: '#374151', fontSize: 12, whiteSpace: 'nowrap', fontWeight: 600 },
-  evacuationBar: { flex: 1, height: 8, background: '#334155', borderRadius: 4, overflow: 'hidden' },
+  evacuationBarLabel: { color: '#8eb8d4', fontSize: 12, whiteSpace: 'nowrap', fontWeight: 600 },
+  evacuationBar: { flex: 1, height: 8, background: '#1e3a5f', borderRadius: 4, overflow: 'hidden' },
   evacuationFill: {
-    height: '100%', background: 'linear-gradient(90deg, #22c55e, #4ade80)',
+    height: '100%', background: 'linear-gradient(90deg, #00ff88, #4ade80)',
     borderRadius: 4, transition: 'width 0.5s ease',
   },
   actionPanelOverlay: {
-    background: '#0f172a',
-    borderBottom: '2px solid #3b82f6',
+    background: '#060d18',
+    borderBottom: '2px solid #2a6496',
     padding: '0',
   },
   actionPanelWrap: { maxWidth: 1400, margin: '0 auto' },
@@ -416,43 +422,48 @@ const styles: Record<string, React.CSSProperties> = {
   leftCol: { display: 'flex', flexDirection: 'column', gap: 16 },
   rightCol: { display: 'flex', flexDirection: 'column', gap: 16 },
   controlPanel: {
-    background: '#fff', borderRadius: 12, padding: 16,
+    background: '#0d1b2a', borderRadius: 8, padding: 16,
     display: 'flex', flexDirection: 'column', gap: 10,
-    boxShadow: '0 2px 8px rgba(0,0,0,0.08)', border: '1px solid #e2e8f0',
+    boxShadow: '0 0 12px rgba(0,255,136,0.08)', border: '1px solid #1e3a5f',
   },
   fullAutoBtn: {
-    padding: '16px 20px', background: 'linear-gradient(135deg, #7c3aed, #a855f7)',
-    color: '#fff', border: 'none', borderRadius: 10, fontSize: 16, fontWeight: 800, cursor: 'pointer',
-    boxShadow: '0 4px 12px rgba(124,58,237,0.4)',
+    padding: '16px 20px',
+    background: 'linear-gradient(135deg, #003d7a 0%, #004d2a 100%)',
+    color: '#00ff88', border: '1px solid #00ff88', borderRadius: 6,
+    fontSize: 16, fontWeight: 800, cursor: 'pointer',
+    fontFamily: 'monospace', letterSpacing: 1,
+    boxShadow: '0 0 16px rgba(0,255,136,0.2)',
   },
   nextDayBtn: {
-    padding: '14px 20px', background: 'linear-gradient(135deg, #1e40af, #3b82f6)',
-    color: '#fff', border: 'none', borderRadius: 10, fontSize: 16, fontWeight: 700, cursor: 'pointer',
+    padding: '14px 20px', background: '#003d7a',
+    color: '#c8e6f8', border: '1px solid #2a6496', borderRadius: 6,
+    fontSize: 16, fontWeight: 700, cursor: 'pointer', fontFamily: 'monospace',
   },
   autoPlayBtn: {
-    padding: '10px 20px', color: '#fff', border: 'none',
-    borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer',
+    padding: '10px 20px', color: '#8eb8d4',
+    borderRadius: 6, fontSize: 14, fontWeight: 600, cursor: 'pointer',
   },
   restartBtn: {
-    padding: '8px 20px', background: 'transparent', color: '#64748b',
-    border: '1px solid #e2e8f0', borderRadius: 10, fontSize: 13, cursor: 'pointer',
+    padding: '8px 20px', background: 'transparent', color: '#4a7a9b',
+    border: '1px solid #1e3a5f', borderRadius: 6, fontSize: 13, cursor: 'pointer',
   },
   waitingBox: {
-    background: '#eff6ff', border: '2px solid #bfdbfe', borderRadius: 10, padding: '14px 16px', textAlign: 'center',
+    background: '#0a1f0a', border: '2px solid #00ff88', borderRadius: 8, padding: '14px 16px', textAlign: 'center',
   },
-  waitingText: { fontSize: 14, color: '#1d4ed8', fontWeight: 600 },
+  waitingText: { fontSize: 14, color: '#00ff88', fontWeight: 600 },
   completeBox: { textAlign: 'center', padding: 8 },
-  completeTitle: { fontSize: 18, fontWeight: 700, color: '#1e293b', marginBottom: 6 },
-  completeStats: { fontSize: 13, color: '#475569', marginBottom: 12 },
+  completeTitle: { fontSize: 18, fontWeight: 700, color: '#c8e6f8', marginBottom: 6 },
+  completeStats: { fontSize: 13, color: '#8eb8d4', marginBottom: 12 },
   resultBtn: {
-    padding: '14px 24px', background: 'linear-gradient(135deg, #7c3aed, #a78bfa)',
-    color: '#fff', border: 'none', borderRadius: 10, fontSize: 16, fontWeight: 700, cursor: 'pointer', width: '100%',
+    padding: '14px 24px', background: 'linear-gradient(135deg, #003d7a, #004d2a)',
+    color: '#00ff88', border: '1px solid #00ff88', borderRadius: 8,
+    fontSize: 16, fontWeight: 700, cursor: 'pointer', width: '100%', fontFamily: 'monospace',
   },
   infoPanel: {
-    background: '#fff', borderRadius: 10, padding: '12px 16px',
-    display: 'flex', gap: 16, boxShadow: '0 1px 4px rgba(0,0,0,0.06)', border: '1px solid #e2e8f0',
+    background: '#0d1b2a', borderRadius: 8, padding: '12px 16px',
+    display: 'flex', gap: 16, border: '1px solid #1e3a5f',
   },
   infoPanelRow: { display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 },
-  infoLabel: { fontSize: 11, color: '#94a3b8' },
-  infoValue: { fontSize: 16, fontWeight: 700, color: '#1e293b' },
+  infoLabel: { fontSize: 11, color: '#4a7a9b' },
+  infoValue: { fontSize: 16, fontWeight: 700, color: '#c8e6f8' },
 };
