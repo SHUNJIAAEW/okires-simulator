@@ -3,25 +3,7 @@ import type { SetupConfig } from '../types';
 import { TOURIST_BY_MONTH } from '../constants';
 import { useWindowWidth } from '../hooks/useWindowWidth';
 
-// ─────────────────────────────────────────────────
-//  Design tokens
-// ─────────────────────────────────────────────────
-const C = {
-  bgDeep:    '#060d18',
-  bgPanel:   '#0d1b2a',
-  bgCard:    '#112233',
-  border:    '#1e3a5f',
-  borderHi:  '#2a6496',
-  green:     '#00ff88',
-  amber:     '#ffb300',
-  red:       '#ff3b3b',
-  dimText:   '#4a7a9b',
-  bodyText:  '#8eb8d4',
-  brightText:'#c8e6f8',
-  white:     '#e8f4ff',
-} as const;
-
-// divベースのボタン — ブラウザのデフォルトbuttonスタイルを完全排除
+// divベースのボタン — ブラウザのデフォルトbutterスタイルを完全排除
 function NoFocusButton({ style, onClick, children }: {
   style?: React.CSSProperties;
   onClick?: () => void;
@@ -43,6 +25,7 @@ function NoFocusButton({ style, onClick, children }: {
 interface Props {
   onStart: (config: SetupConfig) => void;
 }
+
 
 const PREP_DESCRIPTIONS: Record<number, string> = {
   1: 'Lv.1 - 事前準備ほぼなし（現状の沖縄に近い）',
@@ -79,165 +62,94 @@ export function SetupScreen({ onStart }: Props) {
   };
 
   return (
-    <div style={{
-      maxWidth: 800, margin: '0 auto',
-      padding: isMobile ? '12px' : '20px',
-      fontFamily: 'system-ui, sans-serif',
-      background: C.bgDeep,
-      minHeight: '100vh',
-    }}>
-      {/* ─── ロゴ / ヘッダー ─── */}
-      <div style={{ textAlign: 'center', marginBottom: 32 }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          gap: isMobile ? 8 : 16, marginBottom: 12,
-        }}>
-          <span style={{ fontSize: isMobile ? 40 : 64, color: C.green, fontFamily: 'monospace', lineHeight: 1 }}>▲</span>
+    <div style={{ ...styles.container, padding: isMobile ? '12px' : '20px' }}>
+      <div style={styles.header}>
+        <div style={{ ...styles.logo, gap: isMobile ? 8 : 16 }}>
+          <span style={{ ...styles.logoTriangle, fontSize: isMobile ? 40 : 64 }}>▲</span>
           <div>
-            <div style={{
-              fontSize: isMobile ? 32 : 48, fontWeight: 900, color: C.green,
-              fontFamily: 'monospace', letterSpacing: 4,
-            }}>OKIRES</div>
-            <div style={{ fontSize: isMobile ? 11 : 13, color: C.amber, fontFamily: 'monospace', letterSpacing: 2, marginTop: 2 }}>
-              OPERATION BRIEFING — 先島諸島広域避難計画 2026
-            </div>
+            <div style={{ ...styles.logoOkires, fontSize: isMobile ? 32 : 48 }}>OKIRES</div>
+            <div style={{ ...styles.logoSub, fontSize: isMobile ? 13 : 16 }}>沖縄住民避難シミュレーター 2026</div>
           </div>
         </div>
-        {/* Tactical rule */}
-        <div style={{ height: 1, background: `linear-gradient(90deg, transparent, ${C.green}, transparent)`, marginBottom: 16 }} />
-        <p style={{ color: C.bodyText, lineHeight: 1.6, fontSize: isMobile ? 13 : 14, fontFamily: 'monospace', margin: 0 }}>
-          台湾有事を想定した沖縄先島諸島 約12万人の広域避難シミュレーションです。<br />
+        <p style={styles.description}>
+          台湾有事を想定した沖縄先島諸島 約12万人の広域避難シミュレーションです。
           X-3日から始まり、X+8日までの計12日間をシミュレートします。
         </p>
       </div>
 
-      {/* ─── メインカード ─── */}
-      <div style={{
-        background: C.bgPanel,
-        border: `1px solid ${C.border}`,
-        borderRadius: 6,
-        padding: isMobile ? 16 : 32,
-        position: 'relative',
-        /* corner accent */
-        boxShadow: `inset 0 0 0 1px ${C.border}`,
-      }}>
-        {/* Corner accent dots */}
-        {[
-          { top: 4, left: 4 }, { top: 4, right: 4 },
-          { bottom: 4, left: 4 }, { bottom: 4, right: 4 },
-        ].map((pos, i) => (
-          <div key={i} style={{
-            position: 'absolute', width: 6, height: 6,
-            background: C.green, borderRadius: 1,
-            ...pos,
-          }} />
-        ))}
+      <div style={{ ...styles.card, padding: isMobile ? 16 : 32 }}>
+        <h2 style={styles.sectionTitle}>初期設定</h2>
 
-        <h2 style={{
-          fontSize: 12, fontWeight: 800, color: C.amber,
-          fontFamily: 'monospace', letterSpacing: 3, textTransform: 'uppercase',
-          borderLeft: `3px solid ${C.green}`, paddingLeft: 10,
-          marginBottom: 24, marginTop: 0,
-        }}>
-          MISSION PARAMETERS
-        </h2>
-
-        {/* ── 事前準備Lv ── */}
-        <div style={formGroup}>
-          <SectionLabel>PRE-OPERATION READINESS LEVEL</SectionLabel>
-          <label style={{ display: 'block', fontSize: 14, fontWeight: 700, color: C.brightText, marginBottom: 4, fontFamily: 'monospace' }}>
-            事前準備 Lv. <span style={{ color: C.green, fontSize: 20, fontWeight: 900 }}>{prepLevel}</span>
+        {/* 事前準備Lv */}
+        <div style={styles.formGroup}>
+          <label style={styles.label}>
+            事前準備 Lv. <span style={styles.value}>{prepLevel}</span>
           </label>
-          <p style={{ color: C.dimText, fontSize: 13, marginBottom: 12, fontFamily: 'monospace' }}>{PREP_DESCRIPTIONS[prepLevel]}</p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-            <span style={{ color: C.dimText, fontSize: 12, whiteSpace: 'nowrap', fontFamily: 'monospace' }}>1 (無準備)</span>
+          <p style={styles.desc}>{PREP_DESCRIPTIONS[prepLevel]}</p>
+          <div style={styles.sliderRow}>
+            <span style={styles.sliderLabel}>1 (無準備)</span>
             <input
               type="range" min={1} max={6} value={prepLevel}
               onChange={e => setPrepLevel(Number(e.target.value))}
-              style={{ flex: 1, accentColor: C.green }}
+              style={styles.slider}
             />
-            <span style={{ color: C.dimText, fontSize: 12, whiteSpace: 'nowrap', fontFamily: 'monospace' }}>6 (完璧)</span>
+            <span style={styles.sliderLabel}>6 (完璧)</span>
           </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ ...styles.levelGrid, flexWrap: 'wrap' }}>
             {[1,2,3,4,5,6].map(lv => (
               <NoFocusButton
                 key={lv}
-                style={{
-                  flex: 1, padding: '8px 4px', borderRadius: 4, cursor: 'pointer',
-                  fontWeight: 700, fontSize: 13, textAlign: 'center',
-                  fontFamily: 'monospace', transition: 'all 0.15s',
-                  ...(prepLevel === lv
-                    ? { background: '#003d7a', border: `1px solid ${C.borderHi}`, color: C.brightText }
-                    : { background: C.bgCard, border: `1px solid ${C.border}`, color: C.dimText }
-                  ),
-                }}
+                style={{ ...styles.levelBtn, ...(prepLevel === lv ? styles.levelBtnActive : {}) }}
                 onClick={() => setPrepLevel(lv)}
               >Lv.{lv}</NoFocusButton>
             ))}
           </div>
+
         </div>
 
-        {/* ── 抗堪性Lv ── */}
-        <div style={formGroup}>
-          <SectionLabel>SHELTER / HARDENING LEVEL</SectionLabel>
-          <label style={{ display: 'block', fontSize: 14, fontWeight: 700, color: C.brightText, marginBottom: 4, fontFamily: 'monospace' }}>
-            抗堪性 Lv. <span style={{ color: C.green, fontSize: 20, fontWeight: 900 }}>{shelterLevel}</span>
-            <span style={{ color: C.dimText, fontSize: 13, fontWeight: 400, marginLeft: 4, fontFamily: 'monospace' }}>(シェルター普及度)</span>
+        {/* 抗堪性Lv */}
+        <div style={styles.formGroup}>
+          <label style={styles.label}>
+            抗堪性 Lv. <span style={styles.value}>{shelterLevel}</span>
+            <span style={styles.hint}>(シェルター普及度)</span>
           </label>
-          <p style={{ color: C.dimText, fontSize: 13, marginBottom: 12, fontFamily: 'monospace' }}>{SHELTER_DESCRIPTIONS[shelterLevel]}</p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-            <span style={{ color: C.dimText, fontSize: 12, whiteSpace: 'nowrap', fontFamily: 'monospace' }}>1 (無防備)</span>
+          <p style={styles.desc}>{SHELTER_DESCRIPTIONS[shelterLevel]}</p>
+          <div style={styles.sliderRow}>
+            <span style={styles.sliderLabel}>1 (無防備)</span>
             <input
               type="range" min={1} max={5} value={shelterLevel}
               onChange={e => setShelterLevel(Number(e.target.value))}
-              style={{ flex: 1, accentColor: C.green }}
+              style={styles.slider}
             />
-            <span style={{ color: C.dimText, fontSize: 12, whiteSpace: 'nowrap', fontFamily: 'monospace' }}>5 (充実)</span>
+            <span style={styles.sliderLabel}>5 (充実)</span>
           </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ ...styles.levelGrid, flexWrap: 'wrap' }}>
             {[1,2,3,4,5].map(lv => (
               <NoFocusButton
                 key={lv}
-                style={{
-                  flex: 1, padding: '8px 4px', borderRadius: 4, cursor: 'pointer',
-                  fontWeight: 700, fontSize: 13, textAlign: 'center',
-                  fontFamily: 'monospace', transition: 'all 0.15s',
-                  ...(shelterLevel === lv
-                    ? { background: '#003320', border: `1px solid #00aa55`, color: C.green }
-                    : { background: C.bgCard, border: `1px solid ${C.border}`, color: C.dimText }
-                  ),
-                }}
+                style={{ ...styles.levelBtn, ...(shelterLevel === lv ? styles.levelBtnGreen : {}) }}
                 onClick={() => setShelterLevel(lv)}
               >Lv.{lv}</NoFocusButton>
             ))}
           </div>
         </div>
 
-        {/* ── 月 ── */}
-        <div style={formGroup}>
-          <SectionLabel>INCIDENT MONTH / SEASONAL CONDITIONS</SectionLabel>
-          <label style={{ display: 'block', fontSize: 14, fontWeight: 700, color: C.brightText, marginBottom: 4, fontFamily: 'monospace' }}>
-            事態発生月 <span style={{ color: C.green, fontSize: 20, fontWeight: 900 }}>{month}月</span>
+        {/* 月 */}
+        <div style={styles.formGroup}>
+          <label style={styles.label}>
+            事態発生月 <span style={styles.value}>{month}月</span>
           </label>
-          <p style={{ color: C.dimText, fontSize: 13, marginBottom: 12, fontFamily: 'monospace' }}>
-            観光客数: 最大{tourists}コマ | {month >= 6 && month <= 10 ? '⚠ 台風・大雨の発生確率が高い季節' : '比較的安定した気象'}
+          <p style={styles.desc}>
+            観光客数: 最大{tourists}コマ | {month >= 6 && month <= 10 ? '⚠️ 台風・大雨の発生確率が高い季節' : '比較的安定した気象'}
           </p>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: isMobile ? 'repeat(4, 1fr)' : 'repeat(6, 1fr)',
-            gap: 8,
-          }}>
+          <div style={{ ...styles.monthGrid, gridTemplateColumns: isMobile ? 'repeat(4, 1fr)' : 'repeat(6, 1fr)' }}>
             {Array.from({length: 12}, (_, i) => i + 1).map(m => (
               <NoFocusButton
                 key={m}
                 style={{
-                  padding: '8px 4px', borderRadius: 4, cursor: 'pointer',
-                  fontSize: 13, fontWeight: 700, textAlign: 'center',
-                  fontFamily: 'monospace', transition: 'all 0.15s',
-                  ...(month === m
-                    ? { background: '#003344', border: `1px solid #00aacc`, color: '#00ddff' }
-                    : { background: C.bgCard, border: `1px solid ${C.border}`, color: C.dimText }
-                  ),
+                  ...styles.monthBtn,
+                  ...([6,7,8,9,10].includes(m) ? styles.monthBtnDanger : {}),
+                  ...(month === m ? styles.monthBtnActive : {}),
                 }}
                 onClick={() => setMonth(m)}
               >{m}月</NoFocusButton>
@@ -245,130 +157,112 @@ export function SetupScreen({ onStart }: Props) {
           </div>
         </div>
 
-        {/* ── 要援護者配置 ── */}
-        <div style={formGroup}>
-          <SectionLabel>VULNERABLE UNIT PLACEMENT</SectionLabel>
-          <label style={{ display: 'block', fontSize: 14, fontWeight: 700, color: C.brightText, marginBottom: 4, fontFamily: 'monospace' }}>
-            青コマ（要援護者）配置
-          </label>
-          <p style={{ color: C.dimText, fontSize: 13, marginBottom: 12, fontFamily: 'monospace' }}>高齢者・障がい者・妊産婦など。船のみ利用可能（航空機不可）。</p>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)',
-            gap: 12,
-          }}>
+        {/* 要援護者配置 */}
+        <div style={styles.formGroup}>
+          <label style={styles.label}>青コマ（要援護者）配置</label>
+          <p style={styles.desc}>高齢者・障がい者・妊産婦など。船のみ利用可能（航空機不可）。</p>
+          <div style={{ ...styles.fourCol, gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)' }}>
             <div>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: C.bodyText, marginBottom: 6, fontFamily: 'monospace' }}>与那国島: {vulnerableYonaguni}コマ</label>
+              <label style={styles.subLabel}>与那国島: {vulnerableYonaguni}コマ</label>
               <input type="range" min={0} max={2} value={vulnerableYonaguni}
                 onChange={e => setVulnerableYonaguni(Number(e.target.value))}
-                style={{ width: '100%', accentColor: C.green }} />
+                style={styles.slider} />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: C.bodyText, marginBottom: 6, fontFamily: 'monospace' }}>竹富町: {vulnerableTaketomi}コマ</label>
+              <label style={styles.subLabel}>竹富町: {vulnerableTaketomi}コマ</label>
               <input type="range" min={0} max={5} value={vulnerableTaketomi}
                 onChange={e => setVulnerableTaketomi(Number(e.target.value))}
-                style={{ width: '100%', accentColor: C.green }} />
+                style={styles.slider} />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: C.bodyText, marginBottom: 6, fontFamily: 'monospace' }}>石垣島: {vulnerableIshigaki}コマ</label>
+              <label style={styles.subLabel}>石垣島: {vulnerableIshigaki}コマ</label>
               <input type="range" min={0} max={8} value={vulnerableIshigaki}
                 onChange={e => setVulnerableIshigaki(Number(e.target.value))}
-                style={{ width: '100%', accentColor: C.green }} />
+                style={styles.slider} />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: C.bodyText, marginBottom: 6, fontFamily: 'monospace' }}>宮古島: {vulnerableMiyako}コマ</label>
+              <label style={styles.subLabel}>宮古島: {vulnerableMiyako}コマ</label>
               <input type="range" min={0} max={8} value={vulnerableMiyako}
                 onChange={e => setVulnerableMiyako(Number(e.target.value))}
-                style={{ width: '100%', accentColor: C.green }} />
+                style={styles.slider} />
             </div>
           </div>
         </div>
 
-        {/* ── 初期配置概要 ── */}
-        <div style={{
-          background: C.bgCard,
-          border: `1px solid ${C.green}55`,
-          borderLeft: `3px solid ${C.green}`,
-          borderRadius: 4,
-          padding: 16,
-          marginTop: 24,
-          marginBottom: 24,
-        }}>
-          <h3 style={{
-            fontSize: 11, fontWeight: 800, color: C.green,
-            fontFamily: 'monospace', letterSpacing: 2, textTransform: 'uppercase',
-            marginBottom: 12, marginTop: 0,
-          }}>INITIAL DEPLOYMENT SUMMARY</h3>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-            gap: 8,
-          }}>
-            {[
-              { dot: C.red,      text: `与那国島: 住民2コマ + 要援護者${vulnerableYonaguni}コマ` },
-              { dot: C.amber,    text: `竹富町全島: 住民15コマ + 観光${Math.round(tourists*0.15)}コマ + 要援護者${vulnerableTaketomi}コマ` },
-              { dot: '#4a9fd4',  text: `石垣島: 住民43コマ + 観光${Math.round(tourists*0.5)}コマ + 要援護者${vulnerableIshigaki}コマ` },
-              { dot: C.green,    text: `宮古島・多良間: 住民49コマ + 観光${Math.round(tourists*0.35)}コマ + 要援護者${vulnerableMiyako}コマ` },
-            ].map((item, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.bodyText, fontFamily: 'monospace' }}>
-                <div style={{ width: 8, height: 8, borderRadius: 1, background: item.dot, flexShrink: 0 }} />
-                <span>{item.text}</span>
-              </div>
-            ))}
+        {/* 初期人口まとめ */}
+        <div style={styles.summaryBox}>
+          <h3 style={styles.summaryTitle}>初期配置概要</h3>
+          <div style={{ ...styles.summaryGrid, gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr' }}>
+            <div style={styles.summaryItem}>
+              <span style={{...styles.dot, background:'#ef4444'}}></span>
+              <span>与那国島: 住民2コマ + 要援護者{vulnerableYonaguni}コマ</span>
+            </div>
+            <div style={styles.summaryItem}>
+              <span style={{...styles.dot, background:'#f97316'}}></span>
+              <span>竹富町全島: 住民15コマ + 観光{Math.round(tourists*0.15)}コマ + 要援護者{vulnerableTaketomi}コマ</span>
+            </div>
+            <div style={styles.summaryItem}>
+              <span style={{...styles.dot, background:'#3b82f6'}}></span>
+              <span>石垣島: 住民43コマ + 観光{Math.round(tourists*0.5)}コマ + 要援護者{vulnerableIshigaki}コマ</span>
+            </div>
+            <div style={styles.summaryItem}>
+              <span style={{...styles.dot, background:'#22c55e'}}></span>
+              <span>宮古島・多良間: 住民49コマ + 観光{Math.round(tourists*0.35)}コマ + 要援護者{vulnerableMiyako}コマ</span>
+            </div>
           </div>
-          <div style={{
-            marginTop: 12, fontWeight: 700, color: C.green, fontSize: 14,
-            borderTop: `1px solid ${C.border}`, paddingTop: 8, fontFamily: 'monospace',
-            letterSpacing: 1,
-          }}>
-            TOTAL: {2 + 15 + 43 + 49 + tourists + vulnerableYonaguni + vulnerableTaketomi + vulnerableIshigaki + vulnerableMiyako} UNITS
-            {' ≒ '}
+          <div style={styles.totalLine}>
+            合計: 約 {2 + 15 + 43 + 49 + tourists + vulnerableYonaguni + vulnerableTaketomi + vulnerableIshigaki + vulnerableMiyako}コマ ≒{' '}
             {(2 + 15 + 43 + 49 + tourists + vulnerableYonaguni + vulnerableTaketomi + vulnerableIshigaki + vulnerableMiyako) * 1000}人
           </div>
         </div>
 
-        {/* ── START ── */}
-        <NoFocusButton
-          style={{
-            width: '100%', padding: '16px',
-            background: 'linear-gradient(135deg, #003d7a, #00aa55)',
-            color: C.white, border: 'none', borderRadius: 6,
-            fontSize: 16, fontWeight: 800, cursor: 'pointer',
-            letterSpacing: 3, textAlign: 'center', fontFamily: 'monospace',
-            boxShadow: `0 0 20px ${C.green}33`,
-            textTransform: 'uppercase',
-          }}
-          onClick={handleStart}
-        >
-          ▶ COMMENCE SIMULATION
+        <NoFocusButton style={styles.startBtn} onClick={handleStart}>
+          シミュレーション開始 →
         </NoFocusButton>
       </div>
 
-      {/* ─── フッター ─── */}
-      <div style={{ textAlign: 'center', color: C.dimText, fontSize: 11, marginTop: 24, fontFamily: 'monospace', letterSpacing: 1 }}>
-        <p>OKIRES2026 ver2.0 | DIGITAL SIMULATOR | RULE SOURCE: OKIRES PRODUCTION COMMITTEE</p>
+      <div style={styles.footer}>
+        <p>OKIRES2026 ver2.0 デジタルシミュレーター | ルール原典: OKIRES製作委員会</p>
       </div>
     </div>
   );
 }
 
-// ─── Helper sub-components ───
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{
-      fontSize: 10, fontWeight: 800, color: C.amber,
-      fontFamily: 'monospace', letterSpacing: 2, textTransform: 'uppercase',
-      borderLeft: `3px solid ${C.green}`, paddingLeft: 8,
-      marginBottom: 10,
-    }}>
-      {children}
-    </div>
-  );
-}
-
-const formGroup: React.CSSProperties = {
-  marginBottom: 28,
-  paddingBottom: 24,
-  borderBottom: `1px solid ${C.border}`,
+const styles: Record<string, React.CSSProperties> = {
+  container: { maxWidth: 800, margin: '0 auto', padding: '20px', fontFamily: '"Noto Sans JP", sans-serif' },
+  header: { textAlign: 'center', marginBottom: 32 },
+  logo: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, marginBottom: 16 },
+  logoTriangle: { fontSize: 64, color: '#7c3aed' },
+  logoOkires: { fontSize: 48, fontWeight: 900, color: '#1e40af', letterSpacing: -2 },
+  logoSub: { fontSize: 16, color: '#64748b' },
+  description: { color: '#475569', lineHeight: 1.6 },
+  card: { background: '#fff', borderRadius: 12, padding: 32, boxShadow: '0 4px 20px rgba(0,0,0,0.1)', border: '1px solid #e2e8f0' },
+  sectionTitle: { fontSize: 20, fontWeight: 700, color: '#1e293b', marginBottom: 24, borderBottom: '2px solid #3b82f6', paddingBottom: 8 },
+  formGroup: { marginBottom: 28 },
+  label: { display: 'block', fontSize: 16, fontWeight: 700, color: '#1e293b', marginBottom: 8 },
+  value: { color: '#3b82f6', fontSize: 20, fontWeight: 900, marginLeft: 8 },
+  hint: { color: '#94a3b8', fontSize: 13, fontWeight: 400, marginLeft: 4 },
+  desc: { color: '#64748b', fontSize: 14, marginBottom: 12 },
+  sliderRow: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 },
+  sliderLabel: { color: '#64748b', fontSize: 12, whiteSpace: 'nowrap' },
+  slider: { flex: 1, accentColor: '#3b82f6' },
+  levelGrid: { display: 'flex', gap: 8 },
+  levelBtn: { flex: 1, padding: '8px 4px', border: 'none', borderRadius: 8, background: '#e8edf2', cursor: 'pointer', fontWeight: 600, color: '#444', transition: 'all 0.2s', outline: 'none', WebkitAppearance: 'none' as const },
+  levelBtnActive: { background: '#3b82f6', color: '#fff' },
+  levelBtnGreen: { background: '#22c55e', color: '#fff' },
+  monthGrid: { display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 },
+  monthBtn: { padding: '8px 4px', border: 'none', borderRadius: 8, background: '#e8edf2', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#444', outline: 'none', transition: 'all 0.2s', WebkitAppearance: 'none' as const },
+  monthBtnActive: { background: '#0ea5e9', color: '#fff', fontWeight: 700 },
+  monthBtnDanger: {},
+  twoCol: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 },
+  fourCol: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 },
+  subLabel: { display: 'block', fontSize: 14, fontWeight: 600, color: '#475569', marginBottom: 6 },
+  summaryBox: { background: '#f0f9ff', borderRadius: 8, padding: 16, marginTop: 24, border: '1px solid #bae6fd' },
+  summaryTitle: { fontSize: 14, fontWeight: 700, color: '#0369a1', marginBottom: 12 },
+  summaryGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 },
+  summaryItem: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#334155' },
+  dot: { width: 10, height: 10, borderRadius: '50%', flexShrink: 0 },
+  totalLine: { marginTop: 12, fontWeight: 700, color: '#0369a1', fontSize: 15, borderTop: '1px solid #bae6fd', paddingTop: 8 },
+  startBtn: { width: '100%', padding: '16px', background: 'linear-gradient(135deg, #1e40af, #3b82f6)', color: '#fff', border: 'none', borderRadius: 12, fontSize: 18, fontWeight: 700, cursor: 'pointer', marginTop: 24, letterSpacing: 1, outline: 'none' },
+  footer: { textAlign: 'center', color: '#94a3b8', fontSize: 12, marginTop: 24 },
 };
