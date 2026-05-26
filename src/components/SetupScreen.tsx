@@ -85,6 +85,7 @@ export function SetupScreen({ onStart }: Props) {
               >Lv.{lv}</button>
             ))}
           </div>
+
         </div>
 
         {/* 抗堪性Lv */}
@@ -128,8 +129,8 @@ export function SetupScreen({ onStart }: Props) {
                 key={m}
                 style={{
                   ...styles.monthBtn,
-                  ...(month === m ? styles.monthBtnActive : {}),
                   ...([6,7,8,9,10].includes(m) ? styles.monthBtnDanger : {}),
+                  ...(month === m ? styles.monthBtnActive : {}),
                 }}
                 onClick={() => setMonth(m)}
               >{m}月</button>
@@ -227,12 +228,12 @@ const styles: Record<string, React.CSSProperties> = {
   sliderLabel: { color: '#64748b', fontSize: 12, whiteSpace: 'nowrap' },
   slider: { flex: 1, accentColor: '#3b82f6' },
   levelGrid: { display: 'flex', gap: 8 },
-  levelBtn: { flex: 1, padding: '8px 4px', border: '2px solid #e2e8f0', borderRadius: 8, background: '#f8fafc', cursor: 'pointer', fontWeight: 600, color: '#111', transition: 'all 0.2s' },
-  levelBtnActive: { background: '#3b82f6', borderColor: '#3b82f6', color: '#111' },
-  levelBtnGreen: { background: '#22c55e', borderColor: '#22c55e', color: '#111' },
+  levelBtn: { flex: 1, padding: '8px 4px', border: '2px solid #e2e8f0', borderRadius: 8, background: '#f8fafc', cursor: 'pointer', fontWeight: 600, color: '#111', transition: 'all 0.2s', outline: 'none' },
+  levelBtnActive: { background: '#3b82f6', borderColor: '#3b82f6', color: '#fff', outline: 'none' },
+  levelBtnGreen: { background: '#22c55e', borderColor: '#22c55e', color: '#fff', outline: 'none' },
   monthGrid: { display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 },
-  monthBtn: { padding: '8px 4px', border: '2px solid #e2e8f0', borderRadius: 8, background: '#f8fafc', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#111' },
-  monthBtnActive: { borderColor: '#1e40af', borderWidth: 3, background: '#eff6ff', color: '#111', fontWeight: 900 },
+  monthBtn: { padding: '8px 4px', border: '2px solid #e2e8f0', borderRadius: 8, background: '#f8fafc', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#111', outline: 'none', transition: 'all 0.2s' },
+  monthBtnActive: { background: '#0ea5e9', borderColor: '#0ea5e9', color: '#fff', fontWeight: 700, outline: 'none' },
   monthBtnDanger: { borderColor: '#e2e8f0', background: '#f8fafc' },
   twoCol: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 },
   fourCol: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 },
@@ -243,6 +244,6 @@ const styles: Record<string, React.CSSProperties> = {
   summaryItem: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#334155' },
   dot: { width: 10, height: 10, borderRadius: '50%', flexShrink: 0 },
   totalLine: { marginTop: 12, fontWeight: 700, color: '#0369a1', fontSize: 15, borderTop: '1px solid #bae6fd', paddingTop: 8 },
-  startBtn: { width: '100%', padding: '16px', background: 'linear-gradient(135deg, #1e40af, #3b82f6)', color: '#fff', border: 'none', borderRadius: 12, fontSize: 18, fontWeight: 700, cursor: 'pointer', marginTop: 24, letterSpacing: 1 },
+  startBtn: { width: '100%', padding: '16px', background: 'linear-gradient(135deg, #1e40af, #3b82f6)', color: '#fff', border: 'none', borderRadius: 12, fontSize: 18, fontWeight: 700, cursor: 'pointer', marginTop: 24, letterSpacing: 1, outline: 'none' },
   footer: { textAlign: 'center', color: '#94a3b8', fontSize: 12, marginTop: 24 },
 };
