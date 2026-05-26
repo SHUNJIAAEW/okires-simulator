@@ -7,6 +7,7 @@ import { DayLogPanel } from './components/DayLogPanel';
 import { ResultScreen } from './components/ResultScreen';
 import { ActionPanel } from './components/ActionPanel';
 import { SimulationMap } from './components/SimulationMap';
+import { useWindowWidth } from './hooks/useWindowWidth';
 
 type Screen = 'setup' | 'simulation' | 'result';
 
@@ -28,6 +29,8 @@ const PHASE_LABELS: Record<string, string> = {
 };
 
 export default function App() {
+  const windowWidth = useWindowWidth();
+  const isMobile = windowWidth < 768;
   const [screen, setScreen] = useState<Screen>('setup');
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [isSimulating, setIsSimulating] = useState(false);
@@ -164,25 +167,29 @@ export default function App() {
     <div style={styles.appBg}>
       {/* Top bar */}
       <div style={styles.topBar}>
-        <div style={styles.topBarInner}>
+        <div style={{
+          ...styles.topBarInner,
+          padding: isMobile ? '8px 12px' : '10px 20px',
+          gap: isMobile ? 8 : 20,
+        }}>
           <div style={styles.logoSmall}>
-            <span style={styles.triangle}>▲</span>
-            <span style={styles.logoText}>OKIRES 2026</span>
+            <span style={{ ...styles.triangle, fontSize: isMobile ? 16 : 22 }}>▲</span>
+            <span style={{ ...styles.logoText, fontSize: isMobile ? 14 : 18 }}>OKIRES 2026</span>
           </div>
 
-          <div style={{ ...styles.phaseBadge, background: phaseColor }}>
+          <div style={{ ...styles.phaseBadge, background: phaseColor, fontSize: isMobile ? 11 : 13, padding: isMobile ? '3px 10px' : '4px 14px' }}>
             {gameState.phase === 'wartime' && <span style={styles.pulseRing} />}
             {phaseLabel}
           </div>
 
-          <div style={styles.dayBadge}>
+          <div style={{ ...styles.dayBadge, padding: isMobile ? '3px 8px' : '4px 12px' }}>
             <span style={styles.dayLabel}>現在</span>
-            <span style={styles.dayValue}>{currentDayLabel}</span>
-            <span style={styles.dayLabel}>({Math.min(dayIndex + 1, 12)}/12日)</span>
+            <span style={{ ...styles.dayValue, fontSize: isMobile ? 14 : 18 }}>{currentDayLabel}</span>
+            {!isMobile && <span style={styles.dayLabel}>({Math.min(dayIndex + 1, 12)}/12日)</span>}
           </div>
 
-          <div style={styles.miniStats}>
-            <span style={{ color: '#22c55e' }}>避難完了 {gameState.evacuated}コマ</span>
+          <div style={{ ...styles.miniStats, fontSize: isMobile ? 11 : 13, marginLeft: isMobile ? 0 : 'auto', flexWrap: 'wrap' }}>
+            <span style={{ color: '#22c55e' }}>避難 {gameState.evacuated}コマ</span>
             <span style={styles.divider}>|</span>
             <span style={{ color: '#f97316' }}>残 {totalRemaining}コマ</span>
             {gameState.dead > 0 && (
@@ -196,21 +203,23 @@ export default function App() {
       </div>
 
       {/* タイムライン */}
-      <div style={styles.progressSection}>
-        <div style={styles.timeline}>
+      <div style={{ ...styles.progressSection, padding: isMobile ? '8px 12px' : '12px 20px' }}>
+        <div style={{ ...styles.timeline, overflowX: 'auto', paddingBottom: 2 }}>
           {DAY_LABELS.map((label, i) => (
-            <div key={label} style={styles.timelineTick}>
+            <div key={label} style={{ ...styles.timelineTick, minWidth: isMobile ? 24 : 'auto' }}>
               <div style={{
                 ...styles.timelineDot,
+                width: isMobile ? 8 : 12,
+                height: isMobile ? 8 : 12,
                 background: i < dayIndex ? '#22c55e' : i === dayIndex ? phaseColor : '#334155',
                 boxShadow: i === dayIndex ? `0 0 8px ${phaseColor}` : 'none',
               }} />
-              <span style={{ ...styles.timelineLabel, color: i === dayIndex ? '#f8fafc' : '#64748b' }}>{label}</span>
+              <span style={{ ...styles.timelineLabel, fontSize: isMobile ? 8 : 10, color: i === dayIndex ? '#f8fafc' : '#64748b' }}>{label}</span>
             </div>
           ))}
         </div>
         <div style={styles.evacuationBarWrap}>
-          <span style={styles.evacuationBarLabel}>避難完了率 {evacuationRate.toFixed(1)}%</span>
+          <span style={{ ...styles.evacuationBarLabel, fontSize: isMobile ? 10 : 12 }}>避難完了率 {evacuationRate.toFixed(1)}%</span>
           <div style={styles.evacuationBar}>
             <div style={{ ...styles.evacuationFill, width: `${evacuationRate}%` }} />
           </div>
@@ -220,7 +229,7 @@ export default function App() {
       {/* アクションパネル（フェーズ1完了後に表示） */}
       {showActionPanel && pendingPhase1 && (
         <div style={styles.actionPanelOverlay}>
-          <div style={styles.actionPanelWrap}>
+          <div style={{ ...styles.actionPanelWrap, padding: isMobile ? '0 8px' : '0' }}>
             <ActionPanel
               phase1={pendingPhase1}
               onExecute={executePhase2}
@@ -231,7 +240,13 @@ export default function App() {
       )}
 
       {/* メインコンテンツ */}
-      <div style={styles.mainContent}>
+      <div style={{
+        ...styles.mainContent,
+        gridTemplateColumns: isMobile ? '1fr' : '1fr 380px',
+        display: isMobile ? 'flex' : 'grid',
+        flexDirection: isMobile ? 'column' : undefined,
+        padding: isMobile ? '12px 8px' : '20px',
+      }}>
         {/* 左：マップ + コントロール */}
         <div style={styles.leftCol}>
           <SimulationMap areas={gameState.areas} />

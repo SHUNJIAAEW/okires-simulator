@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import type { DayPhase1Result, EvacuationOrder, AreaId, AreaState } from '../types';
 import { getEffectiveActions, ROUTE_SCHEDULES } from '../constants';
+import { useWindowWidth } from '../hooks/useWindowWidth';
 
 interface Props {
   phase1: DayPhase1Result;
@@ -381,6 +382,8 @@ function SimLog({ log, routes, areas }: SimLogProps) {
 //  ActionPanel (main)
 // ─────────────────────────────────────────────────────────────
 export function ActionPanel({ phase1, onExecute, onAutoExecute }: Props) {
+  const windowWidth = useWindowWidth();
+  const isMobile = windowWidth < 768;
   const { stateAfterEvents: state, capacities: cap, hourlyRolls, eventLog, weatherSummary, newPhase } = phase1;
   const { areas } = state;
 
@@ -643,7 +646,7 @@ export function ActionPanel({ phase1, onExecute, onAutoExecute }: Props) {
             </button>
           </div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 3 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(3,1fr)' : 'repeat(6,1fr)', gap: 3 }}>
           {eventSpaceRolls.map(r => (
             <div key={r.hour} style={{ border: `2px solid ${r.eventType ? '#f59e0b' : '#86efac'}`, background: r.eventType ? '#fef3c7' : '#f0fdf4', borderRadius: 4, padding: '2px', textAlign: 'center' }}>
               <div style={{ fontSize: 8, color: '#9ca3af' }}>{String(r.hour).padStart(2, '0')}:00</div>
@@ -674,33 +677,45 @@ export function ActionPanel({ phase1, onExecute, onAutoExecute }: Props) {
       {/* ══ マップ ══ */}
       <div style={{ background: '#5fa8cc', backgroundImage: 'repeating-linear-gradient(0deg,transparent,transparent 30px,rgba(255,255,255,0.05) 30px,rgba(255,255,255,0.05) 31px)', padding: '10px 10px' }}>
         {/* 目的地ラベル */}
-        <div style={{ display: 'grid', gridTemplateColumns: '200px 22px 1fr 155px 1fr', gap: '0 6px', marginBottom: 6 }}>
-          <DestLabel bg="#fef9c3" border="#d97706" text="#92400e" title="✈ 那覇経由 福岡空港" sub="← 与那国" />
-          <div />
-          <div style={{ display: 'flex', gap: 6 }}>
-            <DestLabel bg="#fee2e2" border="#dc2626" text="#991b1b" title="⚓ 鹿児島港" sub="← 石垣海路" />
-            <DestLabel bg="#fef9c3" border="#d97706" text="#92400e" title="✈ 福岡空港" sub="← 新石垣" />
+        {!isMobile && (
+          <div style={{ display: 'grid', gridTemplateColumns: '200px 22px 1fr 155px 1fr', gap: '0 6px', marginBottom: 6 }}>
+            <DestLabel bg="#fef9c3" border="#d97706" text="#92400e" title="✈ 那覇経由 福岡空港" sub="← 与那国" />
+            <div />
+            <div style={{ display: 'flex', gap: 6 }}>
+              <DestLabel bg="#fee2e2" border="#dc2626" text="#991b1b" title="⚓ 鹿児島港" sub="← 石垣海路" />
+              <DestLabel bg="#fef9c3" border="#d97706" text="#92400e" title="✈ 福岡空港" sub="← 新石垣" />
+            </div>
+            <div />
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <DestLabel bg="#fee2e2" border="#dc2626" text="#991b1b" title="鹿児島空港/港" sub="← 宮古" />
+            </div>
           </div>
-          <div />
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <DestLabel bg="#fee2e2" border="#dc2626" text="#991b1b" title="鹿児島空港/港" sub="← 宮古" />
-          </div>
-        </div>
+        )}
 
         {/* 島グリッド */}
-        <div style={{ display: 'grid', gridTemplateColumns: '200px 22px 1fr 155px 1fr', gap: '0 6px', alignItems: 'start' }}>
+        {isMobile ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <IslandCard areaId="yonaguni" name="与那国島" subLabel="✈ 与那国空港  ⛴ 久部良港" borderColor="#16a34a" compact pac3={false} area={areas.yonaguni} routes={routes.yonaguni} assign={assign} onAssign={handleAssign} />
             <IslandCard areaId="taketomi" name="竹富町全島" subLabel="西表・小浜・竹富・黒島・波照間" borderColor="#16a34a" compact pac3={false} area={areas.taketomi} routes={routes.taketomi} assign={assign} onAssign={handleAssign} />
+            <IslandCard areaId="ishigaki" name="石垣島" subLabel="✈ 新石垣空港  ⛴ 石垣港  🔥 発電所" borderColor="#2563eb" pac3={state.military.pac3Ishigaki} area={areas.ishigaki} routes={routes.ishigaki} assign={assign} onAssign={handleAssign} />
+            <MilPanel state={state} cap={cap} />
+            <IslandCard areaId="miyako" name="宮古島・多良間" subLabel="✈ 宮古空港  ✈ 下地島  ⛴ 平良港  🔥 発電所" borderColor="#9333ea" pac3={state.military.pac3Miyako} area={areas.miyako} routes={routes.miyako} assign={assign} onAssign={handleAssign} />
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 60, alignItems: 'center' }}>
-            <span style={{ fontSize: 20, color: '#d1fae5', fontWeight: 900, textShadow: '0 1px 4px rgba(0,0,0,0.3)' }}>→</span>
-            <span style={{ fontSize: 20, color: '#d1fae5', fontWeight: 900, textShadow: '0 1px 4px rgba(0,0,0,0.3)' }}>→</span>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: '200px 22px 1fr 155px 1fr', gap: '0 6px', alignItems: 'start' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <IslandCard areaId="yonaguni" name="与那国島" subLabel="✈ 与那国空港  ⛴ 久部良港" borderColor="#16a34a" compact pac3={false} area={areas.yonaguni} routes={routes.yonaguni} assign={assign} onAssign={handleAssign} />
+              <IslandCard areaId="taketomi" name="竹富町全島" subLabel="西表・小浜・竹富・黒島・波照間" borderColor="#16a34a" compact pac3={false} area={areas.taketomi} routes={routes.taketomi} assign={assign} onAssign={handleAssign} />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 60, alignItems: 'center' }}>
+              <span style={{ fontSize: 20, color: '#d1fae5', fontWeight: 900, textShadow: '0 1px 4px rgba(0,0,0,0.3)' }}>→</span>
+              <span style={{ fontSize: 20, color: '#d1fae5', fontWeight: 900, textShadow: '0 1px 4px rgba(0,0,0,0.3)' }}>→</span>
+            </div>
+            <IslandCard areaId="ishigaki" name="石垣島" subLabel="✈ 新石垣空港  ⛴ 石垣港  🔥 発電所" borderColor="#2563eb" pac3={state.military.pac3Ishigaki} area={areas.ishigaki} routes={routes.ishigaki} assign={assign} onAssign={handleAssign} />
+            <MilPanel state={state} cap={cap} />
+            <IslandCard areaId="miyako" name="宮古島・多良間" subLabel="✈ 宮古空港  ✈ 下地島  ⛴ 平良港  🔥 発電所" borderColor="#9333ea" pac3={state.military.pac3Miyako} area={areas.miyako} routes={routes.miyako} assign={assign} onAssign={handleAssign} />
           </div>
-          <IslandCard areaId="ishigaki" name="石垣島" subLabel="✈ 新石垣空港  ⛴ 石垣港  🔥 発電所" borderColor="#2563eb" pac3={state.military.pac3Ishigaki} area={areas.ishigaki} routes={routes.ishigaki} assign={assign} onAssign={handleAssign} />
-          <MilPanel state={state} cap={cap} />
-          <IslandCard areaId="miyako" name="宮古島・多良間" subLabel="✈ 宮古空港  ✈ 下地島  ⛴ 平良港  🔥 発電所" borderColor="#9333ea" pac3={state.military.pac3Miyako} area={areas.miyako} routes={routes.miyako} assign={assign} onAssign={handleAssign} />
-        </div>
+        )}
       </div>
 
       {/* ══ 1時間ごとシミュレーションログ ══ */}
@@ -727,16 +742,16 @@ export function ActionPanel({ phase1, onExecute, onAutoExecute }: Props) {
       </div>
 
       {/* ── フッター ── */}
-      <div style={{ padding: '10px 14px', background: '#f0f9ff', borderTop: '2px solid #bae6fd', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+      <div style={{ padding: isMobile ? '10px 10px' : '10px 14px', background: '#f0f9ff', borderTop: '2px solid #bae6fd', display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', gap: 10 }}>
         <div style={{ fontSize: 13, color: '#1f2937' }}>
           本土避難: <strong style={{ color: '#16a34a', fontSize: 15 }}>{totalMainland}コマ</strong>
           　石垣集結: <strong style={{ color: '#2563eb' }}>{totalIshigaki}コマ</strong>
           　合計: <strong>{totalAll}コマ</strong>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button style={{ padding: '9px 14px', background: '#1f2937', color: '#fff', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer' }} onClick={onAutoExecute}>⚡ AI最適化</button>
+        <div style={{ display: 'flex', gap: 8, flexDirection: isMobile ? 'column' : 'row' }}>
+          <button style={{ padding: '9px 14px', background: '#1f2937', color: '#fff', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', width: isMobile ? '100%' : 'auto' }} onClick={onAutoExecute}>⚡ AI最適化</button>
           <button
-            style={{ padding: '9px 20px', background: totalAll === 0 ? '#94a3b8' : 'linear-gradient(135deg,#1e40af,#3b82f6)', color: '#fff', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 700, cursor: totalAll === 0 ? 'default' : 'pointer' }}
+            style={{ padding: '9px 20px', background: totalAll === 0 ? '#94a3b8' : 'linear-gradient(135deg,#1e40af,#3b82f6)', color: '#fff', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 700, cursor: totalAll === 0 ? 'default' : 'pointer', width: isMobile ? '100%' : 'auto' }}
             onClick={() => onExecute(buildOrders())}
             disabled={totalAll === 0}
           >この指示で実行 →</button>

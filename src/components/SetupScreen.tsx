@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { SetupConfig } from '../types';
 import { TOURIST_BY_MONTH } from '../constants';
+import { useWindowWidth } from '../hooks/useWindowWidth';
 
 interface Props {
   onStart: (config: SetupConfig) => void;
@@ -25,6 +26,8 @@ const SHELTER_DESCRIPTIONS: Record<number, string> = {
 };
 
 export function SetupScreen({ onStart }: Props) {
+  const windowWidth = useWindowWidth();
+  const isMobile = windowWidth < 768;
   const [prepLevel, setPrepLevel] = useState(3);
   const [shelterLevel, setShelterLevel] = useState(3);
   const [month, setMonth] = useState(8);
@@ -40,13 +43,13 @@ export function SetupScreen({ onStart }: Props) {
   };
 
   return (
-    <div style={styles.container}>
+    <div style={{ ...styles.container, padding: isMobile ? '12px' : '20px' }}>
       <div style={styles.header}>
-        <div style={styles.logo}>
-          <span style={styles.logoTriangle}>▲</span>
+        <div style={{ ...styles.logo, gap: isMobile ? 8 : 16 }}>
+          <span style={{ ...styles.logoTriangle, fontSize: isMobile ? 40 : 64 }}>▲</span>
           <div>
-            <div style={styles.logoOkires}>OKIRES</div>
-            <div style={styles.logoSub}>沖縄住民避難シミュレーター 2026</div>
+            <div style={{ ...styles.logoOkires, fontSize: isMobile ? 32 : 48 }}>OKIRES</div>
+            <div style={{ ...styles.logoSub, fontSize: isMobile ? 13 : 16 }}>沖縄住民避難シミュレーター 2026</div>
           </div>
         </div>
         <p style={styles.description}>
@@ -55,7 +58,7 @@ export function SetupScreen({ onStart }: Props) {
         </p>
       </div>
 
-      <div style={styles.card}>
+      <div style={{ ...styles.card, padding: isMobile ? 16 : 32 }}>
         <h2 style={styles.sectionTitle}>初期設定</h2>
 
         {/* 事前準備Lv */}
@@ -73,7 +76,7 @@ export function SetupScreen({ onStart }: Props) {
             />
             <span style={styles.sliderLabel}>6 (完璧)</span>
           </div>
-          <div style={styles.levelGrid}>
+          <div style={{ ...styles.levelGrid, flexWrap: 'wrap' }}>
             {[1,2,3,4,5,6].map(lv => (
               <button
                 key={lv}
@@ -100,7 +103,7 @@ export function SetupScreen({ onStart }: Props) {
             />
             <span style={styles.sliderLabel}>5 (充実)</span>
           </div>
-          <div style={styles.levelGrid}>
+          <div style={{ ...styles.levelGrid, flexWrap: 'wrap' }}>
             {[1,2,3,4,5].map(lv => (
               <button
                 key={lv}
@@ -119,7 +122,7 @@ export function SetupScreen({ onStart }: Props) {
           <p style={styles.desc}>
             観光客数: 最大{tourists}コマ | {month >= 6 && month <= 10 ? '⚠️ 台風・大雨の発生確率が高い季節' : '比較的安定した気象'}
           </p>
-          <div style={styles.monthGrid}>
+          <div style={{ ...styles.monthGrid, gridTemplateColumns: isMobile ? 'repeat(4, 1fr)' : 'repeat(6, 1fr)' }}>
             {Array.from({length: 12}, (_, i) => i + 1).map(m => (
               <button
                 key={m}
@@ -138,7 +141,7 @@ export function SetupScreen({ onStart }: Props) {
         <div style={styles.formGroup}>
           <label style={styles.label}>青コマ（要援護者）配置</label>
           <p style={styles.desc}>高齢者・障がい者・妊産婦など。船のみ利用可能（航空機不可）。</p>
-          <div style={styles.fourCol}>
+          <div style={{ ...styles.fourCol, gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)' }}>
             <div>
               <label style={styles.subLabel}>与那国島: {vulnerableYonaguni}コマ</label>
               <input type="range" min={0} max={2} value={vulnerableYonaguni}
@@ -169,7 +172,7 @@ export function SetupScreen({ onStart }: Props) {
         {/* 初期人口まとめ */}
         <div style={styles.summaryBox}>
           <h3 style={styles.summaryTitle}>初期配置概要</h3>
-          <div style={styles.summaryGrid}>
+          <div style={{ ...styles.summaryGrid, gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr' }}>
             <div style={styles.summaryItem}>
               <span style={{...styles.dot, background:'#ef4444'}}></span>
               <span>与那国島: 住民2コマ + 要援護者{vulnerableYonaguni}コマ</span>

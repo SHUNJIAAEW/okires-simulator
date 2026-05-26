@@ -3,6 +3,7 @@
 
 import type { AreaId, AreaState } from '../types';
 import { getEffectiveActions } from '../constants';
+import { useWindowWidth } from '../hooks/useWindowWidth';
 
 interface Props {
   areas: Record<AreaId, AreaState>;
@@ -49,10 +50,11 @@ interface CellProps {
   cell: GridCell;
   islandColor: string;
   islandBgLight: string;
+  cellSize?: number;
 }
 
-function Cell({ cell, islandColor, islandBgLight }: CellProps) {
-  const CELL = 32;
+function Cell({ cell, islandColor, islandBgLight, cellSize = 32 }: CellProps) {
+  const CELL = cellSize;
   const GAP = 2;
 
   if (cell.type === 'empty') {
@@ -133,9 +135,10 @@ interface IslandGridProps {
   bgDark: string;       // panel header bg
   rows: GridCell[][];
   width?: number;
+  cellSize?: number;
 }
 
-function IslandGrid({ title, subtitle, color, bgLight, bgDark, rows, width }: IslandGridProps) {
+function IslandGrid({ title, subtitle, color, bgLight, bgDark, rows, width, cellSize = 32 }: IslandGridProps) {
   const GAP = 2;
   return (
     <div style={{
@@ -156,7 +159,7 @@ function IslandGrid({ title, subtitle, color, bgLight, bgDark, rows, width }: Is
         {rows.map((row, ri) => (
           <div key={ri} style={{ display: 'flex', gap: GAP }}>
             {row.map((cell, ci) => (
-              <Cell key={ci} cell={cell} islandColor={color} islandBgLight={bgLight} />
+              <Cell key={ci} cell={cell} islandColor={color} islandBgLight={bgLight} cellSize={cellSize} />
             ))}
           </div>
         ))}
@@ -434,6 +437,10 @@ function PieceLegend() {
 //  SimulationMap (main export)
 // ─────────────────────────────────────────────────
 export function SimulationMap({ areas }: Props) {
+  const windowWidth = useWindowWidth();
+  const isMobile = windowWidth < 768;
+  const cellSize = isMobile ? 24 : 32;
+
   const yonaRows = buildYonagunGrid(areas.yonaguni);
   const takeRows = buildTaketomiGrid(areas.taketomi);
   const ishiRows = buildIshigakiGrid(areas.ishigaki);
@@ -450,19 +457,19 @@ export function SimulationMap({ areas }: Props) {
       ].join(','),
       borderRadius: 10,
       border: '2px solid #1d4ed8',
-      padding: 12,
+      padding: isMobile ? 8 : 12,
       overflow: 'auto',
     }}>
       {/* タイトル */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-        <div style={{ fontSize: 13, fontWeight: 800, color: '#fff', textShadow: '0 1px 4px rgba(0,0,0,0.4)' }}>
-          🗺 沖縄県先島諸島 避難シミュレーターマップ
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 6 }}>
+        <div style={{ fontSize: isMobile ? 11 : 13, fontWeight: 800, color: '#fff', textShadow: '0 1px 4px rgba(0,0,0,0.4)' }}>
+          🗺 先島諸島 避難マップ
         </div>
         <PieceLegend />
       </div>
 
       {/* 本土ゴール（上段） */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 8, justifyContent: 'space-around' }}>
+      <div style={{ display: 'flex', gap: isMobile ? 6 : 12, marginBottom: 8, justifyContent: 'space-around', flexWrap: 'wrap' }}>
         <MainlandBox label="✈ 福岡空港" sub="← 与那国・石垣 空路" color="#fbbf24" />
         <MainlandBox label="⚓ 鹿児島港" sub="← 石垣・宮古 海路" color="#f87171" />
         <MainlandBox label="✈ 鹿児島空港" sub="← 宮古 空路" color="#a78bfa" />
@@ -480,6 +487,7 @@ export function SimulationMap({ areas }: Props) {
             bgLight="#f0fdf4"
             bgDark="#15803d"
             rows={yonaRows}
+            cellSize={cellSize}
           />
           {/* 疲労表示 */}
           <FatigueBar area={areas.yonaguni} color="#16a34a" />
@@ -497,6 +505,7 @@ export function SimulationMap({ areas }: Props) {
             bgLight="#fff7ed"
             bgDark="#ea580c"
             rows={takeRows}
+            cellSize={cellSize}
           />
           <FatigueBar area={areas.taketomi} color="#f97316" />
         </div>
@@ -513,6 +522,7 @@ export function SimulationMap({ areas }: Props) {
             bgLight="#eff6ff"
             bgDark="#1d4ed8"
             rows={ishiRows}
+            cellSize={cellSize}
           />
           <FatigueBar area={areas.ishigaki} color="#2563eb" />
         </div>
@@ -531,6 +541,7 @@ export function SimulationMap({ areas }: Props) {
             bgLight="#faf5ff"
             bgDark="#7c3aed"
             rows={miyaRows}
+            cellSize={cellSize}
           />
           <FatigueBar area={areas.miyako} color="#9333ea" />
         </div>
