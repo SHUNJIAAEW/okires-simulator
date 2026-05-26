@@ -69,18 +69,22 @@ body {
   overflow-x: hidden;
 }
 
-/* ボタンのフォーカス枠を完全無効化 */
+/* ボタンのデフォルトスタイルを完全リセット */
 button {
-  -webkit-tap-highlight-color: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  border: none;
   outline: none;
+  -webkit-tap-highlight-color: transparent;
+  background: none;
 }
 button:focus,
 button:focus-visible,
 button:focus-within,
-button:active,
-button:hover {
+button:active {
   outline: none !important;
   box-shadow: none !important;
+  border: none !important;
 }
 * {
   -webkit-tap-highlight-color: transparent;
