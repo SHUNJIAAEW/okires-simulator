@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import type { GameState, SetupConfig } from './types';
 import { createInitialState, prepareDayPhase1, executeDayPhase2, autoSelectOrders } from './gameEngine';
 import { SetupScreen } from './components/SetupScreen';
@@ -32,16 +32,22 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>('setup');
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [isSimulating, setIsSimulating] = useState(false);
+  const [autoPlay, setAutoPlay] = useState(false);
+  const [isComplete, setIsComplete] = useState(false);
+  const autoPlayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleStart = (config: SetupConfig) => {
     const initialState = createInitialState(config);
     setGameState(initialState);
+    setIsComplete(false);
+    setAutoPlay(false);
     setScreen('simulation');
   };
 
   // AI全日程一括実行（同期ループ・即座に結果へ）
   const handleFullAutoRun = useCallback(() => {
     if (!gameState) return;
+    setAutoPlay(false);
     setIsSimulating(true);
 
     setTimeout(() => {
@@ -62,8 +68,35 @@ export default function App() {
     }, 100);
   }, [gameState]);
 
+  // 自動再生（1日ずつAI実行・マップを更新しながら進む）
+  useEffect(() => {
+    if (!autoPlay || isComplete || isSimulating) return;
+    autoPlayRef.current = setTimeout(() => {
+      if (!gameState || !autoPlay) return;
+      setIsSimulating(true);
+      setTimeout(() => {
+        const phase1 = prepareDayPhase1(gameState);
+        const orders = autoSelectOrders(phase1);
+        const { newState } = executeDayPhase2(gameState, phase1, orders);
+        setGameState(newState);
+        const totalRemaining = Object.values(newState.areas).reduce(
+          (s, a) => s + a.residents + a.tourists + a.vulnerable + a.stagingPort, 0
+        );
+        const done = newState.day > 8 || totalRemaining === 0;
+        if (done) {
+          setIsComplete(true);
+          setAutoPlay(false);
+        }
+        setIsSimulating(false);
+      }, 400);
+    }, 900);
+    return () => { if (autoPlayRef.current) clearTimeout(autoPlayRef.current); };
+  }, [autoPlay, isComplete, isSimulating, gameState]);
+
   const handleRestart = () => {
     setGameState(null);
+    setAutoPlay(false);
+    setIsComplete(false);
     setScreen('setup');
   };
 
@@ -85,6 +118,9 @@ export default function App() {
 
   if (!gameState) return null;
 
+  const totalRemaining = Object.values(gameState.areas).reduce(
+    (s, a) => s + a.residents + a.tourists + a.vulnerable + a.stagingPort, 0
+  );
   const dayIndex = gameState.day + 3;
   const currentDayLabel = DAY_LABELS[dayIndex] ?? `Day ${gameState.day}`;
   const phaseColor = PHASE_COLORS[gameState.phase];
@@ -114,7 +150,11 @@ export default function App() {
           <div style={{ ...styles.miniStats, fontSize: isMobile ? 11 : 13, marginLeft: isMobile ? 0 : 'auto' }}>
             <span style={{ color: '#22c55e' }}>避難 {gameState.evacuated}コマ</span>
             <span style={styles.divider}>|</span>
-            <span style={{ color: '#f97316' }}>残員確認中...</span>
+            <span style={{ color: '#f97316' }}>残 {totalRemaining}コマ</span>
+            {gameState.dead > 0 && <>
+              <span style={styles.divider}>|</span>
+              <span style={{ color: '#dc2626' }}>死亡 {gameState.dead}コマ</span>
+            </>}
           </div>
         </div>
       </div>
@@ -132,17 +172,37 @@ export default function App() {
           <SimulationMap areas={gameState.areas} />
 
           <div style={styles.controlPanel}>
-            <button
-              style={{
-                ...styles.fullAutoBtn,
-                opacity: isSimulating ? 0.6 : 1,
-                cursor: isSimulating ? 'not-allowed' : 'pointer',
-              }}
-              onClick={handleFullAutoRun}
-              disabled={isSimulating}
-            >
-              {isSimulating ? '⏳ AI計算中...' : '⚡ AIシミュレーション実行 → 結果を見る'}
-            </button>
+            {isComplete ? (
+              <button style={styles.fullAutoBtn} onClick={() => setScreen('result')}>
+                ✅ シミュレーション完了 → 結果を見る
+              </button>
+            ) : (
+              <>
+                <button
+                  style={{
+                    ...styles.fullAutoBtn,
+                    opacity: isSimulating ? 0.6 : 1,
+                    cursor: isSimulating ? 'not-allowed' : 'pointer',
+                  }}
+                  onClick={handleFullAutoRun}
+                  disabled={isSimulating}
+                >
+                  {isSimulating ? '⏳ AI計算中...' : '⚡ 一括実行 → 結果へ'}
+                </button>
+                <button
+                  style={{
+                    ...styles.autoPlayBtn,
+                    background: autoPlay ? '#dc2626' : '#475569',
+                    opacity: isSimulating && !autoPlay ? 0.6 : 1,
+                    cursor: isSimulating && !autoPlay ? 'not-allowed' : 'pointer',
+                  }}
+                  onClick={() => setAutoPlay(p => !p)}
+                  disabled={isSimulating && !autoPlay}
+                >
+                  {autoPlay ? '⏸ 自動再生 停止' : '▶ 自動再生（1日ずつ確認）'}
+                </button>
+              </>
+            )}
             <button style={styles.restartBtn} onClick={handleRestart}>← 設定に戻る</button>
           </div>
 
@@ -212,6 +272,10 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '18px 20px', background: 'linear-gradient(135deg, #7c3aed, #a855f7)',
     color: '#fff', border: 'none', borderRadius: 10, fontSize: 17, fontWeight: 800, cursor: 'pointer',
     boxShadow: '0 4px 12px rgba(124,58,237,0.4)',
+  },
+  autoPlayBtn: {
+    padding: '12px 20px', color: '#fff', border: 'none',
+    borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer',
   },
   restartBtn: {
     padding: '8px 20px', background: 'transparent', color: '#64748b',
