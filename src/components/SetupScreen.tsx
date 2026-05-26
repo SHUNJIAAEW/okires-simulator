@@ -81,6 +81,7 @@ export function SetupScreen({ onStart }: Props) {
               <button
                 key={lv}
                 style={{ ...styles.levelBtn, ...(prepLevel === lv ? styles.levelBtnActive : {}) }}
+                onMouseDown={e => e.preventDefault()}
                 onClick={() => setPrepLevel(lv)}
               >Lv.{lv}</button>
             ))}
@@ -109,6 +110,7 @@ export function SetupScreen({ onStart }: Props) {
               <button
                 key={lv}
                 style={{ ...styles.levelBtn, ...(shelterLevel === lv ? styles.levelBtnGreen : {}) }}
+                onMouseDown={e => e.preventDefault()}
                 onClick={() => setShelterLevel(lv)}
               >Lv.{lv}</button>
             ))}
@@ -132,6 +134,7 @@ export function SetupScreen({ onStart }: Props) {
                   ...([6,7,8,9,10].includes(m) ? styles.monthBtnDanger : {}),
                   ...(month === m ? styles.monthBtnActive : {}),
                 }}
+                onMouseDown={e => e.preventDefault()}
                 onClick={() => setMonth(m)}
               >{m}月</button>
             ))}

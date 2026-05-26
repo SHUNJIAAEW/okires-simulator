@@ -70,11 +70,16 @@ body {
 }
 
 /* ボタンのフォーカス枠を全て無効化 */
+button {
+  -webkit-tap-highlight-color: transparent;
+}
 button:focus,
 button:focus-visible,
+button:focus-within,
 button:active {
   outline: none !important;
   box-shadow: none !important;
+  border-color: #e2e8f0 !important;
 }
 
 h1,
