@@ -89,12 +89,39 @@ export default function App() {
     }, 200);
   }, [gameState, pendingPhase1]);
 
-  // AI自動実行
+  // AI自動実行（1日分）
   const handleAutoExecute = useCallback(() => {
     if (!pendingPhase1) return;
     const orders = autoSelectOrders(pendingPhase1);
     executePhase2(orders);
   }, [pendingPhase1, executePhase2]);
+
+  // AI全日程一括実行（同期ループ・即座に結果へ）
+  const handleFullAutoRun = useCallback(() => {
+    if (!gameState) return;
+    setAutoPlay(false);
+    setShowActionPanel(false);
+    setPendingPhase1(null);
+    setIsSimulating(true);
+
+    setTimeout(() => {
+      let state = gameState;
+      for (let i = 0; i < 20; i++) { // 最大20日ループ（安全弁）
+        const phase1 = prepareDayPhase1(state);
+        const orders = autoSelectOrders(phase1);
+        const { newState } = executeDayPhase2(state, phase1, orders);
+        state = newState;
+        const remaining = Object.values(state.areas).reduce(
+          (s, a) => s + a.residents + a.tourists + a.vulnerable + a.stagingPort, 0
+        );
+        if (state.day > 8 || remaining === 0) break;
+      }
+      setGameState(state);
+      setIsComplete(true);
+      setIsSimulating(false);
+      setScreen('result');
+    }, 100);
+  }, [gameState]);
 
   // autoplay: フェーズ1→AI実行を繰り返す
   useEffect(() => {
@@ -272,23 +299,35 @@ export default function App() {
               <>
                 <button
                   style={{
+                    ...styles.fullAutoBtn,
+                    opacity: isSimulating ? 0.6 : 1,
+                    cursor: isSimulating ? 'not-allowed' : 'pointer',
+                  }}
+                  onClick={handleFullAutoRun}
+                  disabled={isSimulating}
+                >
+                  {isSimulating ? '⏳ 計算中...' : '⚡ AIで最後まで一括実行 → 結果へ'}
+                </button>
+                <button
+                  style={{
                     ...styles.nextDayBtn,
                     opacity: isSimulating ? 0.6 : 1,
                     cursor: isSimulating ? 'not-allowed' : 'pointer',
+                    fontSize: 14,
                   }}
                   onClick={startDayPhase1}
                   disabled={isSimulating}
                 >
-                  {isSimulating ? '⏳ 処理中...' : '次の日へ →（イベント判定）'}
+                  {isSimulating ? '⏳ 処理中...' : '次の日へ →（手動で操作）'}
                 </button>
                 <button
-                  style={{ ...styles.autoPlayBtn, background: autoPlay ? '#dc2626' : '#334155' }}
+                  style={{ ...styles.autoPlayBtn, background: autoPlay ? '#dc2626' : '#475569' }}
                   onClick={() => {
                     if (showActionPanel) return;
                     setAutoPlay(!autoPlay);
                   }}
                 >
-                  {autoPlay ? '⏸ 自動再生 停止' : '▶ 自動再生（AIが最適化）'}
+                  {autoPlay ? '⏸ 自動再生 停止' : '▶ 自動再生（ゆっくり確認）'}
                 </button>
               </>
             )}
@@ -380,6 +419,11 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#fff', borderRadius: 12, padding: 16,
     display: 'flex', flexDirection: 'column', gap: 10,
     boxShadow: '0 2px 8px rgba(0,0,0,0.08)', border: '1px solid #e2e8f0',
+  },
+  fullAutoBtn: {
+    padding: '16px 20px', background: 'linear-gradient(135deg, #7c3aed, #a855f7)',
+    color: '#fff', border: 'none', borderRadius: 10, fontSize: 16, fontWeight: 800, cursor: 'pointer',
+    boxShadow: '0 4px 12px rgba(124,58,237,0.4)',
   },
   nextDayBtn: {
     padding: '14px 20px', background: 'linear-gradient(135deg, #1e40af, #3b82f6)',
