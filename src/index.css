@@ -69,6 +69,14 @@ body {
   overflow-x: hidden;
 }
 
+/* ボタンのフォーカス枠を全て無効化 */
+button:focus,
+button:focus-visible,
+button:active {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
 h1,
 h2 {
   font-family: var(--heading);
