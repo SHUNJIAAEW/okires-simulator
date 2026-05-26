@@ -69,17 +69,21 @@ body {
   overflow-x: hidden;
 }
 
-/* ボタンのフォーカス枠を全て無効化 */
+/* ボタンのフォーカス枠を完全無効化 */
 button {
   -webkit-tap-highlight-color: transparent;
+  outline: none;
 }
 button:focus,
 button:focus-visible,
 button:focus-within,
-button:active {
+button:active,
+button:hover {
   outline: none !important;
   box-shadow: none !important;
-  border-color: #e2e8f0 !important;
+}
+* {
+  -webkit-tap-highlight-color: transparent;
 }
 
 h1,

@@ -3,6 +3,24 @@ import type { SetupConfig } from '../types';
 import { TOURIST_BY_MONTH } from '../constants';
 import { useWindowWidth } from '../hooks/useWindowWidth';
 
+// フォーカス枠が絶対に出ないボタン
+function NoFocusButton({ style, onClick, children }: {
+  style?: React.CSSProperties;
+  onClick?: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      style={style}
+      onMouseDown={e => e.preventDefault()}
+      onFocus={e => e.currentTarget.blur()}
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
+}
+
 interface Props {
   onStart: (config: SetupConfig) => void;
 }
@@ -78,12 +96,11 @@ export function SetupScreen({ onStart }: Props) {
           </div>
           <div style={{ ...styles.levelGrid, flexWrap: 'wrap' }}>
             {[1,2,3,4,5,6].map(lv => (
-              <button
+              <NoFocusButton
                 key={lv}
                 style={{ ...styles.levelBtn, ...(prepLevel === lv ? styles.levelBtnActive : {}) }}
-                onMouseDown={e => e.preventDefault()}
                 onClick={() => setPrepLevel(lv)}
-              >Lv.{lv}</button>
+              >Lv.{lv}</NoFocusButton>
             ))}
           </div>
 
@@ -107,12 +124,11 @@ export function SetupScreen({ onStart }: Props) {
           </div>
           <div style={{ ...styles.levelGrid, flexWrap: 'wrap' }}>
             {[1,2,3,4,5].map(lv => (
-              <button
+              <NoFocusButton
                 key={lv}
                 style={{ ...styles.levelBtn, ...(shelterLevel === lv ? styles.levelBtnGreen : {}) }}
-                onMouseDown={e => e.preventDefault()}
                 onClick={() => setShelterLevel(lv)}
-              >Lv.{lv}</button>
+              >Lv.{lv}</NoFocusButton>
             ))}
           </div>
         </div>
@@ -127,16 +143,15 @@ export function SetupScreen({ onStart }: Props) {
           </p>
           <div style={{ ...styles.monthGrid, gridTemplateColumns: isMobile ? 'repeat(4, 1fr)' : 'repeat(6, 1fr)' }}>
             {Array.from({length: 12}, (_, i) => i + 1).map(m => (
-              <button
+              <NoFocusButton
                 key={m}
                 style={{
                   ...styles.monthBtn,
                   ...([6,7,8,9,10].includes(m) ? styles.monthBtnDanger : {}),
                   ...(month === m ? styles.monthBtnActive : {}),
                 }}
-                onMouseDown={e => e.preventDefault()}
                 onClick={() => setMonth(m)}
-              >{m}月</button>
+              >{m}月</NoFocusButton>
             ))}
           </div>
         </div>
@@ -200,9 +215,9 @@ export function SetupScreen({ onStart }: Props) {
           </div>
         </div>
 
-        <button style={styles.startBtn} onClick={handleStart}>
+        <NoFocusButton style={styles.startBtn} onClick={handleStart}>
           シミュレーション開始 →
-        </button>
+        </NoFocusButton>
       </div>
 
       <div style={styles.footer}>
