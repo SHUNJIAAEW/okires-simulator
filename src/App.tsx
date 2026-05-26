@@ -214,7 +214,7 @@ export default function App() {
                 background: i < dayIndex ? '#22c55e' : i === dayIndex ? phaseColor : '#334155',
                 boxShadow: i === dayIndex ? `0 0 8px ${phaseColor}` : 'none',
               }} />
-              <span style={{ ...styles.timelineLabel, fontSize: isMobile ? 8 : 10, color: i === dayIndex ? '#f8fafc' : '#64748b' }}>{label}</span>
+              <span style={{ ...styles.timelineLabel, fontSize: isMobile ? 8 : 10, color: '#111' }}>{label}</span>
             </div>
           ))}
         </div>
@@ -346,19 +346,19 @@ const styles: Record<string, React.CSSProperties> = {
   dayValue: { color: '#f8fafc', fontSize: 18, fontWeight: 900 },
   miniStats: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, marginLeft: 'auto' },
   divider: { color: '#475569' },
-  progressSection: { background: '#1e293b', padding: '12px 20px', borderBottom: '1px solid #334155' },
+  progressSection: { background: '#f8fafc', padding: '12px 20px', borderBottom: '2px solid #e2e8f0' },
   timeline: {
     display: 'flex', maxWidth: 1400, margin: '0 auto 10px',
     justifyContent: 'space-between',
   },
   timelineTick: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flex: 1 },
   timelineDot: { width: 12, height: 12, borderRadius: '50%', transition: 'all 0.3s' },
-  timelineLabel: { fontSize: 10, transition: 'color 0.3s' },
+  timelineLabel: { fontSize: 10, transition: 'color 0.3s', color: '#111' },
   evacuationBarWrap: {
     maxWidth: 1400, margin: '0 auto',
     display: 'flex', alignItems: 'center', gap: 12,
   },
-  evacuationBarLabel: { color: '#94a3b8', fontSize: 12, whiteSpace: 'nowrap' },
+  evacuationBarLabel: { color: '#374151', fontSize: 12, whiteSpace: 'nowrap', fontWeight: 600 },
   evacuationBar: { flex: 1, height: 8, background: '#334155', borderRadius: 4, overflow: 'hidden' },
   evacuationFill: {
     height: '100%', background: 'linear-gradient(90deg, #22c55e, #4ade80)',
