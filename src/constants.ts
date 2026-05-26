@@ -57,6 +57,8 @@ export const AIRPORT_ALLOWED_WIND_DIRECTIONS: Record<string, number[]> = {
   shimoji: [2, 5],        // 北西-南東: 北西(2) or 南東(5)
   shinIshigaki: [3, 6],   // 北東-南西: 北東(3) or 南西(6)
   miyako: [3, 6],         // 北東-南西: 北東(3) or 南西(6)
+  hateruma: [1, 4],       // 波照間空港: 東西方向 西(1) or 東(4)
+  tarama: [2, 5],         // 多良間空港: 北西-南東 北西(2) or 南東(5)
 };
 
 // ===== 事前準備レベル別設定 =====

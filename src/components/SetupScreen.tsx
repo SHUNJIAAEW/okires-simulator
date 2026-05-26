@@ -3,21 +3,22 @@ import type { SetupConfig } from '../types';
 import { TOURIST_BY_MONTH } from '../constants';
 import { useWindowWidth } from '../hooks/useWindowWidth';
 
-// フォーカス枠が絶対に出ないボタン
+// divベースのボタン — ブラウザのデフォルトbutterスタイルを完全排除
 function NoFocusButton({ style, onClick, children }: {
   style?: React.CSSProperties;
   onClick?: () => void;
   children: React.ReactNode;
 }) {
   return (
-    <button
-      style={style}
-      onMouseDown={e => e.preventDefault()}
-      onFocus={e => e.currentTarget.blur()}
+    <div
+      role="button"
+      tabIndex={-1}
+      style={{ ...style, userSelect: 'none', WebkitUserSelect: 'none' }}
       onClick={onClick}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onClick?.(); }}
     >
       {children}
-    </button>
+    </div>
   );
 }
 

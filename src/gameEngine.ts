@@ -149,8 +149,8 @@ export function checkAirportAvailability(
     miyako: airportOk('miyako', infraState.miyakoAirport),
     shimoji: airportOk('shimoji', infraState.shimojiAirport),
     yonaguni: airportOk('yonaguni', infraState.yonagunAirport),
-    hateruma: airportOk('shinIshigaki', infraState.haterumaAirport),
-    tarama: airportOk('miyako', infraState.taramaAirport),
+    hateruma: airportOk('hateruma', infraState.haterumaAirport),
+    tarama: airportOk('tarama', infraState.taramaAirport),
   };
 }
 
@@ -263,6 +263,7 @@ export interface EventResult {
   transportPenalty: Partial<TransportState>;
   newDead: number;
   hourlyRolls: HourlyRoll[];
+  senkakuOccupied: boolean;
 }
 
 export function generateDailyEvents(state: GameState): EventResult {
@@ -273,6 +274,7 @@ export function generateDailyEvents(state: GameState): EventResult {
     transportPenalty: {},
     newDead: 0,
     hourlyRolls: [],
+    senkakuOccupied: false,
   };
 
   const { phase, prepLevel, military, day } = state;
@@ -508,6 +510,7 @@ function processEvent(
         result.log.push(`[イベントD|出目${subRoll}] 【尖閣占領判定】ダイス${diceSum}+中${chinaTotal}-自${jsdfTotal}=計${calcValue} / 閾値${threshold}`);
         if (calcValue >= threshold) {
           result.log.push('  ⚠️ 尖閣諸島占領! 以後の計算値に不利補正+3');
+          result.senkakuOccupied = true;
           return `【尖閣占領】計${calcValue}≥${threshold}`;
         }
         return `【尖閣占領回避】計${calcValue}<${threshold}`;
@@ -618,7 +621,10 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
     phase: newPhase,
     weather: newWeather,
     areas: areasAfterEvents,
-    military: newMilitary,
+    military: {
+      ...newMilitary,
+      senkakuOccupied: newMilitary.senkakuOccupied || eventResult.senkakuOccupied,
+    },
   };
 
   const capacities = getDayCapacities(stateAfterEvents, airportAvail, seaOk);
@@ -755,8 +761,21 @@ export function executeDayPhase2(
     const remaining = areas.taketomi.residents + areas.taketomi.tourists + areas.taketomi.vulnerable +
       areas.yonaguni.residents + areas.yonaguni.tourists + areas.yonaguni.vulnerable;
     if (remaining > 0) {
-      evacLog.push(`⚠️ X+3日24時: 竹富以西 ${remaining}コマ未避難 → 全エリア疲労+2`);
       deadlineDeaths = Math.min(remaining, 2);
+      evacLog.push(`⚠️ X+3日24時: 竹富以西 ${remaining}コマ未避難 → ${deadlineDeaths}コマ死亡・全エリア疲労+2`);
+      // 死亡コマをエリア人口から除去（与那国→竹富の順）
+      let toRemove = deadlineDeaths;
+      for (const id of ['yonaguni', 'taketomi'] as AreaId[]) {
+        if (toRemove <= 0) break;
+        const areaTotal = areas[id].residents + areas[id].tourists + areas[id].vulnerable;
+        const removed = Math.min(toRemove, areaTotal);
+        // 住民→観光客→要援護者の順で除去
+        let r = removed;
+        const rRes = Math.min(r, areas[id].residents); areas[id].residents -= rRes; r -= rRes;
+        const rTour = Math.min(r, areas[id].tourists); areas[id].tourists -= rTour; r -= rTour;
+        const rVuln = Math.min(r, areas[id].vulnerable); areas[id].vulnerable -= rVuln;
+        toRemove -= removed;
+      }
       for (const id of Object.keys(areas) as AreaId[]) areas[id].fatigue += 2;
     }
   }

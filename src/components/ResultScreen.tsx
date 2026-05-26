@@ -1,6 +1,7 @@
 import React from 'react';
 import type { GameState } from '../types';
 import type { AreaId } from '../types';
+import { useWindowWidth } from '../hooks/useWindowWidth';
 
 interface Props {
   state: GameState;
@@ -14,8 +15,11 @@ const AREA_NAMES: Record<AreaId, string> = {
   miyako: '宮古島・多良間',
 };
 
+const GOV_BENCHMARK = 20; // コマ/day (= 2万人/day)
+
 export function ResultScreen({ state, onRestart }: Props) {
   const { evacuated, dead, areas, dayLogs, prepLevel, shelterLevel, month } = state;
+  const isMobile = useWindowWidth() < 768;
 
   const totalRemaining = Object.values(areas).reduce((sum, a) =>
     sum + a.residents + a.tourists + a.vulnerable + a.stagingPort, 0
@@ -55,6 +59,27 @@ export function ResultScreen({ state, onRestart }: Props) {
     `事前準備Lv.${prepLevel}での今回の避難率: ${evacuationRate.toFixed(1)}%`,
   ];
 
+  // Day-by-day chart data
+  const dailyDeltas = dayLogs.map((log, i) => {
+    const prev = i === 0 ? 0 : dayLogs[i - 1].totalEvacuatedSoFar;
+    return {
+      day: log.day,
+      dayLabel: log.dayLabel,
+      delta: log.totalEvacuatedSoFar - prev,
+      cumulative: log.totalEvacuatedSoFar,
+    };
+  });
+
+  const maxDelta = Math.max(...dailyDeltas.map(d => d.delta), GOV_BENCHMARK, 1);
+
+  // Average コマ/day (only days with positive delta to be fair)
+  const activeDays = dailyDeltas.filter(d => d.delta > 0);
+  const avgPerDay = activeDays.length > 0
+    ? activeDays.reduce((s, d) => s + d.delta, 0) / activeDays.length
+    : 0;
+
+  const benchmarkPct = (GOV_BENCHMARK / maxDelta) * 100;
+
   return (
     <div style={styles.container}>
       {/* ヘッダー */}
@@ -88,7 +113,7 @@ export function ResultScreen({ state, onRestart }: Props) {
       </div>
 
       {/* 統計 */}
-      <div style={styles.statsGrid}>
+      <div style={{ ...styles.statsGrid, gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)' }}>
         <StatCard
           label="避難完了"
           value={`${evacuated}コマ`}
@@ -117,12 +142,83 @@ export function ResultScreen({ state, onRestart }: Props) {
           color="#3b82f6"
           icon="📅"
         />
+        <StatCard
+          label="実績 平均/日"
+          value={`${avgPerDay.toFixed(1)}コマ`}
+          sub={`${(avgPerDay * 1000).toLocaleString(undefined, { maximumFractionDigits: 0 })}人/日`}
+          color={avgPerDay >= GOV_BENCHMARK ? '#22c55e' : '#f97316'}
+          icon="📊"
+        />
+        <StatCard
+          label="政府目標 平均/日"
+          value={`${GOV_BENCHMARK}コマ`}
+          sub="2万人/日"
+          color="#6366f1"
+          icon="🎯"
+        />
+        <StatCard
+          label="目標比"
+          value={`${avgPerDay > 0 ? ((avgPerDay / GOV_BENCHMARK) * 100).toFixed(0) : 0}%`}
+          sub={avgPerDay >= GOV_BENCHMARK ? '目標達成' : '目標未達'}
+          color={avgPerDay >= GOV_BENCHMARK ? '#22c55e' : '#dc2626'}
+          icon={avgPerDay >= GOV_BENCHMARK ? '✅' : '❌'}
+        />
       </div>
+
+      {/* Day-by-day 避難チャート */}
+      {dailyDeltas.length > 0 && (
+        <div style={styles.card}>
+          <h2 style={styles.cardTitle}>📈 日別避難数チャート（コマ数）</h2>
+          <div style={styles.chartLegend}>
+            <span style={styles.legendBar}></span>
+            <span style={styles.legendText}>実績避難数</span>
+            <span style={{ ...styles.legendLine, borderTop: '2px dashed #6366f1' }}></span>
+            <span style={styles.legendText}>政府目標（20コマ/日）</span>
+          </div>
+          <div style={styles.chartWrapper}>
+            {/* Benchmark line */}
+            <div
+              style={{
+                ...styles.benchmarkLine,
+                bottom: `${benchmarkPct}%`,
+              }}
+            >
+              <span style={styles.benchmarkLabel}>目標 20コマ</span>
+            </div>
+            {/* Bars */}
+            <div style={styles.barsRow}>
+              {dailyDeltas.map((d) => {
+                const barHeight = (d.delta / maxDelta) * 100;
+                const barColor = d.delta >= GOV_BENCHMARK ? '#22c55e' : d.delta > 0 ? '#3b82f6' : '#e2e8f0';
+                return (
+                  <div key={d.dayLabel} style={styles.barColumn}>
+                    <div style={styles.barOuter}>
+                      <div
+                        style={{
+                          ...styles.barInner,
+                          height: `${barHeight}%`,
+                          background: barColor,
+                        }}
+                        title={`${d.dayLabel}: ${d.delta}コマ (${(d.delta * 1000).toLocaleString()}人)`}
+                      />
+                    </div>
+                    <div style={styles.barValue}>{d.delta > 0 ? d.delta : '–'}</div>
+                    <div style={styles.barLabel}>{d.dayLabel}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div style={styles.chartNote}>
+            各バーはその日に新たに避難完了したコマ数。緑＝政府目標達成、青＝目標未達、灰＝避難なし。
+          </div>
+        </div>
+      )}
 
       {/* エリア別結果 */}
       <div style={styles.card}>
         <h2 style={styles.cardTitle}>エリア別残員状況</h2>
-        <div style={styles.areaGrid}>
+        <div style={{ ...styles.areaGrid, gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)' }}>
           {Object.entries(areas).map(([id, area]) => {
             const remaining = area.residents + area.tourists + area.vulnerable + area.stagingPort;
             return (
@@ -178,7 +274,12 @@ export function ResultScreen({ state, onRestart }: Props) {
       </div>
 
       {/* 再スタートボタン */}
-      <button style={styles.restartBtn} onClick={onRestart}>
+      <button
+        style={styles.restartBtn}
+        onClick={onRestart}
+        onFocus={e => e.currentTarget.blur()}
+        onMouseDown={e => e.preventDefault()}
+      >
         もう一度シミュレーション →
       </button>
 
@@ -218,10 +319,10 @@ const styles: Record<string, React.CSSProperties> = {
   progressLabel: { display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 6 },
   progressBar: { background: '#e2e8f0', borderRadius: 8, height: 16, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 8, transition: 'width 1s' },
-  statsGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 },
+  statsGrid: { display: 'grid', gap: 12 },
   card: { background: '#fff', borderRadius: 12, padding: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', border: '1px solid #e2e8f0' },
   cardTitle: { fontSize: 18, fontWeight: 700, color: '#1e293b', marginBottom: 16, borderBottom: '2px solid #3b82f6', paddingBottom: 8 },
-  areaGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 },
+  areaGrid: { display: 'grid', gap: 12 },
   areaCard: { border: '2px solid', borderRadius: 8, padding: 12, textAlign: 'center' },
   areaName: { fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 },
   complete: { fontSize: 16, fontWeight: 700, color: '#22c55e' },
@@ -233,4 +334,35 @@ const styles: Record<string, React.CSSProperties> = {
   policyNote: { background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: 12, marginTop: 12, fontSize: 13, color: '#92400e' },
   restartBtn: { padding: 18, background: 'linear-gradient(135deg, #1e40af, #3b82f6)', color: '#fff', border: 'none', borderRadius: 12, fontSize: 18, fontWeight: 700, cursor: 'pointer' },
   footer: { textAlign: 'center', color: '#94a3b8', fontSize: 11 },
+  // Chart styles
+  chartLegend: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, fontSize: 12, color: '#64748b', flexWrap: 'wrap' },
+  legendBar: { display: 'inline-block', width: 16, height: 16, background: '#3b82f6', borderRadius: 3, flexShrink: 0 },
+  legendLine: { display: 'inline-block', width: 24, flexShrink: 0 },
+  legendText: { marginRight: 12 },
+  chartWrapper: { position: 'relative', paddingBottom: 8 },
+  benchmarkLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    borderTop: '2px dashed #6366f1',
+    zIndex: 1,
+    pointerEvents: 'none',
+  },
+  benchmarkLabel: {
+    position: 'absolute',
+    right: 0,
+    top: -18,
+    fontSize: 10,
+    color: '#6366f1',
+    fontWeight: 700,
+    background: '#fff',
+    padding: '0 4px',
+  },
+  barsRow: { display: 'flex', alignItems: 'flex-end', gap: 4, height: 180, overflowX: 'auto', paddingTop: 24 },
+  barColumn: { display: 'flex', flexDirection: 'column', alignItems: 'center', flex: '1 0 32px', minWidth: 32 },
+  barOuter: { width: '100%', height: 140, display: 'flex', alignItems: 'flex-end', background: '#f8fafc', borderRadius: '4px 4px 0 0', border: '1px solid #e2e8f0', position: 'relative' },
+  barInner: { width: '100%', borderRadius: '4px 4px 0 0', transition: 'height 0.5s ease', minHeight: 2 },
+  barValue: { fontSize: 10, color: '#475569', fontWeight: 700, marginTop: 2, textAlign: 'center' },
+  barLabel: { fontSize: 9, color: '#94a3b8', textAlign: 'center', marginTop: 2 },
+  chartNote: { fontSize: 11, color: '#94a3b8', marginTop: 12, lineHeight: 1.5 },
 };
