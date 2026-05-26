@@ -1,0 +1,236 @@
+import React from 'react';
+import type { GameState } from '../types';
+import type { AreaId } from '../types';
+
+interface Props {
+  state: GameState;
+  onRestart: () => void;
+}
+
+const AREA_NAMES: Record<AreaId, string> = {
+  yonaguni: '与那国島',
+  taketomi: '竹富町全島',
+  ishigaki: '石垣島',
+  miyako: '宮古島・多良間',
+};
+
+export function ResultScreen({ state, onRestart }: Props) {
+  const { evacuated, dead, areas, dayLogs, prepLevel, shelterLevel, month } = state;
+
+  const totalRemaining = Object.values(areas).reduce((sum, a) =>
+    sum + a.residents + a.tourists + a.vulnerable + a.stagingPort, 0
+  );
+  const maxEvacuated = evacuated + dead + totalRemaining;
+  const evacuationRate = maxEvacuated > 0 ? (evacuated / maxEvacuated * 100) : 0;
+
+  // スコア計算
+  const score = Math.round(evacuationRate);
+
+  const getRating = (rate: number) => {
+    if (rate >= 95) return { label: 'S ランク', color: '#f59e0b', desc: '驚異的な避難達成率！日本政府の計画を完全実証' };
+    if (rate >= 80) return { label: 'A ランク', color: '#22c55e', desc: '優秀な避難実施。6日間12万人計画を概ね達成' };
+    if (rate >= 60) return { label: 'B ランク', color: '#3b82f6', desc: '一定の避難達成。改善の余地あり' };
+    if (rate >= 40) return { label: 'C ランク', color: '#f97316', desc: '半数以上が取り残された。事前準備の重要性を実感' };
+    return { label: 'D ランク', color: '#dc2626', desc: '深刻な避難失敗。事前準備なしでは住民を守れない' };
+  };
+
+  const rating = getRating(evacuationRate);
+
+  // ボトルネック分析
+  const bottlenecks: string[] = [];
+  if (state.transport.civilianAirDisabled) bottlenecks.push('民間航空路が攻撃により使用不能になった');
+  if (state.transport.civilianShipDisabled) bottlenecks.push('民間船舶が攻撃により使用不能になった');
+  if (Object.values(areas).some(a => a.fatigue >= a.baseActions)) bottlenecks.push('住民疲労が限界に達し避難不能エリアが発生した');
+  if (state.military.chineseSea >= 5 || state.military.chineseAir >= 5) bottlenecks.push('中国軍兵力が非常に強力になった');
+  if (!state.military.pac3Ishigaki || !state.military.pac3Miyako) bottlenecks.push('PAC3が一部エリアに未配備だった');
+  if (prepLevel <= 2) bottlenecks.push(`事前準備Lv.${prepLevel}が低すぎ、モード移行・輸送能力が著しく制限された`);
+
+  // 学習ポイント
+  const lessons: string[] = [
+    '飛行機が主力輸送手段。空港の安全確保が最重要。',
+    '要援護者（青コマ）は船のみ輸送可能。船便の確保が必要。',
+    '竹富町以西（与那国・西表・波照間等）はX+3日が避難期限。',
+    '石垣港→石垣島→本土が最大のボトルネック。',
+    '大雨・強風で全港湾停止。台風シーズンは特に危険。',
+    `事前準備Lv.${prepLevel}での今回の避難率: ${evacuationRate.toFixed(1)}%`,
+  ];
+
+  return (
+    <div style={styles.container}>
+      {/* ヘッダー */}
+      <div style={styles.header}>
+        <div style={styles.logoRow}>
+          <span style={styles.triangle}>▲</span>
+          <span style={styles.logo}>OKIRES 2026</span>
+        </div>
+        <h1 style={styles.title}>シミュレーション結果</h1>
+        <p style={styles.subtitle}>
+          事前準備Lv.{prepLevel} / 抗堪性Lv.{shelterLevel} / {month}月 発生
+        </p>
+      </div>
+
+      {/* スコア */}
+      <div style={{ ...styles.scoreCard, border: `3px solid ${rating.color}` }}>
+        <div style={styles.ratingRow}>
+          <span style={{ ...styles.rating, color: rating.color }}>{rating.label}</span>
+          <span style={styles.score}>{score}点</span>
+        </div>
+        <p style={styles.ratingDesc}>{rating.desc}</p>
+
+        {/* 避難率バー */}
+        <div style={styles.progressLabel}>
+          <span>避難完了率</span>
+          <span style={{ fontWeight: 700, color: rating.color }}>{evacuationRate.toFixed(1)}%</span>
+        </div>
+        <div style={styles.progressBar}>
+          <div style={{ ...styles.progressFill, width: `${evacuationRate}%`, background: rating.color }} />
+        </div>
+      </div>
+
+      {/* 統計 */}
+      <div style={styles.statsGrid}>
+        <StatCard
+          label="避難完了"
+          value={`${evacuated}コマ`}
+          sub={`${(evacuated * 1000).toLocaleString()}人`}
+          color="#22c55e"
+          icon="✈"
+        />
+        <StatCard
+          label="取り残し"
+          value={`${totalRemaining}コマ`}
+          sub={`${(totalRemaining * 1000).toLocaleString()}人`}
+          color="#f97316"
+          icon="⏳"
+        />
+        <StatCard
+          label="死亡"
+          value={`${dead}コマ`}
+          sub={`${(dead * 1000).toLocaleString()}人`}
+          color="#dc2626"
+          icon="💀"
+        />
+        <StatCard
+          label="シミュ期間"
+          value={`${dayLogs.length}日間`}
+          sub="X-3日〜X+8日"
+          color="#3b82f6"
+          icon="📅"
+        />
+      </div>
+
+      {/* エリア別結果 */}
+      <div style={styles.card}>
+        <h2 style={styles.cardTitle}>エリア別残員状況</h2>
+        <div style={styles.areaGrid}>
+          {Object.entries(areas).map(([id, area]) => {
+            const remaining = area.residents + area.tourists + area.vulnerable + area.stagingPort;
+            return (
+              <div key={id} style={{
+                ...styles.areaCard,
+                borderColor: remaining === 0 ? '#22c55e' : '#f97316',
+                background: remaining === 0 ? '#f0fdf4' : '#fff7ed',
+              }}>
+                <div style={styles.areaName}>{AREA_NAMES[id as AreaId]}</div>
+                {remaining === 0 ? (
+                  <div style={styles.complete}>✓ 避難完了</div>
+                ) : (
+                  <>
+                    <div style={{ color: '#f97316', fontSize: 18, fontWeight: 700 }}>{remaining}コマ残存</div>
+                    <div style={{ color: '#94a3b8', fontSize: 12 }}>({remaining * 1000}人)</div>
+                  </>
+                )}
+                <div style={styles.areaFatigue}>
+                  疲労度: {area.fatigue >= 0 ? '+' : ''}{area.fatigue.toFixed(1)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ボトルネック分析 */}
+      {bottlenecks.length > 0 && (
+        <div style={styles.card}>
+          <h2 style={styles.cardTitle}>⚠️ ボトルネック分析</h2>
+          {bottlenecks.map((bn, i) => (
+            <div key={i} style={styles.bottleneckRow}>
+              <span style={styles.bottleneckBullet}>→</span>
+              <span>{bn}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 学習ポイント */}
+      <div style={styles.card}>
+        <h2 style={styles.cardTitle}>📚 このシミュレーションから学ぶこと</h2>
+        {lessons.map((lesson, i) => (
+          <div key={i} style={styles.lessonRow}>
+            <span style={styles.lessonNum}>{i + 1}</span>
+            <span>{lesson}</span>
+          </div>
+        ))}
+        <div style={styles.policyNote}>
+          <strong>日本政府の避難計画：</strong>「1日2万人、6日間で12万人避難完了」
+          —— このシミュレーションを通じて、その達成可能性を検証してください。
+        </div>
+      </div>
+
+      {/* 再スタートボタン */}
+      <button style={styles.restartBtn} onClick={onRestart}>
+        もう一度シミュレーション →
+      </button>
+
+      <div style={styles.footer}>
+        OKIRES2026 デジタルシミュレーター | ルール: OKIRES製作委員会 (okires2025@gmail.com)
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value, sub, color, icon }: {
+  label: string; value: string; sub: string; color: string; icon: string;
+}) {
+  return (
+    <div style={{ background: '#fff', border: `2px solid ${color}`, borderRadius: 10, padding: 16, textAlign: 'center' }}>
+      <div style={{ fontSize: 24, marginBottom: 4 }}>{icon}</div>
+      <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 900, color }}>{value}</div>
+      <div style={{ fontSize: 12, color: '#94a3b8' }}>{sub}</div>
+    </div>
+  );
+}
+
+const styles: Record<string, React.CSSProperties> = {
+  container: { maxWidth: 900, margin: '0 auto', padding: 20, fontFamily: '"Noto Sans JP", sans-serif', display: 'flex', flexDirection: 'column', gap: 20 },
+  header: { textAlign: 'center', background: 'linear-gradient(135deg, #1e293b, #334155)', borderRadius: 12, padding: 32, color: '#fff' },
+  logoRow: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 12 },
+  triangle: { fontSize: 40, color: '#a78bfa' },
+  logo: { fontSize: 36, fontWeight: 900, color: '#60a5fa' },
+  title: { fontSize: 28, fontWeight: 700, margin: '8px 0' },
+  subtitle: { color: '#94a3b8', fontSize: 14 },
+  scoreCard: { background: '#fff', borderRadius: 12, padding: 24 },
+  ratingRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  rating: { fontSize: 32, fontWeight: 900 },
+  score: { fontSize: 24, fontWeight: 700, color: '#1e293b' },
+  ratingDesc: { color: '#475569', marginBottom: 16 },
+  progressLabel: { display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 6 },
+  progressBar: { background: '#e2e8f0', borderRadius: 8, height: 16, overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 8, transition: 'width 1s' },
+  statsGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 },
+  card: { background: '#fff', borderRadius: 12, padding: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', border: '1px solid #e2e8f0' },
+  cardTitle: { fontSize: 18, fontWeight: 700, color: '#1e293b', marginBottom: 16, borderBottom: '2px solid #3b82f6', paddingBottom: 8 },
+  areaGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 },
+  areaCard: { border: '2px solid', borderRadius: 8, padding: 12, textAlign: 'center' },
+  areaName: { fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 },
+  complete: { fontSize: 16, fontWeight: 700, color: '#22c55e' },
+  areaFatigue: { fontSize: 11, color: '#94a3b8', marginTop: 4 },
+  bottleneckRow: { display: 'flex', gap: 8, padding: '6px 0', borderBottom: '1px solid #f1f5f9', color: '#dc2626', fontSize: 13 },
+  bottleneckBullet: { fontWeight: 700, flexShrink: 0 },
+  lessonRow: { display: 'flex', gap: 12, padding: '6px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13, color: '#334155' },
+  lessonNum: { background: '#3b82f6', color: '#fff', width: 22, height: 22, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 },
+  policyNote: { background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: 12, marginTop: 12, fontSize: 13, color: '#92400e' },
+  restartBtn: { padding: 18, background: 'linear-gradient(135deg, #1e40af, #3b82f6)', color: '#fff', border: 'none', borderRadius: 12, fontSize: 18, fontWeight: 700, cursor: 'pointer' },
+  footer: { textAlign: 'center', color: '#94a3b8', fontSize: 11 },
+};
