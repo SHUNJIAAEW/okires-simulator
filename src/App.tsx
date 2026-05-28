@@ -179,7 +179,7 @@ export default function App() {
         </div>
         <div style={styles.evacuationBarWrap}>
           <span style={{ ...styles.evacuationBarLabel, fontSize: isMobile ? 10 : 12 }}>
-            避難完了率 {evacuationRate.toFixed(1)}%　({Math.min(dayIndex + 1, 12)}/12日)
+            避難完了率 {evacuationRate.toFixed(1)}% ({Math.min(dayIndex + 1, 12)}/12日)
           </span>
           <div style={styles.evacuationBar}>
             <div style={{ ...styles.evacuationFill, width: `${evacuationRate}%` }} />

@@ -289,8 +289,8 @@ export function generateDailyEvents(state: GameState): EventResult {
     const isEventSpace = EVENT_SPACE_HOURS.includes(hour);
 
     let eventType: 'A' | 'B' | 'C' | 'D' | null = null;
+    // eslint-disable-next-line no-useless-assignment
     let outcome = '';
-
     if (!isEventSpace) {
       // 非イベントスペース: ダイスを記録するが判定なし
       const timeLabel = hour < 6 ? '深夜' : hour < 12 ? '午前' : hour < 18 ? '午後' : '夜間';
@@ -806,7 +806,7 @@ export function executeDayPhase2(
     weatherSummary,
     events: eventLog,
     evacuations,
-    fatigueSummary: Object.entries(areas).map(([_id, a]) =>
+    fatigueSummary: Object.entries(areas).map(([, a]) =>
       `${a.name}: 疲労${a.fatigue >= 0 ? '+' : ''}${a.fatigue.toFixed(1)} (手数${getEffectiveActions(a.baseActions, a.fatigue)})`
     ).join(' | '),
     totalEvacuatedSoFar: newEvacuated,
