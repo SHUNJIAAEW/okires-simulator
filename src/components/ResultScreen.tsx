@@ -2,6 +2,7 @@ import React from 'react';
 import type { GameState } from '../types';
 import type { AreaId } from '../types';
 import { useWindowWidth } from '../hooks/useWindowWidth';
+import { C, FONT } from '../theme';
 
 interface Props {
   state: GameState;
@@ -17,6 +18,18 @@ const AREA_NAMES: Record<AreaId, string> = {
 
 const GOV_BENCHMARK = 20; // コマ/day (= 2万人/day)
 
+function Corners({ color = C.borderHi }: { color?: string }) {
+  const base: React.CSSProperties = { position: 'absolute', width: 12, height: 12, pointerEvents: 'none' };
+  return (
+    <>
+      <span style={{ ...base, top: -1, left: -1, borderTop: `2px solid ${color}`, borderLeft: `2px solid ${color}` }} />
+      <span style={{ ...base, top: -1, right: -1, borderTop: `2px solid ${color}`, borderRight: `2px solid ${color}` }} />
+      <span style={{ ...base, bottom: -1, left: -1, borderBottom: `2px solid ${color}`, borderLeft: `2px solid ${color}` }} />
+      <span style={{ ...base, bottom: -1, right: -1, borderBottom: `2px solid ${color}`, borderRight: `2px solid ${color}` }} />
+    </>
+  );
+}
+
 export function ResultScreen({ state, onRestart }: Props) {
   const { evacuated, dead, areas, dayLogs, prepLevel, shelterLevel, month } = state;
   const isMobile = useWindowWidth() < 768;
@@ -26,18 +39,15 @@ export function ResultScreen({ state, onRestart }: Props) {
   );
   const maxEvacuated = evacuated + dead + totalRemaining;
   const evacuationRate = maxEvacuated > 0 ? (evacuated / maxEvacuated * 100) : 0;
-
-  // スコア計算
   const score = Math.round(evacuationRate);
 
   const getRating = (rate: number) => {
-    if (rate >= 95) return { label: 'S ランク', color: '#f59e0b', desc: '驚異的な避難達成率！日本政府の計画を完全実証' };
-    if (rate >= 80) return { label: 'A ランク', color: '#22c55e', desc: '優秀な避難実施。6日間12万人計画を概ね達成' };
-    if (rate >= 60) return { label: 'B ランク', color: '#3b82f6', desc: '一定の避難達成。改善の余地あり' };
-    if (rate >= 40) return { label: 'C ランク', color: '#f97316', desc: '半数以上が取り残された。事前準備の重要性を実感' };
-    return { label: 'D ランク', color: '#dc2626', desc: '深刻な避難失敗。事前準備なしでは住民を守れない' };
+    if (rate >= 95) return { label: 'S', color: C.amber, desc: '驚異的な避難達成率。日本政府の計画を完全実証' };
+    if (rate >= 80) return { label: 'A', color: C.green, desc: '優秀な避難実施。6日間12万人計画を概ね達成' };
+    if (rate >= 60) return { label: 'B', color: C.blue, desc: '一定の避難達成。改善の余地あり' };
+    if (rate >= 40) return { label: 'C', color: '#ff9e3d', desc: '半数以上が取り残された。事前準備の重要性を実感' };
+    return { label: 'D', color: C.red, desc: '深刻な避難失敗。事前準備なしでは住民を守れない' };
   };
-
   const rating = getRating(evacuationRate);
 
   // ボトルネック分析
@@ -51,18 +61,11 @@ export function ResultScreen({ state, onRestart }: Props) {
 
   // 地域別盲点データ
   const regionalInsights: {
-    id: AreaId;
-    name: string;
-    color: string;
-    icon: string;
-    blindspots: string[];
-    lessons: string[];
+    id: AreaId; name: string; color: string; icon: string;
+    blindspots: string[]; lessons: string[];
   }[] = [
     {
-      id: 'yonaguni',
-      name: '与那国島',
-      color: '#ef4444',
-      icon: '🔴',
+      id: 'yonaguni', name: '与那国島', color: '#ff5a5a', icon: '🔴',
       blindspots: [
         '台湾まで111km——有事認定前の段階から既に脅威圏内に入る。「X-3日」開始時点で実質的な安全が保障されない',
         '空港滑走路は1,500m（ATR機クラスのみ対応）。C-130等の大型輸送機は着陸不可能で航空輸送量に構造的な上限がある',
@@ -77,10 +80,7 @@ export function ResultScreen({ state, onRestart }: Props) {
       ],
     },
     {
-      id: 'taketomi',
-      name: '竹富町全島',
-      color: '#f97316',
-      icon: '🟠',
+      id: 'taketomi', name: '竹富町全島', color: '#ff9e3d', icon: '🟠',
       blindspots: [
         '竹富町は西表・竹富・波照間・小浜・黒島など11の有人島で構成。各島から石垣港まで集めるだけで1日以上かかる',
         'X+3日の避難期限（72時間）は現実的に不可能に近い。特に波照間島は最南端で定期便が1日1往復しかなく、悪天候で即座に孤立する',
@@ -96,10 +96,7 @@ export function ResultScreen({ state, onRestart }: Props) {
       ],
     },
     {
-      id: 'ishigaki',
-      name: '石垣島',
-      color: '#3b82f6',
-      icon: '🔵',
+      id: 'ishigaki', name: '石垣島', color: '#38bdf8', icon: '🔵',
       blindspots: [
         'ハブ機能を担いながら島民自身も避難する二重負荷が発生。与那国・竹富からの避難民受け入れと島民脱出が同時進行',
         '新石垣空港は滑走路が1本のみ。爆撃や誤射で滑走路1カ所が破損すれば航空機能は完全停止',
@@ -115,10 +112,7 @@ export function ResultScreen({ state, onRestart }: Props) {
       ],
     },
     {
-      id: 'miyako',
-      name: '宮古島・多良間',
-      color: '#22c55e',
-      icon: '🟢',
+      id: 'miyako', name: '宮古島・多良間', color: '#00ff88', icon: '🟢',
       blindspots: [
         '49コマ（49,000人）と最大規模だが、石垣と異なる独立ルートを持つ。「独立しているから安全」ではなく、むしろ孤立した状態で自力で対処する必要がある',
         '下地島空港は有事になれば自衛隊使用が優先され、民間機の発着枠が大幅に制限される可能性がある',
@@ -138,357 +132,332 @@ export function ResultScreen({ state, onRestart }: Props) {
   // Day-by-day chart data
   const dailyDeltas = dayLogs.map((log, i) => {
     const prev = i === 0 ? 0 : dayLogs[i - 1].totalEvacuatedSoFar;
-    return {
-      day: log.day,
-      dayLabel: log.dayLabel,
-      delta: log.totalEvacuatedSoFar - prev,
-      cumulative: log.totalEvacuatedSoFar,
-    };
+    return { day: log.day, dayLabel: log.dayLabel, delta: log.totalEvacuatedSoFar - prev, cumulative: log.totalEvacuatedSoFar };
   });
-
   const maxDelta = Math.max(...dailyDeltas.map(d => d.delta), GOV_BENCHMARK, 1);
-
-  // Average コマ/day (only days with positive delta to be fair)
   const activeDays = dailyDeltas.filter(d => d.delta > 0);
-  const avgPerDay = activeDays.length > 0
-    ? activeDays.reduce((s, d) => s + d.delta, 0) / activeDays.length
-    : 0;
-
+  const avgPerDay = activeDays.length > 0 ? activeDays.reduce((s, d) => s + d.delta, 0) / activeDays.length : 0;
   const benchmarkPct = (GOV_BENCHMARK / maxDelta) * 100;
 
   return (
-    <div style={styles.container}>
-      {/* ヘッダー */}
-      <div style={styles.header}>
-        <div style={styles.logoRow}>
-          <span style={styles.triangle}>▲</span>
-          <span style={styles.logo}>OKIRES 2026</span>
-        </div>
-        <h1 style={styles.title}>シミュレーション結果</h1>
-        <p style={styles.subtitle}>
-          事前準備Lv.{prepLevel} / 抗堪性Lv.{shelterLevel} / {month}月 発生
-        </p>
+    <div style={styles.page}>
+      {/* 機密バナー */}
+      <div style={styles.classBar}>
+        <span style={styles.classDot} />
+        <span style={styles.classText}>AFTER-ACTION REPORT // 作戦事後評価 — 先島諸島 広域避難</span>
+        <span style={{ ...styles.classText, marginLeft: 'auto', color: C.dim }}>EOF.MISSION</span>
       </div>
 
-      {/* スコア */}
-      <div style={{ ...styles.scoreCard, border: `3px solid ${rating.color}` }}>
-        <div style={styles.ratingRow}>
-          <span style={{ ...styles.rating, color: rating.color }}>{rating.label}</span>
-          <span style={styles.score}>{score}点</span>
-        </div>
-        <p style={styles.ratingDesc}>{rating.desc}</p>
-
-        {/* 避難率バー */}
-        <div style={styles.progressLabel}>
-          <span>避難完了率</span>
-          <span style={{ fontWeight: 700, color: rating.color }}>{evacuationRate.toFixed(1)}%</span>
-        </div>
-        <div style={styles.progressBar}>
-          <div style={{ ...styles.progressFill, width: `${evacuationRate}%`, background: rating.color }} />
-        </div>
-      </div>
-
-      {/* 統計 */}
-      <div style={{ ...styles.statsGrid, gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)' }}>
-        <StatCard
-          label="避難完了"
-          value={`${evacuated}コマ`}
-          sub={`${(evacuated * 1000).toLocaleString()}人`}
-          color="#22c55e"
-          icon="✈"
-        />
-        <StatCard
-          label="取り残し"
-          value={`${totalRemaining}コマ`}
-          sub={`${(totalRemaining * 1000).toLocaleString()}人`}
-          color="#f97316"
-          icon="⏳"
-        />
-        <StatCard
-          label="死亡"
-          value={`${dead}コマ`}
-          sub={`${(dead * 1000).toLocaleString()}人`}
-          color="#dc2626"
-          icon="💀"
-        />
-        <StatCard
-          label="シミュ期間"
-          value={`${dayLogs.length}日間`}
-          sub="X-3日〜X+8日"
-          color="#3b82f6"
-          icon="📅"
-        />
-        <StatCard
-          label="実績 平均/日"
-          value={`${avgPerDay.toFixed(1)}コマ`}
-          sub={`${(avgPerDay * 1000).toLocaleString(undefined, { maximumFractionDigits: 0 })}人/日`}
-          color={avgPerDay >= GOV_BENCHMARK ? '#22c55e' : '#f97316'}
-          icon="📊"
-        />
-        <StatCard
-          label="政府目標 平均/日"
-          value={`${GOV_BENCHMARK}コマ`}
-          sub="2万人/日"
-          color="#6366f1"
-          icon="🎯"
-        />
-        <StatCard
-          label="目標比"
-          value={`${avgPerDay > 0 ? ((avgPerDay / GOV_BENCHMARK) * 100).toFixed(0) : 0}%`}
-          sub={avgPerDay >= GOV_BENCHMARK ? '目標達成' : '目標未達'}
-          color={avgPerDay >= GOV_BENCHMARK ? '#22c55e' : '#dc2626'}
-          icon={avgPerDay >= GOV_BENCHMARK ? '✅' : '❌'}
-        />
-      </div>
-
-      {/* Day-by-day 避難チャート */}
-      {dailyDeltas.length > 0 && (
-        <div style={styles.card}>
-          <h2 style={styles.cardTitle}>📈 日別避難数チャート（コマ数）</h2>
-          <div style={styles.chartLegend}>
-            <span style={styles.legendBar}></span>
-            <span style={styles.legendText}>実績避難数</span>
-            <span style={{ ...styles.legendLine, borderTop: '2px dashed #6366f1' }}></span>
-            <span style={styles.legendText}>政府目標（20コマ/日）</span>
+      <div style={{ ...styles.container, padding: isMobile ? '20px 14px 48px' : '32px 24px 56px' }}>
+        {/* ヘッダー */}
+        <div className="tac-fade" style={styles.header}>
+          <div style={styles.logoRow}>
+            <span style={styles.triangle}>▲</span>
+            <span style={styles.logo}>OKIRES</span>
+            <span style={styles.logoYear}>2026</span>
           </div>
-          <div style={styles.chartWrapper}>
-            {/* Benchmark line */}
-            <div
-              style={{
-                ...styles.benchmarkLine,
-                bottom: `${benchmarkPct}%`,
-              }}
-            >
-              <span style={styles.benchmarkLabel}>目標 20コマ</span>
+          <h1 style={styles.title}>シミュレーション結果</h1>
+          <p style={styles.subtitle}>
+            事前準備 <b style={styles.subHi}>Lv.{prepLevel}</b> ／ 抗堪性 <b style={styles.subHi}>Lv.{shelterLevel}</b> ／ <b style={styles.subHi}>{month}月</b> 発生
+          </p>
+        </div>
+
+        {/* スコア */}
+        <div className="tac-card tac-fade" style={{ ...styles.scoreCard, borderColor: rating.color, boxShadow: `0 0 0 1px ${rating.color}44, 0 16px 48px rgba(0,0,0,0.5)`, animationDelay: '0.05s' }}>
+          <Corners color={rating.color} />
+          <div style={{ ...styles.ratingRow, flexDirection: isMobile ? 'column' : 'row' }}>
+            <div style={styles.ratingBlock}>
+              <div style={styles.ratingLabel}>EVALUATION</div>
+              <div style={{ ...styles.ratingBadge, color: rating.color, borderColor: rating.color, textShadow: `0 0 24px ${rating.color}` }}>
+                {rating.label}
+                <span style={styles.ratingRank}>RANK</span>
+              </div>
             </div>
-            {/* Bars */}
-            <div style={styles.barsRow}>
-              {dailyDeltas.map((d) => {
-                const barHeight = (d.delta / maxDelta) * 100;
-                const barColor = d.delta >= GOV_BENCHMARK ? '#22c55e' : d.delta > 0 ? '#3b82f6' : '#e2e8f0';
-                return (
-                  <div key={d.dayLabel} style={styles.barColumn}>
-                    <div style={styles.barOuter}>
-                      <div
-                        style={{
-                          ...styles.barInner,
-                          height: `${barHeight}%`,
-                          background: barColor,
-                        }}
-                        title={`${d.dayLabel}: ${d.delta}コマ (${(d.delta * 1000).toLocaleString()}人)`}
-                      />
+            <div style={styles.scoreBlock}>
+              <div style={styles.scoreLabel}>避難完了率</div>
+              <div style={{ ...styles.scoreValue, color: rating.color }}>
+                {evacuationRate.toFixed(1)}<span style={styles.scoreUnit}>%</span>
+              </div>
+              <div style={styles.scoreSub}>SCORE {score} / 100</div>
+            </div>
+          </div>
+          <p style={styles.ratingDesc}>{rating.desc}</p>
+          <div style={styles.progressBar}>
+            <div style={{ ...styles.progressFill, width: `${evacuationRate}%`, background: rating.color, boxShadow: `0 0 14px ${rating.color}aa` }} />
+          </div>
+        </div>
+
+        {/* 統計 */}
+        <div style={{ ...styles.statsGrid, gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)' }}>
+          <StatCard label="避難完了" value={`${evacuated}`} unit="コマ" sub={`${(evacuated * 1000).toLocaleString()}人`} color={C.green} icon="✈" />
+          <StatCard label="取り残し" value={`${totalRemaining}`} unit="コマ" sub={`${(totalRemaining * 1000).toLocaleString()}人`} color={C.amber} icon="⏳" />
+          <StatCard label="死亡" value={`${dead}`} unit="コマ" sub={`${(dead * 1000).toLocaleString()}人`} color={C.red} icon="💀" />
+          <StatCard label="シミュ期間" value={`${dayLogs.length}`} unit="日" sub="X-3〜X+8" color={C.blue} icon="📅" />
+          <StatCard label="実績 平均/日" value={`${avgPerDay.toFixed(1)}`} unit="コマ" sub={`${(avgPerDay * 1000).toLocaleString(undefined, { maximumFractionDigits: 0 })}人/日`} color={avgPerDay >= GOV_BENCHMARK ? C.green : C.amber} icon="📊" />
+          <StatCard label="政府目標 平均/日" value={`${GOV_BENCHMARK}`} unit="コマ" sub="2万人/日" color={C.violet} icon="🎯" />
+          <StatCard label="目標比" value={`${avgPerDay > 0 ? ((avgPerDay / GOV_BENCHMARK) * 100).toFixed(0) : 0}`} unit="%" sub={avgPerDay >= GOV_BENCHMARK ? '目標達成' : '目標未達'} color={avgPerDay >= GOV_BENCHMARK ? C.green : C.red} icon={avgPerDay >= GOV_BENCHMARK ? '✅' : '❌'} />
+          <StatCard label="生存率" value={`${maxEvacuated > 0 ? (((evacuated + totalRemaining) / maxEvacuated) * 100).toFixed(0) : 100}`} unit="%" sub={`死亡${dead}コマ`} color={dead === 0 ? C.green : C.amber} icon="🛟" />
+        </div>
+
+        {/* Day-by-day 避難チャート */}
+        {dailyDeltas.length > 0 && (
+          <Card title="日別避難数チャート" en="DAILY THROUGHPUT" accent={C.green}>
+            <div style={styles.chartLegend}>
+              <span style={{ ...styles.legendBar, background: C.green }} /> <span style={styles.legendText}>目標達成</span>
+              <span style={{ ...styles.legendBar, background: C.blue }} /> <span style={styles.legendText}>目標未達</span>
+              <span style={{ ...styles.legendLine }} /> <span style={styles.legendText}>政府目標 20コマ/日</span>
+            </div>
+            <div style={styles.chartWrapper}>
+              <div style={{ ...styles.benchmarkLine, bottom: `${benchmarkPct}%` }}>
+                <span style={styles.benchmarkLabel}>目標 20</span>
+              </div>
+              <div style={styles.barsRow}>
+                {dailyDeltas.map((d) => {
+                  const barHeight = (d.delta / maxDelta) * 100;
+                  const barColor = d.delta >= GOV_BENCHMARK ? C.green : d.delta > 0 ? C.blue : C.border;
+                  return (
+                    <div key={d.dayLabel} style={styles.barColumn}>
+                      <div style={styles.barOuter}>
+                        <div style={{ ...styles.barInner, height: `${barHeight}%`, background: barColor, boxShadow: d.delta > 0 ? `0 0 10px ${barColor}88` : 'none' }}
+                          title={`${d.dayLabel}: ${d.delta}コマ (${(d.delta * 1000).toLocaleString()}人)`} />
+                      </div>
+                      <div style={styles.barValue}>{d.delta > 0 ? d.delta : '–'}</div>
+                      <div style={styles.barLabel}>{d.dayLabel}</div>
                     </div>
-                    <div style={styles.barValue}>{d.delta > 0 ? d.delta : '–'}</div>
-                    <div style={styles.barLabel}>{d.dayLabel}</div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          </div>
-          <div style={styles.chartNote}>
-            各バーはその日に新たに避難完了したコマ数。緑＝政府目標達成、青＝目標未達、灰＝避難なし。
-          </div>
-        </div>
-      )}
+            <div style={styles.chartNote}>各バー＝その日に新たに避難完了したコマ数。緑＝政府目標達成、青＝目標未達、灰＝避難なし。</div>
+          </Card>
+        )}
 
-      {/* エリア別結果 */}
-      <div style={styles.card}>
-        <h2 style={styles.cardTitle}>エリア別残員状況</h2>
-        <div style={{ ...styles.areaGrid, gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)' }}>
-          {Object.entries(areas).map(([id, area]) => {
+        {/* エリア別結果 */}
+        <Card title="エリア別残員状況" en="SECTOR STATUS" accent={C.blue}>
+          <div style={{ ...styles.areaGrid, gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)' }}>
+            {Object.entries(areas).map(([id, area]) => {
+              const remaining = area.residents + area.tourists + area.vulnerable + area.stagingPort;
+              const done = remaining === 0;
+              return (
+                <div key={id} style={{ ...styles.areaCard, borderColor: done ? C.green : C.amber, background: done ? 'rgba(0,255,136,0.06)' : 'rgba(255,179,0,0.06)' }}>
+                  <div style={styles.areaName}>{AREA_NAMES[id as AreaId]}</div>
+                  {done ? (
+                    <div style={{ ...styles.areaStat, color: C.green }}>✓ 避難完了</div>
+                  ) : (
+                    <>
+                      <div style={{ ...styles.areaStat, color: C.amber }}>{remaining}<span style={styles.areaUnit}>コマ残存</span></div>
+                      <div style={styles.areaPeople}>{(remaining * 1000).toLocaleString()}人</div>
+                    </>
+                  )}
+                  <div style={styles.areaFatigue}>疲労 {area.fatigue >= 0 ? '+' : ''}{area.fatigue.toFixed(1)}</div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+
+        {/* ボトルネック分析 */}
+        {bottlenecks.length > 0 && (
+          <Card title="ボトルネック分析" en="CRITICAL FAILURES" accent={C.red}>
+            {bottlenecks.map((bn, i) => (
+              <div key={i} style={styles.bottleneckRow}>
+                <span style={styles.bottleneckBullet}>▶</span>
+                <span>{bn}</span>
+              </div>
+            ))}
+          </Card>
+        )}
+
+        {/* 地域別 盲点・学習ポイント */}
+        <Card title="地域別の盲点と見えていないリスク" en="INTELLIGENCE GAPS" accent={C.violet}>
+          <div style={styles.policyNote}>
+            <strong style={{ color: C.amber }}>日本政府の避難計画：</strong>「1日2万人、6日間で12万人避難完了」——
+            このシミュレーションはAIが最適行動をとった場合の結果です。現実の避難はさらに多くの不確実性を含みます。
+          </div>
+
+          {regionalInsights.map((region) => {
+            const area = areas[region.id];
             const remaining = area.residents + area.tourists + area.vulnerable + area.stagingPort;
             return (
-              <div key={id} style={{
-                ...styles.areaCard,
-                borderColor: remaining === 0 ? '#22c55e' : '#f97316',
-                background: remaining === 0 ? '#f0fdf4' : '#fff7ed',
-              }}>
-                <div style={styles.areaName}>{AREA_NAMES[id as AreaId]}</div>
-                {remaining === 0 ? (
-                  <div style={styles.complete}>✓ 避難完了</div>
-                ) : (
-                  <>
-                    <div style={{ color: '#f97316', fontSize: 18, fontWeight: 700 }}>{remaining}コマ残存</div>
-                    <div style={{ color: '#94a3b8', fontSize: 12 }}>({remaining * 1000}人)</div>
-                  </>
-                )}
-                <div style={styles.areaFatigue}>
-                  疲労度: {area.fatigue >= 0 ? '+' : ''}{area.fatigue.toFixed(1)}
+              <div key={region.id} style={{ ...styles.regionBlock, borderLeft: `3px solid ${region.color}` }}>
+                <div style={styles.regionHeader}>
+                  <span style={{ color: region.color, fontWeight: 800, fontSize: 15 }}>{region.icon} {region.name}</span>
+                  <span style={{ ...styles.regionResult, color: remaining === 0 ? C.green : C.amber }}>
+                    {remaining === 0 ? '✅ 避難完了' : `⚠ ${remaining}コマ残存`}
+                  </span>
                 </div>
+                <div style={styles.regionSubtitle}>🔍 シミュレーションに含まれていない盲点</div>
+                {region.blindspots.map((bp, i) => (
+                  <div key={i} style={styles.blindspotRow}>
+                    <span style={{ ...styles.blindspotDot, background: region.color, boxShadow: `0 0 6px ${region.color}` }} />
+                    <span>{bp}</span>
+                  </div>
+                ))}
+                <div style={{ ...styles.regionSubtitle, marginTop: 12 }}>💡 このシミュレーションから得られる学び</div>
+                {region.lessons.map((lesson, i) => (
+                  <div key={i} style={styles.lessonRow}>
+                    <span style={{ ...styles.lessonNum, background: region.color }}>{i + 1}</span>
+                    <span>{lesson}</span>
+                  </div>
+                ))}
               </div>
             );
           })}
-        </div>
-      </div>
 
-      {/* ボトルネック分析 */}
-      {bottlenecks.length > 0 && (
-        <div style={styles.card}>
-          <h2 style={styles.cardTitle}>⚠️ ボトルネック分析</h2>
-          {bottlenecks.map((bn, i) => (
-            <div key={i} style={styles.bottleneckRow}>
-              <span style={styles.bottleneckBullet}>→</span>
-              <span>{bn}</span>
+          <div style={{ ...styles.regionBlock, borderLeft: `3px solid ${C.violet}`, marginTop: 10 }}>
+            <div style={styles.regionHeader}>
+              <span style={{ color: C.violet, fontWeight: 800, fontSize: 15 }}>🟣 シミュレーション全体で見えていないこと</span>
             </div>
-          ))}
-        </div>
-      )}
-
-      {/* 地域別 盲点・学習ポイント */}
-      <div style={styles.card}>
-        <h2 style={styles.cardTitle}>📚 このシミュレーションから学ぶこと — 地域別の盲点と見えていないリスク</h2>
-        <div style={styles.policyNote}>
-          <strong>日本政府の避難計画：</strong>「1日2万人、6日間で12万人避難完了」
-          —— このシミュレーションはAIが最適行動をとった場合の結果です。現実の避難はさらに多くの不確実性を含みます。
-        </div>
-
-        {regionalInsights.map((region) => {
-          const area = areas[region.id];
-          const remaining = area.residents + area.tourists + area.vulnerable + area.stagingPort;
-          return (
-            <div key={region.id} style={{ ...styles.regionBlock, borderLeft: `4px solid ${region.color}` }}>
-              <div style={{ ...styles.regionHeader, color: region.color }}>
-                {region.icon} {region.name}
-                <span style={styles.regionResult}>
-                  {remaining === 0 ? '✅ 避難完了' : `⚠️ ${remaining}コマ残存`}
-                </span>
+            {[
+              '避難拒否者の存在：「島を守る」「財産を残せない」として避難しない住民が現実には一定数いる。強制力は現行法では非常に限定的',
+              '情報伝達の崩壊：停電・通信遮断・デマの拡散により、住民が正確な避難情報を受け取れない事態は未考慮',
+              '燃料の枯渇：有事初日から燃料の奪い合いが起きる。航空機・船舶への給油が確保できなければ輸送能力はゼロになる',
+              '本土受け入れ体制：「避難先の九州での住居・生活支援・医療」の計画がなければ避難は完結しない。12万人の受け入れ準備は現状ほぼ未整備',
+              '外国人観光客：中国・台湾・韓国・欧米からの観光客への対応言語、出国手続き、大使館との連携はシミュレーション外',
+              '二次避難後の生活再建：「避難」はゴールではなく、長期的な生活再建・精神的支援・帰島の判断まで含めた計画が必要',
+            ].map((item, i) => (
+              <div key={i} style={styles.blindspotRow}>
+                <span style={{ ...styles.blindspotDot, background: C.violet, boxShadow: `0 0 6px ${C.violet}` }} />
+                <span>{item}</span>
               </div>
-
-              <div style={styles.regionSubtitle}>🔍 シミュレーションに含まれていない盲点</div>
-              {region.blindspots.map((bp, i) => (
-                <div key={i} style={styles.blindspotRow}>
-                  <span style={{ ...styles.blindspotDot, background: region.color }} />
-                  <span>{bp}</span>
-                </div>
-              ))}
-
-              <div style={{ ...styles.regionSubtitle, marginTop: 12 }}>💡 このシミュレーションから得られる学び</div>
-              {region.lessons.map((lesson, i) => (
-                <div key={i} style={styles.lessonRow}>
-                  <span style={{ ...styles.lessonNum, background: region.color }}>{i + 1}</span>
-                  <span>{lesson}</span>
-                </div>
-              ))}
-            </div>
-          );
-        })}
-
-        <div style={{ ...styles.regionBlock, borderLeft: '4px solid #8b5cf6', marginTop: 8 }}>
-          <div style={{ ...styles.regionHeader, color: '#8b5cf6' }}>
-            🟣 シミュレーション全体で見えていないこと
+            ))}
           </div>
-          {[
-            '避難拒否者の存在：「島を守る」「財産を残せない」として避難しない住民が現実には一定数いる。強制力は現行法では非常に限定的',
-            '情報伝達の崩壊：停電・通信遮断・デマの拡散により、住民が正確な避難情報を受け取れない事態は未考慮',
-            '燃料の枯渇：有事初日から燃料の奪い合いが起きる。航空機・船舶への給油が確保できなければ輸送能力はゼロになる',
-            '本土受け入れ体制：「避難先の九州での住居・生活支援・医療」の計画がなければ避難は完結しない。12万人の受け入れ準備は現状ほぼ未整備',
-            '外国人観光客：中国・台湾・韓国・欧米からの観光客への対応言語、出国手続き、大使館との連携はシミュレーション外',
-            '二次避難後の生活再建：「避難」はゴールではなく、長期的な生活再建・精神的支援・帰島の判断まで含めた計画が必要',
-          ].map((item, i) => (
-            <div key={i} style={styles.blindspotRow}>
-              <span style={{ ...styles.blindspotDot, background: '#8b5cf6' }} />
-              <span>{item}</span>
-            </div>
-          ))}
-        </div>
-      </div>
+        </Card>
 
-      {/* 再スタートボタン */}
-      <button
-        style={styles.restartBtn}
-        onClick={onRestart}
-        onFocus={e => e.currentTarget.blur()}
-        onMouseDown={e => e.preventDefault()}
-      >
-        もう一度シミュレーション →
-      </button>
+        <button className="tac-cta" style={styles.restartBtn} onClick={onRestart} onFocus={e => e.currentTarget.blur()} onMouseDown={e => e.preventDefault()}>
+          <span style={styles.restartMain}>↻ もう一度シミュレーション</span>
+          <span style={styles.restartSub}>RE-RUN MISSION</span>
+        </button>
 
-      <div style={styles.footer}>
-        OKIRES2026 デジタルシミュレーター | ルール: OKIRES製作委員会 (okires2025@gmail.com)
+        <div style={styles.footer}>OKIRES2026 デジタルシミュレーター ／ ルール: OKIRES製作委員会 (okires2025@gmail.com)</div>
       </div>
     </div>
   );
 }
 
-function StatCard({ label, value, sub, color, icon }: {
-  label: string; value: string; sub: string; color: string; icon: string;
+function Card({ title, en, accent, children }: { title: string; en: string; accent: string; children: React.ReactNode }) {
+  return (
+    <div className="tac-card tac-fade" style={styles.card}>
+      <div style={styles.cardHead}>
+        <span style={{ ...styles.cardAccent, background: accent, boxShadow: `0 0 10px ${accent}` }} />
+        <h2 style={styles.cardTitle}>{title}</h2>
+        <span style={styles.cardEn}>{en}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function StatCard({ label, value, unit, sub, color, icon }: {
+  label: string; value: string; unit: string; sub: string; color: string; icon: string;
 }) {
   return (
-    <div style={{ background: '#fff', border: `2px solid ${color}`, borderRadius: 10, padding: 16, textAlign: 'center' }}>
-      <div style={{ fontSize: 24, marginBottom: 4 }}>{icon}</div>
-      <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 900, color }}>{value}</div>
-      <div style={{ fontSize: 12, color: '#94a3b8' }}>{sub}</div>
+    <div className="tac-card" style={{ ...styles.statCard, borderColor: color + '55' }}>
+      <div style={styles.statTop}>
+        <span style={styles.statIcon}>{icon}</span>
+        <span style={styles.statLabel}>{label}</span>
+      </div>
+      <div style={{ ...styles.statValue, color, textShadow: `0 0 16px ${color}55` }}>
+        {value}<span style={styles.statUnit}>{unit}</span>
+      </div>
+      <div style={styles.statSub}>{sub}</div>
     </div>
   );
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  container: { maxWidth: 900, margin: '0 auto', padding: 20, fontFamily: '"Noto Sans JP", sans-serif', display: 'flex', flexDirection: 'column', gap: 20 },
-  header: { textAlign: 'center', background: 'linear-gradient(135deg, #1e293b, #334155)', borderRadius: 12, padding: 32, color: '#fff' },
-  logoRow: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 12 },
-  triangle: { fontSize: 40, color: '#a78bfa' },
-  logo: { fontSize: 36, fontWeight: 900, color: '#60a5fa' },
-  title: { fontSize: 28, fontWeight: 700, margin: '8px 0' },
-  subtitle: { color: '#94a3b8', fontSize: 14 },
-  scoreCard: { background: '#fff', borderRadius: 12, padding: 24 },
-  ratingRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  rating: { fontSize: 32, fontWeight: 900 },
-  score: { fontSize: 24, fontWeight: 700, color: '#1e293b' },
-  ratingDesc: { color: '#475569', marginBottom: 16 },
-  progressLabel: { display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 6 },
-  progressBar: { background: '#e2e8f0', borderRadius: 8, height: 16, overflow: 'hidden' },
-  progressFill: { height: '100%', borderRadius: 8, transition: 'width 1s' },
-  statsGrid: { display: 'grid', gap: 12 },
-  card: { background: '#fff', borderRadius: 12, padding: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', border: '1px solid #e2e8f0' },
-  cardTitle: { fontSize: 18, fontWeight: 700, color: '#1e293b', marginBottom: 16, borderBottom: '2px solid #3b82f6', paddingBottom: 8 },
-  areaGrid: { display: 'grid', gap: 12 },
-  areaCard: { border: '2px solid', borderRadius: 8, padding: 12, textAlign: 'center' },
-  areaName: { fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 },
-  complete: { fontSize: 16, fontWeight: 700, color: '#22c55e' },
-  areaFatigue: { fontSize: 11, color: '#94a3b8', marginTop: 4 },
-  bottleneckRow: { display: 'flex', gap: 8, padding: '6px 0', borderBottom: '1px solid #f1f5f9', color: '#dc2626', fontSize: 13 },
-  bottleneckBullet: { fontWeight: 700, flexShrink: 0 },
-  lessonRow: { display: 'flex', gap: 12, padding: '6px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13, color: '#334155', alignItems: 'flex-start' },
-  lessonNum: { background: '#3b82f6', color: '#fff', width: 22, height: 22, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 },
-  policyNote: { background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 13, color: '#92400e' },
-  regionBlock: { background: '#f8fafc', borderRadius: 8, padding: '12px 14px', marginTop: 12, border: '1px solid #e2e8f0' },
-  regionHeader: { fontSize: 16, fontWeight: 800, marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' as const, gap: 8 },
-  regionResult: { fontSize: 12, fontWeight: 600, color: '#475569' },
-  regionSubtitle: { fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 6, marginTop: 4 },
-  blindspotRow: { display: 'flex', gap: 10, padding: '5px 0', borderBottom: '1px solid #f1f5f9', fontSize: 12, color: '#374151', lineHeight: 1.6, alignItems: 'flex-start' },
-  blindspotDot: { width: 8, height: 8, borderRadius: '50%', flexShrink: 0, marginTop: 5 },
-  restartBtn: { padding: 18, background: 'linear-gradient(135deg, #1e40af, #3b82f6)', color: '#fff', border: 'none', borderRadius: 12, fontSize: 18, fontWeight: 700, cursor: 'pointer' },
-  footer: { textAlign: 'center', color: '#94a3b8', fontSize: 11 },
-  // Chart styles
-  chartLegend: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, fontSize: 12, color: '#64748b', flexWrap: 'wrap' },
-  legendBar: { display: 'inline-block', width: 16, height: 16, background: '#3b82f6', borderRadius: 3, flexShrink: 0 },
-  legendLine: { display: 'inline-block', width: 24, flexShrink: 0 },
-  legendText: { marginRight: 12 },
+  page: { minHeight: '100vh', fontFamily: FONT.jp, color: C.body },
+  classBar: {
+    display: 'flex', alignItems: 'center', gap: 8, padding: '6px 16px',
+    background: 'rgba(167,139,250,0.07)', borderBottom: `1px solid ${C.border}`, fontFamily: FONT.mono,
+  },
+  classDot: { width: 7, height: 7, borderRadius: '50%', background: C.violet, boxShadow: `0 0 8px ${C.violet}`, animation: 'okires-blink 1.6s infinite' },
+  classText: { fontSize: 10.5, letterSpacing: 1, color: C.violet, fontWeight: 700 },
+  container: { maxWidth: 920, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 18 },
+
+  header: { textAlign: 'center', padding: '8px 0 4px' },
+  logoRow: { display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: 10, marginBottom: 8 },
+  triangle: { fontSize: 26, color: C.green, filter: `drop-shadow(0 0 10px ${C.green})`, alignSelf: 'center' },
+  logo: { fontSize: 30, fontWeight: 700, color: C.white, fontFamily: FONT.display, letterSpacing: 1 },
+  logoYear: { fontFamily: FONT.mono, fontSize: 13, fontWeight: 700, color: C.bgDeep, background: C.green, padding: '2px 7px', borderRadius: 3 },
+  title: { fontSize: 24, fontWeight: 700, color: C.white, margin: '6px 0', fontFamily: FONT.jp },
+  subtitle: { color: C.dim, fontSize: 13, fontFamily: FONT.mono },
+  subHi: { color: C.bright },
+
+  scoreCard: { position: 'relative', background: `linear-gradient(180deg, ${C.bgPanel}, ${C.bgDeep})`, borderWidth: 1, borderStyle: 'solid', borderRadius: 4, padding: 24 },
+  ratingRow: { display: 'flex', alignItems: 'center', gap: 20, marginBottom: 14 },
+  ratingBlock: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 },
+  ratingLabel: { fontFamily: FONT.mono, fontSize: 10, color: C.dim, letterSpacing: 2 },
+  ratingBadge: { position: 'relative', fontFamily: FONT.display, fontSize: 64, fontWeight: 700, lineHeight: 1, border: '2px solid', borderRadius: 6, width: 110, height: 110, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  ratingRank: { position: 'absolute', bottom: 8, fontFamily: FONT.mono, fontSize: 9, letterSpacing: 2, opacity: 0.7 },
+  scoreBlock: { flex: 1, textAlign: 'center' },
+  scoreLabel: { fontSize: 12, color: C.dim, marginBottom: 2 },
+  scoreValue: { fontFamily: FONT.mono, fontSize: 56, fontWeight: 800, lineHeight: 1 },
+  scoreUnit: { fontSize: 26, marginLeft: 2 },
+  scoreSub: { fontFamily: FONT.mono, fontSize: 11, color: C.dim, letterSpacing: 1, marginTop: 4 },
+  ratingDesc: { color: C.body, marginBottom: 14, fontSize: 13, textAlign: 'center', lineHeight: 1.6 },
+  progressBar: { background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 8, height: 14, overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 8, transition: 'width 1s ease' },
+
+  statsGrid: { display: 'grid', gap: 10 },
+  statCard: { background: `linear-gradient(180deg, ${C.bgPanel}, ${C.bgDeep})`, borderWidth: 1, borderStyle: 'solid', borderRadius: 4, padding: '12px 14px' },
+  statTop: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 },
+  statIcon: { fontSize: 14 },
+  statLabel: { fontSize: 10.5, color: C.dim, fontFamily: FONT.mono, letterSpacing: 0.5 },
+  statValue: { fontFamily: FONT.mono, fontSize: 26, fontWeight: 800, lineHeight: 1 },
+  statUnit: { fontSize: 12, marginLeft: 3, fontWeight: 600 },
+  statSub: { fontSize: 11, color: C.dim, marginTop: 4, fontFamily: FONT.mono },
+
+  card: { position: 'relative', background: `linear-gradient(180deg, ${C.bgPanel}, ${C.bgDeep})`, borderRadius: 4, padding: 18, border: `1px solid ${C.border}`, boxShadow: '0 12px 36px rgba(0,0,0,0.4)' },
+  cardHead: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, paddingBottom: 10, borderBottom: `1px solid ${C.border}` },
+  cardAccent: { width: 4, height: 18, borderRadius: 2, flexShrink: 0 },
+  cardTitle: { fontSize: 16, fontWeight: 700, color: C.white, margin: 0, fontFamily: FONT.jp },
+  cardEn: { fontFamily: FONT.mono, fontSize: 10, color: C.dim, letterSpacing: 1.5, marginLeft: 'auto' },
+
+  areaGrid: { display: 'grid', gap: 10 },
+  areaCard: { borderWidth: 1, borderStyle: 'solid', borderRadius: 4, padding: 12, textAlign: 'center' },
+  areaName: { fontSize: 12, fontWeight: 700, color: C.bright, marginBottom: 6 },
+  areaStat: { fontSize: 17, fontWeight: 800, fontFamily: FONT.mono },
+  areaUnit: { fontSize: 11, marginLeft: 3, fontWeight: 600 },
+  areaPeople: { color: C.dim, fontSize: 11, fontFamily: FONT.mono },
+  areaFatigue: { fontSize: 10, color: C.dim, marginTop: 6, fontFamily: FONT.mono },
+
+  bottleneckRow: { display: 'flex', gap: 10, padding: '7px 0', borderBottom: `1px solid ${C.border}`, color: '#ff8d8d', fontSize: 13, lineHeight: 1.5, alignItems: 'flex-start' },
+  bottleneckBullet: { color: C.red, flexShrink: 0, fontSize: 11, marginTop: 2 },
+
+  policyNote: { background: 'rgba(255,179,0,0.07)', border: `1px solid ${C.border}`, borderRadius: 4, padding: 12, marginBottom: 14, fontSize: 12.5, color: C.body, lineHeight: 1.7 },
+  regionBlock: { background: 'rgba(0,0,0,0.25)', borderRadius: 4, padding: '12px 14px', marginTop: 10, border: `1px solid ${C.border}` },
+  regionHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
+  regionResult: { fontSize: 12, fontWeight: 700, fontFamily: FONT.mono },
+  regionSubtitle: { fontSize: 11.5, fontWeight: 700, color: C.dim, marginBottom: 6, marginTop: 4, fontFamily: FONT.mono, letterSpacing: 0.5 },
+  blindspotRow: { display: 'flex', gap: 10, padding: '5px 0', borderBottom: `1px solid ${C.border}`, fontSize: 12, color: C.body, lineHeight: 1.65, alignItems: 'flex-start' },
+  blindspotDot: { width: 7, height: 7, borderRadius: 2, flexShrink: 0, marginTop: 5 },
+  lessonRow: { display: 'flex', gap: 10, padding: '5px 0', borderBottom: `1px solid ${C.border}`, fontSize: 12, color: C.bright, alignItems: 'flex-start', lineHeight: 1.6 },
+  lessonNum: { color: '#06121f', width: 20, height: 20, borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, flexShrink: 0, fontFamily: FONT.mono },
+
+  restartBtn: {
+    marginTop: 4, padding: 16, background: `linear-gradient(135deg, ${C.blue}, #2a8fd0)`,
+    color: '#001a26', border: 'none', borderRadius: 4, cursor: 'pointer',
+    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+    boxShadow: '0 8px 28px rgba(56,189,248,0.25)',
+  },
+  restartMain: { fontSize: 17, fontWeight: 900, fontFamily: FONT.jp, letterSpacing: 0.5 },
+  restartSub: { fontFamily: FONT.mono, fontSize: 10, fontWeight: 700, letterSpacing: 3, opacity: 0.7 },
+  footer: { textAlign: 'center', color: C.dim, fontSize: 11, fontFamily: FONT.mono, marginTop: 4 },
+
+  // Chart
+  chartLegend: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12, fontSize: 11, color: C.dim, flexWrap: 'wrap', fontFamily: FONT.mono },
+  legendBar: { display: 'inline-block', width: 12, height: 12, borderRadius: 2, flexShrink: 0 },
+  legendLine: { display: 'inline-block', width: 20, borderTop: `2px dashed ${C.violet}`, flexShrink: 0 },
+  legendText: { marginRight: 10 },
   chartWrapper: { position: 'relative', paddingBottom: 8 },
-  benchmarkLine: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    borderTop: '2px dashed #6366f1',
-    zIndex: 1,
-    pointerEvents: 'none',
-  },
-  benchmarkLabel: {
-    position: 'absolute',
-    right: 0,
-    top: -18,
-    fontSize: 10,
-    color: '#6366f1',
-    fontWeight: 700,
-    background: '#fff',
-    padding: '0 4px',
-  },
+  benchmarkLine: { position: 'absolute', left: 0, right: 0, borderTop: `2px dashed ${C.violet}`, zIndex: 1, pointerEvents: 'none' },
+  benchmarkLabel: { position: 'absolute', right: 0, top: -16, fontSize: 9, color: C.violet, fontWeight: 700, background: C.bgDeep, padding: '0 4px', fontFamily: FONT.mono },
   barsRow: { display: 'flex', alignItems: 'flex-end', gap: 4, height: 180, overflowX: 'auto', paddingTop: 24 },
-  barColumn: { display: 'flex', flexDirection: 'column', alignItems: 'center', flex: '1 0 32px', minWidth: 32 },
-  barOuter: { width: '100%', height: 140, display: 'flex', alignItems: 'flex-end', background: '#f8fafc', borderRadius: '4px 4px 0 0', border: '1px solid #e2e8f0', position: 'relative' },
-  barInner: { width: '100%', borderRadius: '4px 4px 0 0', transition: 'height 0.5s ease', minHeight: 2 },
-  barValue: { fontSize: 10, color: '#475569', fontWeight: 700, marginTop: 2, textAlign: 'center' },
-  barLabel: { fontSize: 9, color: '#94a3b8', textAlign: 'center', marginTop: 2 },
-  chartNote: { fontSize: 11, color: '#94a3b8', marginTop: 12, lineHeight: 1.5 },
+  barColumn: { display: 'flex', flexDirection: 'column', alignItems: 'center', flex: '1 0 30px', minWidth: 30 },
+  barOuter: { width: '100%', height: 140, display: 'flex', alignItems: 'flex-end', background: 'rgba(0,0,0,0.25)', borderRadius: '3px 3px 0 0', border: `1px solid ${C.border}`, position: 'relative' },
+  barInner: { width: '100%', borderRadius: '3px 3px 0 0', transition: 'height 0.6s ease', minHeight: 2 },
+  barValue: { fontSize: 10, color: C.bright, fontWeight: 700, marginTop: 3, fontFamily: FONT.mono },
+  barLabel: { fontSize: 8.5, color: C.dim, marginTop: 2, fontFamily: FONT.mono },
+  chartNote: { fontSize: 11, color: C.dim, marginTop: 12, lineHeight: 1.5 },
 };

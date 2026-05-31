@@ -6,6 +6,7 @@ import { DayLogPanel } from './components/DayLogPanel';
 import { ResultScreen } from './components/ResultScreen';
 import { SimulationMap } from './components/SimulationMap';
 import { useWindowWidth } from './hooks/useWindowWidth';
+import { C, FONT } from './theme';
 
 type Screen = 'setup' | 'simulation' | 'result';
 
@@ -150,12 +151,12 @@ export default function App() {
             <span style={{ ...styles.dayValue, fontSize: isMobile ? 14 : 18 }}>{currentDayLabel}</span>
           </div>
           <div style={{ ...styles.miniStats, fontSize: isMobile ? 11 : 13, marginLeft: isMobile ? 0 : 'auto' }}>
-            <span style={{ color: '#22c55e' }}>避難 {gameState.evacuated}コマ</span>
+            <span style={{ color: C.green }}>避難 {gameState.evacuated}コマ</span>
             <span style={styles.divider}>|</span>
-            <span style={{ color: '#f97316' }}>残 {totalRemaining}コマ</span>
+            <span style={{ color: C.amber }}>残 {totalRemaining}コマ</span>
             {gameState.dead > 0 && <>
               <span style={styles.divider}>|</span>
-              <span style={{ color: '#dc2626' }}>死亡 {gameState.dead}コマ</span>
+              <span style={{ color: C.red }}>死亡 {gameState.dead}コマ</span>
             </>}
           </div>
         </div>
@@ -170,7 +171,7 @@ export default function App() {
                 ...styles.timelineDot,
                 width: isMobile ? 8 : 12,
                 height: isMobile ? 8 : 12,
-                background: i < dayIndex ? '#22c55e' : i === dayIndex ? phaseColor : '#334155',
+                background: i < dayIndex ? C.green : i === dayIndex ? phaseColor : C.bgCard,
                 boxShadow: i === dayIndex ? `0 0 8px ${phaseColor}` : 'none',
               }} />
               <span style={{ ...styles.timelineLabel, fontSize: isMobile ? 8 : 10 }}>{label}</span>
@@ -201,12 +202,13 @@ export default function App() {
 
           <div style={styles.controlPanel}>
             {isComplete ? (
-              <button style={styles.fullAutoBtn} onClick={() => setScreen('result')}>
+              <button className="tac-cta" style={styles.fullAutoBtn} onClick={() => setScreen('result')}>
                 ✅ シミュレーション完了 → 結果を見る
               </button>
             ) : (
               <>
                 <button
+                  className="tac-cta"
                   style={{
                     ...styles.fullAutoBtn,
                     opacity: isSimulating ? 0.6 : 1,
@@ -218,9 +220,12 @@ export default function App() {
                   {isSimulating ? '⏳ AI計算中...' : '⚡ 一括実行 → 結果へ'}
                 </button>
                 <button
+                  className="tac-ghost"
                   style={{
                     ...styles.autoPlayBtn,
-                    background: autoPlay ? '#dc2626' : '#475569',
+                    background: autoPlay ? 'rgba(255,59,59,0.18)' : 'rgba(42,100,150,0.12)',
+                    borderColor: autoPlay ? C.red : C.borderHi,
+                    color: autoPlay ? '#ff8d8d' : C.white,
                     opacity: isSimulating && !autoPlay ? 0.6 : 1,
                     cursor: isSimulating && !autoPlay ? 'not-allowed' : 'pointer',
                   }}
@@ -231,7 +236,7 @@ export default function App() {
                 </button>
               </>
             )}
-            <button style={styles.restartBtn} onClick={handleRestart}>← 設定に戻る</button>
+            <button className="tac-ghost" style={styles.restartBtn} onClick={handleRestart}>← 設定に戻る</button>
           </div>
 
           <div style={styles.infoPanel}>
@@ -260,40 +265,41 @@ export default function App() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  appBg: { minHeight: '100vh', background: '#f1f5f9', fontFamily: '"Noto Sans JP", sans-serif' },
+  appBg: { minHeight: '100vh', background: 'transparent', fontFamily: FONT.jp, color: C.body },
   topBar: {
     position: 'sticky', top: 0, zIndex: 100,
-    background: 'linear-gradient(135deg, #0f172a, #1e293b)',
-    borderBottom: '1px solid #334155',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+    background: 'linear-gradient(180deg, rgba(13,27,42,0.96), rgba(6,13,24,0.92))',
+    backdropFilter: 'blur(8px)',
+    borderBottom: `1px solid ${C.border}`,
+    boxShadow: '0 4px 18px rgba(0,0,0,0.45)',
   },
   topBarInner: {
     maxWidth: 1400, margin: '0 auto', padding: '10px 20px',
     display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap',
   },
   logoSmall: { display: 'flex', alignItems: 'center', gap: 8 },
-  triangle: { fontSize: 22, color: '#a78bfa' },
-  logoText: { fontSize: 18, fontWeight: 900, color: '#60a5fa', letterSpacing: -0.5 },
+  triangle: { fontSize: 22, color: C.green, filter: `drop-shadow(0 0 8px ${C.green})` },
+  logoText: { fontSize: 18, fontWeight: 700, color: C.white, letterSpacing: 1, fontFamily: FONT.display },
   phaseBadge: {
-    position: 'relative', padding: '4px 14px', borderRadius: 20,
-    color: '#fff', fontSize: 13, fontWeight: 700,
-    display: 'flex', alignItems: 'center', gap: 6,
+    position: 'relative', padding: '4px 14px', borderRadius: 3,
+    color: '#06121f', fontSize: 12, fontWeight: 800,
+    display: 'flex', alignItems: 'center', gap: 6, fontFamily: FONT.mono, letterSpacing: 0.5,
   },
-  pulseRing: { display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#fff' },
-  dayBadge: { display: 'flex', alignItems: 'center', gap: 6, background: '#334155', borderRadius: 8, padding: '4px 12px' },
-  dayLabel: { color: '#94a3b8', fontSize: 11 },
-  dayValue: { color: '#f8fafc', fontSize: 18, fontWeight: 900 },
-  miniStats: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, marginLeft: 'auto' },
-  divider: { color: '#475569' },
-  progressSection: { background: '#f8fafc', padding: '10px 20px', borderBottom: '2px solid #e2e8f0' },
+  pulseRing: { display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#06121f', animation: 'okires-blink 1s infinite' },
+  dayBadge: { display: 'flex', alignItems: 'center', gap: 8, background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 3, padding: '4px 12px' },
+  dayLabel: { color: C.dim, fontSize: 10, fontFamily: FONT.mono, letterSpacing: 1 },
+  dayValue: { color: C.white, fontSize: 18, fontWeight: 800, fontFamily: FONT.mono },
+  miniStats: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, fontWeight: 700, marginLeft: 'auto', fontFamily: FONT.mono },
+  divider: { color: C.border },
+  progressSection: { background: 'rgba(13,27,42,0.5)', padding: '10px 20px', borderBottom: `1px solid ${C.border}` },
   timeline: { display: 'flex', maxWidth: 1400, margin: '0 auto 8px', justifyContent: 'space-between' },
   timelineTick: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flex: 1 },
   timelineDot: { width: 12, height: 12, borderRadius: '50%', transition: 'all 0.3s' },
-  timelineLabel: { fontSize: 10, color: '#475569', transition: 'color 0.3s' },
+  timelineLabel: { fontSize: 10, color: C.dim, transition: 'color 0.3s', fontFamily: FONT.mono },
   evacuationBarWrap: { maxWidth: 1400, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 12 },
-  evacuationBarLabel: { color: '#374151', fontSize: 12, whiteSpace: 'nowrap' as const, fontWeight: 600 },
-  evacuationBar: { flex: 1, height: 8, background: '#334155', borderRadius: 4, overflow: 'hidden' },
-  evacuationFill: { height: '100%', background: 'linear-gradient(90deg, #22c55e, #4ade80)', borderRadius: 4, transition: 'width 0.5s ease' },
+  evacuationBarLabel: { color: C.body, fontSize: 12, whiteSpace: 'nowrap' as const, fontWeight: 600, fontFamily: FONT.mono },
+  evacuationBar: { flex: 1, height: 8, background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 4, overflow: 'hidden' },
+  evacuationFill: { height: '100%', background: `linear-gradient(90deg, ${C.green}, #4dffa8)`, borderRadius: 4, transition: 'width 0.5s ease', boxShadow: `0 0 12px ${C.green}88` },
   mainContent: {
     maxWidth: 1400, margin: '0 auto', padding: '20px',
     display: 'grid', gridTemplateColumns: '1fr 380px', gap: 20, alignItems: 'start',
@@ -301,28 +307,28 @@ const styles: Record<string, React.CSSProperties> = {
   leftCol: { display: 'flex', flexDirection: 'column', gap: 16 },
   rightCol: { display: 'flex', flexDirection: 'column', gap: 16 },
   controlPanel: {
-    background: '#fff', borderRadius: 12, padding: 16,
+    background: `linear-gradient(180deg, ${C.bgPanel}, ${C.bgDeep})`, borderRadius: 4, padding: 16,
     display: 'flex', flexDirection: 'column', gap: 10,
-    boxShadow: '0 2px 8px rgba(0,0,0,0.08)', border: '1px solid #e2e8f0',
+    boxShadow: '0 8px 24px rgba(0,0,0,0.4)', border: `1px solid ${C.border}`,
   },
   fullAutoBtn: {
-    padding: '18px 20px', background: 'linear-gradient(135deg, #7c3aed, #a855f7)',
-    color: '#fff', border: 'none', borderRadius: 10, fontSize: 17, fontWeight: 800, cursor: 'pointer',
-    boxShadow: '0 4px 12px rgba(124,58,237,0.4)',
+    padding: '16px 20px', background: `linear-gradient(135deg, ${C.green}, #00c46a)`,
+    color: '#00150d', border: 'none', borderRadius: 4, fontSize: 16, fontWeight: 900, cursor: 'pointer',
+    boxShadow: '0 6px 20px rgba(0,255,136,0.28)', letterSpacing: 0.5, fontFamily: FONT.jp,
   },
   autoPlayBtn: {
-    padding: '12px 20px', color: '#fff', border: 'none',
-    borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer',
+    padding: '12px 20px', color: C.white, borderWidth: 1, borderStyle: 'solid', borderColor: C.borderHi,
+    borderRadius: 4, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: FONT.jp,
   },
   restartBtn: {
-    padding: '8px 20px', background: 'transparent', color: '#64748b',
-    border: '1px solid #e2e8f0', borderRadius: 10, fontSize: 13, cursor: 'pointer',
+    padding: '8px 20px', background: 'transparent', color: C.dim,
+    border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 13, cursor: 'pointer', fontFamily: FONT.mono, letterSpacing: 0.5,
   },
   infoPanel: {
-    background: '#fff', borderRadius: 10, padding: '12px 16px',
-    display: 'flex', gap: 16, boxShadow: '0 1px 4px rgba(0,0,0,0.06)', border: '1px solid #e2e8f0',
+    background: `linear-gradient(180deg, ${C.bgPanel}, ${C.bgDeep})`, borderRadius: 4, padding: '12px 16px',
+    display: 'flex', gap: 16, boxShadow: '0 4px 16px rgba(0,0,0,0.35)', border: `1px solid ${C.border}`,
   },
-  infoPanelRow: { display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 },
-  infoLabel: { fontSize: 11, color: '#94a3b8' },
-  infoValue: { fontSize: 16, fontWeight: 700, color: '#1e293b' },
+  infoPanelRow: { display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, gap: 2 },
+  infoLabel: { fontSize: 10, color: C.dim, fontFamily: FONT.mono, letterSpacing: 1 },
+  infoValue: { fontSize: 16, fontWeight: 800, color: C.bright, fontFamily: FONT.mono },
 };

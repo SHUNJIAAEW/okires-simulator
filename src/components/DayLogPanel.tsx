@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { DayLog, HourlyRoll } from '../types';
+import { C, FONT } from '../theme';
 
 interface Props {
   logs: DayLog[];
@@ -12,9 +13,9 @@ const PHASE_LABELS: Record<string, string> = {
 };
 
 const PHASE_COLORS: Record<string, string> = {
-  peacetime: '#64748b',
-  crisis: '#d97706',
-  wartime: '#dc2626',
+  peacetime: '#4a7a9b',
+  crisis: '#ffb300',
+  wartime: '#ff3b3b',
 };
 
 export function DayLogPanel({ logs }: Props) {
@@ -113,12 +114,12 @@ export function DayLogPanel({ logs }: Props) {
                 <div style={styles.sectionTitle}>📍 エリア残員</div>
                 <div style={styles.snapGrid}>
                   {Object.entries(log.areaSnapshots).map(([id, snap]) => (
-                    <div key={id} style={{ ...styles.snapItem, background: snap.total === 0 ? '#f0fdf4' : '#f8fafc' }}>
+                    <div key={id} style={{ ...styles.snapItem, background: snap.total === 0 ? 'rgba(0,255,136,0.08)' : C.bgCard, borderColor: snap.total === 0 ? 'rgba(0,255,136,0.4)' : C.border }}>
                       <div style={styles.snapArea}>{
                         id === 'yonaguni' ? '与那国' : id === 'taketomi' ? '竹富町' :
                         id === 'ishigaki' ? '石垣' : '宮古'
                       }</div>
-                      <div style={{ ...styles.snapTotal, color: snap.total === 0 ? '#22c55e' : '#1e293b' }}>
+                      <div style={{ ...styles.snapTotal, color: snap.total === 0 ? C.green : C.bright }}>
                         {snap.total === 0 ? '✓完了' : `${snap.total}コマ`}
                       </div>
                       <div style={styles.snapFatigue}>疲労{snap.fatigue >= 0 ? '+' : ''}{snap.fatigue.toFixed(1)}</div>
@@ -129,11 +130,11 @@ export function DayLogPanel({ logs }: Props) {
 
               {/* 累計 */}
               <div style={styles.totalBar}>
-                <span>避難完了: <strong>{log.totalEvacuatedSoFar}コマ</strong></span>
+                <span>避難完了: <strong style={{ color: C.green }}>{log.totalEvacuatedSoFar}コマ</strong></span>
                 <span style={styles.pipe}>|</span>
-                <span>死亡: <strong style={{ color: '#dc2626' }}>{log.totalDeadSoFar}コマ</strong></span>
+                <span>死亡: <strong style={{ color: C.red }}>{log.totalDeadSoFar}コマ</strong></span>
                 <span style={styles.pipe}>|</span>
-                <span style={{ color: '#64748b' }}>
+                <span style={{ color: C.dim }}>
                   {log.totalDeadSoFar > 0 ? `生存率: ${((log.totalEvacuatedSoFar / (log.totalEvacuatedSoFar + log.totalDeadSoFar)) * 100).toFixed(1)}%` : ''}
                 </span>
               </div>
@@ -153,12 +154,12 @@ function HourlyRollGrid({ rolls }: { rolls: HourlyRoll[] }) {
   return (
     <div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-        <span style={{ fontSize: 11, color: '#64748b' }}>
+        <span style={{ fontSize: 11, color: C.dim, fontFamily: FONT.mono }}>
           イベントスペース6回 / 発動{triggered.length}件
         </span>
         <button
           onClick={() => setExpanded(!expanded)}
-          style={{ fontSize: 10, background: 'transparent', border: '1px solid #e2e8f0', borderRadius: 4, padding: '2px 6px', cursor: 'pointer', color: '#64748b' }}
+          style={{ fontSize: 10, background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 3, padding: '2px 6px', cursor: 'pointer', color: C.dim, fontFamily: FONT.mono }}
         >
           {expanded ? '▲ 閉じる' : '▼ 全24時間'}
         </button>
@@ -167,15 +168,15 @@ function HourlyRollGrid({ rolls }: { rolls: HourlyRoll[] }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 4 }}>
           {eventSpaceRolls.map(r => (
             <div key={r.hour} style={{
-              border: `2px solid ${r.eventType ? (r.eventType === 'D' ? '#dc2626' : r.eventType === 'C' ? '#f97316' : r.eventType === 'B' ? '#f59e0b' : '#3b82f6') : '#86efac'}`,
-              background: r.eventType ? '#fef3c7' : '#f0fdf4',
-              borderRadius: 5, padding: '4px', textAlign: 'center',
+              border: `1px solid ${r.eventType ? (r.eventType === 'D' ? C.red : r.eventType === 'C' ? '#ff9e3d' : r.eventType === 'B' ? C.amber : C.blue) : C.border}`,
+              background: r.eventType ? 'rgba(255,179,0,0.1)' : C.bgCard,
+              borderRadius: 4, padding: '4px', textAlign: 'center',
             }}>
-              <div style={{ fontSize: 9, color: '#94a3b8' }}>{String(r.hour).padStart(2, '0')}:00</div>
-              <div style={{ fontSize: 15, fontWeight: 900, color: r.eventType ? '#dc2626' : '#334155' }}>⚄{r.roll}</div>
+              <div style={{ fontSize: 9, color: C.dim, fontFamily: FONT.mono }}>{String(r.hour).padStart(2, '0')}:00</div>
+              <div style={{ fontSize: 15, fontWeight: 900, color: r.eventType ? C.amber : C.bright, fontFamily: FONT.mono }}>⚄{r.roll}</div>
               {r.eventType
-                ? <div style={{ fontSize: 9, color: '#dc2626', fontWeight: 700 }}>{r.eventType}イベント</div>
-                : <div style={{ fontSize: 9, color: '#22c55e' }}>なし</div>
+                ? <div style={{ fontSize: 9, color: C.red, fontWeight: 700 }}>{r.eventType}イベント</div>
+                : <div style={{ fontSize: 9, color: C.green }}>なし</div>
               }
             </div>
           ))}
@@ -186,15 +187,15 @@ function HourlyRollGrid({ rolls }: { rolls: HourlyRoll[] }) {
           {rolls.map(r => (
             <div key={r.hour} style={{
               border: r.eventType
-                ? `2px solid ${r.eventType === 'D' ? '#dc2626' : r.eventType === 'C' ? '#f97316' : r.eventType === 'B' ? '#f59e0b' : '#3b82f6'}`
-                : r.isEventSpace ? '2px solid #86efac' : '1px solid #e2e8f0',
-              background: r.eventType ? '#fef3c7' : r.isEventSpace ? '#f0fdf4' : '#f8fafc',
+                ? `1px solid ${r.eventType === 'D' ? C.red : r.eventType === 'C' ? '#ff9e3d' : r.eventType === 'B' ? C.amber : C.blue}`
+                : r.isEventSpace ? `1px solid ${C.borderHi}` : `1px solid ${C.border}`,
+              background: r.eventType ? 'rgba(255,179,0,0.1)' : r.isEventSpace ? 'rgba(0,255,136,0.06)' : C.bgCard,
               borderRadius: 3, padding: '3px 1px', textAlign: 'center',
             }}>
-              <div style={{ fontSize: 7, color: '#94a3b8' }}>{String(r.hour).padStart(2,'0')}時</div>
-              <div style={{ fontSize: 12, fontWeight: 900, color: r.eventType ? '#dc2626' : r.isEventSpace ? '#22c55e' : '#94a3b8' }}>{r.roll}</div>
+              <div style={{ fontSize: 7, color: C.dim, fontFamily: FONT.mono }}>{String(r.hour).padStart(2,'0')}時</div>
+              <div style={{ fontSize: 12, fontWeight: 900, color: r.eventType ? C.amber : r.isEventSpace ? C.green : C.dim, fontFamily: FONT.mono }}>{r.roll}</div>
               {r.eventType && (
-                <div style={{ fontSize: 7, background: r.eventType === 'D' ? '#dc2626' : r.eventType === 'C' ? '#f97316' : r.eventType === 'B' ? '#f59e0b' : '#3b82f6', color: '#fff', borderRadius: 2 }}>
+                <div style={{ fontSize: 7, background: r.eventType === 'D' ? C.red : r.eventType === 'C' ? '#ff9e3d' : r.eventType === 'B' ? C.amber : C.blue, color: '#06121f', borderRadius: 2, fontWeight: 700 }}>
                   {r.eventType}
                 </div>
               )}
@@ -205,8 +206,8 @@ function HourlyRollGrid({ rolls }: { rolls: HourlyRoll[] }) {
       {triggered.length > 0 && (
         <div style={{ marginTop: 6 }}>
           {triggered.map((r, i) => (
-            <div key={i} style={{ fontSize: 11, color: '#475569', padding: '2px 0', borderBottom: '1px solid #f1f5f9' }}>
-              <span style={{ fontWeight: 700, color: '#dc2626' }}>[{String(r.hour).padStart(2,'0')}:00 {r.eventType}]</span> {r.outcome}
+            <div key={i} style={{ fontSize: 11, color: C.body, padding: '2px 0', borderBottom: `1px solid ${C.border}` }}>
+              <span style={{ fontWeight: 700, color: C.amber, fontFamily: FONT.mono }}>[{String(r.hour).padStart(2,'0')}:00 {r.eventType}]</span> {r.outcome}
             </div>
           ))}
         </div>
@@ -217,46 +218,46 @@ function HourlyRollGrid({ rolls }: { rolls: HourlyRoll[] }) {
 
 const styles: Record<string, React.CSSProperties> = {
   container: { display: 'flex', flexDirection: 'column', gap: 8 },
-  title: { fontSize: 16, fontWeight: 700, color: '#1e293b', marginBottom: 8 },
-  empty: { textAlign: 'center', padding: '40px 20px', color: '#94a3b8' },
+  title: { fontSize: 14, fontWeight: 700, color: C.bright, marginBottom: 8, fontFamily: FONT.mono, letterSpacing: 1 },
+  empty: { textAlign: 'center', padding: '40px 20px', color: C.dim },
   emptyIcon: { fontSize: 48, marginBottom: 12 },
   emptyText: { fontSize: 14 },
-  logCard: { border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden', background: '#fff' },
+  logCard: { border: `1px solid ${C.border}`, borderRadius: 4, overflow: 'hidden', background: C.bgPanel },
   logHeader: {
     width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    padding: '10px 16px', background: '#f8fafc', border: 'none', cursor: 'pointer',
-    borderBottom: '1px solid #e2e8f0',
+    padding: '10px 14px', background: 'rgba(0,0,0,0.2)', border: 'none', cursor: 'pointer',
+    borderBottom: `1px solid ${C.border}`,
   },
   headerLeft: { display: 'flex', alignItems: 'center', gap: 8 },
   headerRight: { display: 'flex', alignItems: 'center', gap: 12 },
-  dayBadge: { background: '#1e293b', color: '#fff', padding: '3px 10px', borderRadius: 12, fontSize: 12, fontWeight: 700 },
-  phaseBadge: { color: '#fff', padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600 },
-  weatherBadge: { color: '#64748b', fontSize: 12 },
-  evacuatedCount: { color: '#22c55e', fontWeight: 700, fontSize: 13 },
-  totalEvac: { color: '#3b82f6', fontSize: 12 },
-  chevron: { color: '#94a3b8', fontSize: 12 },
-  logBody: { padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 12 },
-  section: { borderBottom: '1px solid #f1f5f9', paddingBottom: 10 },
-  sectionTitle: { fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
-  sectionContent: { fontSize: 13, color: '#334155', lineHeight: 1.5 },
+  dayBadge: { background: C.green, color: '#00150d', padding: '3px 10px', borderRadius: 3, fontSize: 12, fontWeight: 800, fontFamily: FONT.mono },
+  phaseBadge: { color: '#06121f', padding: '2px 8px', borderRadius: 3, fontSize: 11, fontWeight: 700, fontFamily: FONT.mono },
+  weatherBadge: { color: C.dim, fontSize: 12 },
+  evacuatedCount: { color: C.green, fontWeight: 700, fontSize: 13, fontFamily: FONT.mono },
+  totalEvac: { color: C.blue, fontSize: 12, fontFamily: FONT.mono },
+  chevron: { color: C.dim, fontSize: 12 },
+  logBody: { padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 12, background: C.bgDeep },
+  section: { borderBottom: `1px solid ${C.border}`, paddingBottom: 10 },
+  sectionTitle: { fontSize: 11, fontWeight: 700, color: C.dim, marginBottom: 6, letterSpacing: 0.5, fontFamily: FONT.mono },
+  sectionContent: { fontSize: 13, color: C.body, lineHeight: 1.5 },
   evacRow: {
     display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0',
-    borderBottom: '1px solid #f8fafc', fontSize: 12,
+    borderBottom: `1px solid ${C.border}`, fontSize: 12,
   },
-  evacMethod: { background: '#eff6ff', color: '#1d4ed8', padding: '2px 8px', borderRadius: 8, fontWeight: 600, whiteSpace: 'nowrap' },
-  evacFlow: { color: '#475569', flex: 1 },
-  evacCount: { fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap' },
-  vulnTag: { background: '#dbeafe', color: '#1d4ed8', padding: '1px 6px', borderRadius: 6, fontSize: 10 },
-  eventRow: { fontSize: 12, color: '#334155', padding: '3px 0', borderBottom: '1px solid #f8fafc', lineHeight: 1.4 },
-  eventRowDanger: { color: '#dc2626', fontWeight: 600 },
+  evacMethod: { background: 'rgba(56,189,248,0.12)', color: C.blue, padding: '2px 8px', borderRadius: 3, fontWeight: 600, whiteSpace: 'nowrap', border: `1px solid ${C.border}` },
+  evacFlow: { color: C.body, flex: 1 },
+  evacCount: { fontWeight: 700, color: C.white, whiteSpace: 'nowrap', fontFamily: FONT.mono },
+  vulnTag: { background: 'rgba(255,107,107,0.15)', color: '#ff8d8d', padding: '1px 6px', borderRadius: 3, fontSize: 10 },
+  eventRow: { fontSize: 12, color: C.body, padding: '3px 0', borderBottom: `1px solid ${C.border}`, lineHeight: 1.4 },
+  eventRowDanger: { color: '#ff8d8d', fontWeight: 600 },
   snapGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 },
-  snapItem: { borderRadius: 6, padding: '6px 8px', border: '1px solid #e2e8f0', textAlign: 'center' },
-  snapArea: { fontSize: 10, color: '#64748b', marginBottom: 2 },
-  snapTotal: { fontSize: 14, fontWeight: 700 },
-  snapFatigue: { fontSize: 10, color: '#94a3b8', marginTop: 2 },
+  snapItem: { borderRadius: 4, padding: '6px 8px', borderWidth: 1, borderStyle: 'solid', borderColor: C.border, textAlign: 'center', background: C.bgCard },
+  snapArea: { fontSize: 10, color: C.dim, marginBottom: 2 },
+  snapTotal: { fontSize: 14, fontWeight: 700, fontFamily: FONT.mono },
+  snapFatigue: { fontSize: 10, color: C.dim, marginTop: 2 },
   totalBar: {
     display: 'flex', alignItems: 'center', gap: 8,
-    background: '#f0f9ff', borderRadius: 6, padding: '8px 12px', fontSize: 13,
+    background: 'rgba(0,255,136,0.06)', border: `1px solid ${C.border}`, borderRadius: 4, padding: '8px 12px', fontSize: 13, color: C.body,
   },
-  pipe: { color: '#cbd5e1' },
+  pipe: { color: C.border },
 };
