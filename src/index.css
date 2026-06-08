@@ -223,23 +223,36 @@ input[type='range']::-moz-range-thumb {
   animation: okires-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-/* ── Print (PDF出力) ─────────────────────────────────────── */
+/* ── Print (PDF出力・高密度) ─────────────────────────────── */
 @media print {
   @page {
-    margin: 12mm;
+    margin: 8mm;
+    size: A4;
   }
   html,
   body {
     background: #ffffff !important;
     background-image: none !important;
     color: #0b1726 !important;
+    font-size: 8.5pt !important;
+    line-height: 1.25 !important;
   }
   .no-print {
     display: none !important;
   }
-  /* 印刷時はカードを白地・枠線ありで読みやすく */
   .result-print-root {
     color: #0b1726 !important;
+  }
+  /* 余白・間隔を詰める */
+  .result-container {
+    gap: 6px !important;
+    padding: 0 !important;
+    max-width: 100% !important;
+  }
+  .result-print-root .tac-card {
+    padding: 7px 9px !important;
+    margin: 0 !important;
+    border-radius: 3px !important;
   }
   .tac-card,
   .tac-fade {
@@ -247,6 +260,31 @@ input[type='range']::-moz-range-thumb {
     box-shadow: none !important;
     break-inside: avoid;
     page-break-inside: avoid;
+  }
+  /* 装飾の角ブラケット・グローを消す */
+  .result-print-root span[style*="position: absolute"] {
+    display: none !important;
+  }
+  /* 見出しと本文を一段小さく＆行間を詰める */
+  .result-print-root h1 {
+    font-size: 15pt !important;
+    margin: 2px 0 !important;
+  }
+  .result-print-root h2 {
+    font-size: 10.5pt !important;
+    margin: 0 0 6px !important;
+    padding-bottom: 4px !important;
+  }
+  .result-print-root p {
+    margin: 2px 0 !important;
+  }
+  /* 統計・エリアのグリッドは詰めて多列に */
+  .result-print-root [style*="grid"] {
+    gap: 5px !important;
+  }
+  /* バナー・フッターの装飾は薄く */
+  .result-print-root [style*="repeating-linear-gradient"] {
+    background-image: none !important;
   }
 }
 

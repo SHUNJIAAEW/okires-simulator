@@ -34,6 +34,23 @@ const DEATH_FIX: Record<string, string> = {
   '複合的な要因': '事前準備レベルを上げ、輸送・防空・気象の各リスクに多重の代替手段を用意する。',
 };
 
+// 避難完了：日別の避難数と主な輸送手段を導出
+function analyzeEvacuated(dayLogs: DayLog[]): { rows: CauseRow[]; total: number } {
+  const rows: CauseRow[] = [];
+  let prev = 0;
+  for (const log of dayLogs) {
+    const delta = log.totalEvacuatedSoFar - prev;
+    prev = log.totalEvacuatedSoFar;
+    if (delta <= 0) continue;
+    const mc: Record<string, number> = {};
+    for (const e of log.evacuations) mc[e.method] = (mc[e.method] || 0) + e.count;
+    const methods = Object.entries(mc).sort((a, b) => b[1] - a[1]).slice(0, 3)
+      .map(([m, c]) => `${m}(${c})`).join('・') || '—';
+    rows.push({ when: log.dayLabel, what: methods, count: delta });
+  }
+  return { rows, total: prev };
+}
+
 interface Props {
   state: GameState;
   onRestart: () => void;
@@ -44,6 +61,37 @@ const AREA_NAMES: Record<AreaId, string> = {
   taketomi: '竹富町全島',
   ishigaki: '石垣島',
   miyako: '宮古島・多良間',
+};
+
+// 取り残し：エリア別の残員と原因を導出
+function analyzeStranded(
+  areas: GameState['areas'], infra: GameState['infra'], transport: GameState['transport']
+): { rows: CauseRow[]; total: number } {
+  const rows: CauseRow[] = [];
+  let total = 0;
+  for (const [id, a] of Object.entries(areas)) {
+    const rem = a.residents + a.tourists + a.vulnerable + a.stagingPort;
+    if (rem <= 0) continue;
+    total += rem;
+    let what = '輸送容量が人数に追いつかなかった';
+    if (id === 'miyako' && (!infra.bridgeIkema || !infra.bridgeKurima || !infra.bridgeIrabu))
+      what = '橋の崩落で離島住民が孤立（移動不可）';
+    else if (transport.civilianAirDisabled && transport.civilianShipDisabled)
+      what = '民間航空・船舶がともに使用不能';
+    else if (transport.civilianAirDisabled) what = '民間航空が使用不能で空路が激減';
+    else if (transport.civilianShipDisabled) what = '民間船舶が使用不能で海路が激減';
+    else if (a.fatigue >= a.baseActions) what = '疲労限界で避難行動が取れなかった';
+    rows.push({ when: AREA_NAMES[id as AreaId], what, count: rem });
+  }
+  return { rows, total };
+}
+const STRAND_FIX: Record<string, string> = {
+  '橋の崩落で離島住民が孤立（移動不可）': '池間・来間・伊良部の各橋を防空（PAC3前進配備）で守る。橋に依存しない海上ピックアップ手段を準備。',
+  '民間航空・船舶がともに使用不能': '自衛隊・海保の輸送を主軸に再編し、護衛付き運航で民間の再開を促す。',
+  '民間航空が使用不能で空路が激減': '海路（フェリー・海保・海自）へ振替え、空自輸送機の投入を増やす。',
+  '民間船舶が使用不能で海路が激減': '空路（民間増便・空自輸送機）へ振替え、港湾の安全確保を急ぐ。',
+  '疲労限界で避難行動が取れなかった': '抗堪性を上げ休養・交代要員を確保。連続行動を避け手数を温存する。',
+  '輸送容量が人数に追いつかなかった': '事前準備Lvを上げ便数・港湾処理量を増強。早期着手で日数を稼ぐ。',
 };
 
 const GOV_BENCHMARK = 20; // コマ/day (= 2万人/day)
@@ -169,29 +217,11 @@ export function ResultScreen({ state, onRestart }: Props) {
   const avgPerDay = activeDays.length > 0 ? activeDays.reduce((s, d) => s + d.delta, 0) / activeDays.length : 0;
   const benchmarkPct = (GOV_BENCHMARK / maxDelta) * 100;
 
-  // 内訳分析データ
+  // 内訳分析データ（死亡・取り残し・避難完了を同形式で）
   const deathAnalysis = analyzeDeaths(dayLogs);
+  const evacAnalysis = analyzeEvacuated(dayLogs);
+  const strandedAnalysis = analyzeStranded(areas, state.infra, state.transport);
   const [showDays, setShowDays] = useState(false);
-
-  // 避難方法の集計（どのように避難できたか）
-  const methodCount: Record<string, number> = {};
-  for (const log of dayLogs) {
-    for (const e of log.evacuations) {
-      methodCount[e.method] = (methodCount[e.method] || 0) + e.count;
-    }
-  }
-  const topMethods = Object.entries(methodCount).sort((a, b) => b[1] - a[1]).slice(0, 5);
-
-  // 取り残しの理由推定（最終状態ベース）
-  const strandedReasons: string[] = [];
-  if (totalRemaining > 0) {
-    if (!state.infra.bridgeIkema || !state.infra.bridgeKurima || !state.infra.bridgeIrabu)
-      strandedReasons.push('橋（池間・来間・伊良部）の崩落で離島住民が宮古本島へ渡れず孤立した');
-    if (state.transport.civilianAirDisabled) strandedReasons.push('民間航空が使用不能になり空路の避難量が激減した');
-    if (state.transport.civilianShipDisabled) strandedReasons.push('民間船舶が使用不能になり海路の避難量が激減した');
-    if (Object.values(areas).some(a => a.fatigue >= a.baseActions)) strandedReasons.push('住民の疲労が限界に達し避難行動が取れなくなった');
-    if (strandedReasons.length === 0) strandedReasons.push('輸送容量（便数・港湾処理量）が避難対象人数に追いつかなかった');
-  }
 
   const handlePrint = () => window.print();
 
@@ -204,7 +234,7 @@ export function ResultScreen({ state, onRestart }: Props) {
         <span style={{ ...styles.classText, marginLeft: 'auto', color: C.dim }}>EOF.MISSION</span>
       </div>
 
-      <div style={{ ...styles.container, padding: isMobile ? '20px 14px 48px' : '32px 24px 56px' }}>
+      <div className="result-container" style={{ ...styles.container, padding: isMobile ? '20px 14px 48px' : '32px 24px 56px' }}>
         {/* ヘッダー */}
         <div className="tac-fade" style={styles.header}>
           <div style={styles.logoRow}>
@@ -293,47 +323,36 @@ export function ResultScreen({ state, onRestart }: Props) {
 
         {/* 内訳分析 ― いつ・なぜ・どのように・どうすべきか */}
         <Card title="結果の内訳分析 ― いつ・なぜ・どのように・どうすべきか" en="WHEN / WHY / HOW / FIX" accent={C.amber}>
-          {/* 避難完了 */}
-          <div style={{ ...styles.anaBlock, borderLeft: `3px solid ${C.green}` }}>
-            <div style={{ ...styles.anaHead, color: C.green }}>✈ 避難完了 — {evacuated}コマ（{(evacuated * 1000).toLocaleString()}人）</div>
-            <AnaRow k="いつ" v={`X-3日〜X+8日の全期間。実績平均 ${avgPerDay.toFixed(1)}コマ/日（政府目標 ${GOV_BENCHMARK}コマ/日）。`} />
-            <AnaRow k="どのように" v={topMethods.length > 0 ? topMethods.map(([m, c]) => `${m}:${c}`).join(' / ') : '避難実績なし'} />
-            <AnaRow k="どうすべきか" v={avgPerDay >= GOV_BENCHMARK ? 'この水準を維持。さらに大雨・強風の悪天候前に前倒しで安全余裕を確保。' : '輸送量が目標未達。事前準備Lvと輸送手段の多重化で日次スループットを底上げ。'} />
-          </div>
+          {/* 避難完了（日別×輸送手段） */}
+          <BreakdownBlock
+            color={C.green} icon="✈" title="避難完了" totalKoma={evacuated} colLabel="いつ（日）"
+            rows={evacAnalysis.rows} emptyText="避難実績なし"
+            recHead="どうすべきか"
+            recs={[
+              { k: 'いつ・どのように', v: `実績平均 ${avgPerDay.toFixed(1)}コマ/日（政府目標 ${GOV_BENCHMARK}コマ/日）。上表のとおり日別・手段別に避難。` },
+              { k: '改善', v: avgPerDay >= GOV_BENCHMARK ? 'この水準を維持。大雨・強風の悪天候前に前倒しで安全余裕を確保。' : '目標未達。事前準備Lvと輸送手段の多重化で日次スループットを底上げ。' },
+            ]}
+          />
 
-          {/* 取り残し */}
-          {totalRemaining > 0 && (
-            <div style={{ ...styles.anaBlock, borderLeft: `3px solid ${C.amber}` }}>
-              <div style={{ ...styles.anaHead, color: C.amber }}>⏳ 取り残し — {totalRemaining}コマ（{(totalRemaining * 1000).toLocaleString()}人）</div>
-              <AnaRow k="いつ" v="シミュレーション終了時（X+8日）まで避難できず残存。" />
-              <AnaRow k="どこで" v={Object.entries(areas).filter(([, a]) => (a.residents + a.tourists + a.vulnerable + a.stagingPort) > 0).map(([id, a]) => `${AREA_NAMES[id as AreaId]}:${a.residents + a.tourists + a.vulnerable + a.stagingPort}`).join(' / ')} />
-              <AnaRow k="なぜ" v={strandedReasons.join('／')} />
-              <AnaRow k="どうすべきか" v="ボトルネック（橋・輸送・疲労）に応じ、橋の防護／輸送の多重化／早期着手で残存をゼロに近づける。" />
-            </div>
-          )}
+          {/* 取り残し（エリア別×原因） */}
+          <BreakdownBlock
+            color={C.amber} icon="⏳" title="取り残し" totalKoma={strandedAnalysis.total} colLabel="どこ（エリア）"
+            rows={strandedAnalysis.rows} emptyText="取り残しなし（全員避難）"
+            recHead="どうすべきか（原因別）"
+            recs={[...new Set(strandedAnalysis.rows.map(r => r.what))].map(reason => ({
+              k: reason, v: STRAND_FIX[reason] ?? STRAND_FIX['輸送容量が人数に追いつかなかった'],
+            }))}
+          />
 
-          {/* 死亡 */}
-          {deathAnalysis.total > 0 ? (
-            <div style={{ ...styles.anaBlock, borderLeft: `3px solid ${C.red}` }}>
-              <div style={{ ...styles.anaHead, color: C.red }}>💀 死亡 — {deathAnalysis.total}コマ（{(deathAnalysis.total * 1000).toLocaleString()}人）</div>
-              {deathAnalysis.rows.map((r, i) => (
-                <div key={i} style={styles.deathRow}>
-                  <span style={styles.deathWhen}>{r.when}</span>
-                  <span style={styles.deathWhat}>{r.what}</span>
-                  <span style={styles.deathCount}>{r.count}コマ</span>
-                </div>
-              ))}
-              <div style={{ ...styles.anaSubHead, color: C.red }}>どうすべきか（原因別）</div>
-              {[...new Set(deathAnalysis.rows.map(r => r.what))].map((cause, i) => (
-                <AnaRow key={i} k={cause} v={DEATH_FIX[cause] ?? DEATH_FIX['複合的な要因']} />
-              ))}
-            </div>
-          ) : (
-            <div style={{ ...styles.anaBlock, borderLeft: `3px solid ${C.green}` }}>
-              <div style={{ ...styles.anaHead, color: C.green }}>💀 死亡 — 0コマ（死者なし）</div>
-              <AnaRow k="評価" v="人的損失ゼロで避難を完遂。条件が悪化した場合に備え、この体制を標準化する。" />
-            </div>
-          )}
+          {/* 死亡（日別×原因） */}
+          <BreakdownBlock
+            color={C.red} icon="💀" title="死亡" totalKoma={deathAnalysis.total} colLabel="いつ（日）"
+            rows={deathAnalysis.rows} emptyText="死者なし（人的損失ゼロで避難を完遂）"
+            recHead="どうすべきか（原因別）"
+            recs={[...new Set(deathAnalysis.rows.map(r => r.what))].map(cause => ({
+              k: cause, v: DEATH_FIX[cause] ?? DEATH_FIX['複合的な要因'],
+            }))}
+          />
         </Card>
 
         {/* 1日ごとの詳細（各コマの振り返り） */}
@@ -458,6 +477,39 @@ function AnaRow({ k, v }: { k: string; v: string }) {
   );
 }
 
+// 死亡・取り残し・避難完了で共通の内訳ブロック（行＋原因別の改善策）
+function BreakdownBlock({ color, icon, title, totalKoma, colLabel, rows, recHead, recs, emptyText }: {
+  color: string; icon: string; title: string; totalKoma: number; colLabel: string;
+  rows: { when: string; what: string; count: number }[];
+  recHead: string; recs: { k: string; v: string }[]; emptyText?: string;
+}) {
+  return (
+    <div style={{ ...styles.anaBlock, borderLeft: `3px solid ${color}` }}>
+      <div style={{ ...styles.anaHead, color }}>{icon} {title} — {totalKoma}コマ（{(totalKoma * 1000).toLocaleString()}人）</div>
+      {rows.length > 0 ? (
+        <>
+          <div style={styles.brHeadRow}>
+            <span style={styles.brHeadWhen}>{colLabel}</span>
+            <span style={styles.brHeadWhat}>内容・原因</span>
+            <span style={styles.brHeadCount}>コマ</span>
+          </div>
+          {rows.map((r, i) => (
+            <div key={i} style={styles.deathRow}>
+              <span style={{ ...styles.deathWhen, color }}>{r.when}</span>
+              <span style={styles.deathWhat}>{r.what}</span>
+              <span style={{ ...styles.deathCount, color }}>{r.count}</span>
+            </div>
+          ))}
+        </>
+      ) : (
+        <AnaRow k="—" v={emptyText ?? '該当なし'} />
+      )}
+      {recs.length > 0 && <div style={{ ...styles.anaSubHead, color }}>{recHead}</div>}
+      {recs.map((rc, i) => <AnaRow key={i} k={rc.k} v={rc.v} />)}
+    </div>
+  );
+}
+
 function Card({ title, en, accent, children }: { title: string; en: string; accent: string; children: React.ReactNode }) {
   return (
     <div className="tac-card tac-fade" style={styles.card}>
@@ -576,10 +628,14 @@ const styles: Record<string, React.CSSProperties> = {
   anaRow: { display: 'flex', gap: 10, padding: '4px 0', borderBottom: `1px solid ${C.border}`, fontSize: 12.5, alignItems: 'flex-start', lineHeight: 1.6 },
   anaKey: { color: C.bright, fontWeight: 700, minWidth: 84, flexShrink: 0 },
   anaVal: { color: C.body },
+  brHeadRow: { display: 'flex', gap: 10, padding: '2px 0 4px', fontSize: 10, color: C.dim, fontFamily: FONT.mono, letterSpacing: 0.5, borderBottom: `1px solid ${C.border}` },
+  brHeadWhen: { minWidth: 92, fontWeight: 700 },
+  brHeadWhat: { flex: 1, fontWeight: 700 },
+  brHeadCount: { minWidth: 34, textAlign: 'right', fontWeight: 700 },
   deathRow: { display: 'flex', gap: 10, padding: '4px 0', borderBottom: `1px solid ${C.border}`, fontSize: 12.5, alignItems: 'center' },
-  deathWhen: { fontFamily: FONT.mono, color: C.amber, fontWeight: 700, minWidth: 56 },
-  deathWhat: { color: C.body, flex: 1 },
-  deathCount: { fontFamily: FONT.mono, color: C.red, fontWeight: 800 },
+  deathWhen: { fontFamily: FONT.mono, color: C.amber, fontWeight: 700, minWidth: 92, lineHeight: 1.4 },
+  deathWhat: { color: C.body, flex: 1, lineHeight: 1.5 },
+  deathCount: { fontFamily: FONT.mono, color: C.red, fontWeight: 800, minWidth: 34, textAlign: 'right' },
   dayToggle: { width: '100%', padding: '10px 14px', background: 'rgba(42,100,150,0.12)', color: C.white, borderWidth: 1, borderStyle: 'solid', borderColor: C.borderHi, borderRadius: 4, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: FONT.jp, textAlign: 'left' },
   // Chart
   chartLegend: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12, fontSize: 11, color: C.dim, flexWrap: 'wrap', fontFamily: FONT.mono },
