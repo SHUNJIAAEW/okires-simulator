@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { SetupConfig } from '../types';
-import { TOURIST_BY_MONTH } from '../constants';
+import { TOURIST_MAX_BY_AREA, VULNERABLE_TOTAL_MAX } from '../constants';
 import { useWindowWidth } from '../hooks/useWindowWidth';
 import { C, FONT } from '../theme';
 
@@ -65,19 +65,17 @@ export function SetupScreen({ onStart }: Props) {
   const [prepLevel, setPrepLevel] = useState(3);
   const [shelterLevel, setShelterLevel] = useState(3);
   const [month, setMonth] = useState(8);
-  const [vulnerableYonaguni, setVulnerableYonaguni] = useState(0);
-  const [vulnerableTaketomi, setVulnerableTaketomi] = useState(1);
-  const [vulnerableIshigaki, setVulnerableIshigaki] = useState(4);
-  const [vulnerableMiyako, setVulnerableMiyako] = useState(5);
 
-  const tourists = TOURIST_BY_MONTH[month];
   const dangerSeason = month >= 6 && month <= 10;
+  const typhoonSeason = month >= 7 && month <= 9;
 
   const handleStart = () => {
-    onStart({ prepLevel, shelterLevel, month, vulnerableYonaguni, vulnerableTaketomi, vulnerableIshigaki, vulnerableMiyako });
+    onStart({ prepLevel, shelterLevel, month });
   };
 
-  const totalKoma = 2 + 15 + 43 + 49 + tourists + vulnerableYonaguni + vulnerableTaketomi + vulnerableIshigaki + vulnerableMiyako;
+  // 観光客・要援護者は実行時ランダム。概算は上限値ベースで表示
+  const touristMax = TOURIST_MAX_BY_AREA.yonaguni + TOURIST_MAX_BY_AREA.taketomi + TOURIST_MAX_BY_AREA.ishigaki + TOURIST_MAX_BY_AREA.miyako;
+  const totalKomaMax = 2 + 15 + 43 + 49 + touristMax + VULNERABLE_TOTAL_MAX;
 
   return (
     <div style={{ ...styles.container, padding: isMobile ? '0 0 40px' : '0 0 56px' }}>
@@ -153,10 +151,11 @@ export function SetupScreen({ onStart }: Props) {
           {/* 月 */}
           <Param index="03" title="事態発生月" en="ONSET MONTH" value={`${month}月`} valueColor={dangerSeason ? C.amber : C.bright}>
             <p style={styles.desc}>
-              観光客 最大 <span style={styles.mono}>{tourists}</span> コマ ／{' '}
-              {dangerSeason
-                ? <span style={{ color: C.amber, fontWeight: 700 }}>⚠ 台風・大雨の発生確率が高い季節</span>
-                : <span>比較的安定した気象</span>}
+              {typhoonSeason
+                ? <span style={{ color: C.red, fontWeight: 700 }}>🌀 7〜9月：台風の発生確率が高い（海路全停止・空港欠航のリスク大）</span>
+                : dangerSeason
+                  ? <span style={{ color: C.amber, fontWeight: 700 }}>⚠ 6・10月：台風・大雨の発生確率がやや高い季節</span>
+                  : <span>比較的安定した気象</span>}
             </p>
             <div style={{ ...styles.monthGrid, gridTemplateColumns: isMobile ? 'repeat(4, 1fr)' : 'repeat(6, 1fr)' }}>
               {Array.from({ length: 12 }, (_, i) => i + 1).map(m => {
@@ -175,33 +174,39 @@ export function SetupScreen({ onStart }: Props) {
             </div>
           </Param>
 
-          {/* 要援護者配置 */}
-          <Param index="04" title="要援護者の配置" en="VULNERABLE UNITS" value={`${vulnerableYonaguni + vulnerableTaketomi + vulnerableIshigaki + vulnerableMiyako}`} valueColor="#ff6b6b">
-            <p style={styles.desc}>高齢者・障がい者・妊産婦など。<strong style={{ color: '#ff6b6b' }}>船のみ利用可</strong>（航空機不可）。</p>
-            <div style={{ ...styles.fourCol, gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)' }}>
-              <VulnSlider name="与那国島" dot="#ff5a5a" value={vulnerableYonaguni} max={2} onChange={setVulnerableYonaguni} />
-              <VulnSlider name="竹富町" dot="#ff9e3d" value={vulnerableTaketomi} max={5} onChange={setVulnerableTaketomi} />
-              <VulnSlider name="石垣島" dot="#38bdf8" value={vulnerableIshigaki} max={8} onChange={setVulnerableIshigaki} />
-              <VulnSlider name="宮古島" dot="#00ff88" value={vulnerableMiyako} max={8} onChange={setVulnerableMiyako} />
+          {/* 観光客・要援護者＝ランダム配置の説明 */}
+          <Param index="04" title="観光客・要援護者の配置" en="RANDOMIZED UNITS" value="RANDOM" valueColor={C.violet}>
+            <p style={styles.desc}>
+              <strong style={{ color: C.bright }}>毎回ランダム配置</strong>されます（実行のたびに変わります）。
+            </p>
+            <div style={styles.randNote}>
+              <div style={styles.randRow}>
+                <span style={{ ...styles.vulnDot, background: C.amber, boxShadow: `0 0 6px ${C.amber}` }} />
+                <span><strong>観光客</strong>：合計最大 {touristMax} コマ ／ 島別上限 与那国{TOURIST_MAX_BY_AREA.yonaguni}・竹富{TOURIST_MAX_BY_AREA.taketomi}・石垣{TOURIST_MAX_BY_AREA.ishigaki}・宮古{TOURIST_MAX_BY_AREA.miyako}</span>
+              </div>
+              <div style={styles.randRow}>
+                <span style={{ ...styles.vulnDot, background: '#ff6b6b', boxShadow: '0 0 6px #ff6b6b' }} />
+                <span><strong>要援護者</strong>：合計 {VULNERABLE_TOTAL_MAX} コマを人口比で最適配置（<strong style={{ color: '#ff6b6b' }}>船のみ利用可</strong>）</span>
+              </div>
             </div>
           </Param>
 
           {/* 初期配置概要 */}
           <div style={styles.readout}>
             <div style={styles.readoutHead}>
-              <span style={styles.readoutTitle}>INITIAL DEPLOYMENT // 初期配置概要</span>
+              <span style={styles.readoutTitle}>INITIAL DEPLOYMENT // 初期配置概要（住民は固定・観光/要援護はランダム）</span>
             </div>
             <div style={{ ...styles.readoutGrid, gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr' }}>
-              <ReadoutRow dot="#ff5a5a" label="与那国島" detail={`住民2 + 要援護${vulnerableYonaguni}`} />
-              <ReadoutRow dot="#ff9e3d" label="竹富町全島" detail={`住民15 + 観光${Math.round(tourists * 0.15)} + 要援護${vulnerableTaketomi}`} />
-              <ReadoutRow dot="#38bdf8" label="石垣島" detail={`住民43 + 観光${Math.round(tourists * 0.5)} + 要援護${vulnerableIshigaki}`} />
-              <ReadoutRow dot="#00ff88" label="宮古島・多良間" detail={`住民49 + 観光${Math.round(tourists * 0.35)} + 要援護${vulnerableMiyako}`} />
+              <ReadoutRow dot="#ff5a5a" label="与那国島" detail="住民2 ＋ 観光/要援護(ランダム)" />
+              <ReadoutRow dot="#ff9e3d" label="竹富町全島" detail="住民15 ＋ 観光/要援護(ランダム)" />
+              <ReadoutRow dot="#38bdf8" label="石垣島" detail="住民43 ＋ 観光/要援護(ランダム)" />
+              <ReadoutRow dot="#00ff88" label="宮古島・多良間" detail="住民49 ＋ 観光/要援護(ランダム)" />
             </div>
             <div style={styles.totalLine}>
-              <span style={styles.totalLabel}>TOTAL FORCE</span>
+              <span style={styles.totalLabel}>TOTAL FORCE (MAX)</span>
               <span style={styles.totalValue}>
-                ≈ <span style={{ color: C.green }}>{totalKoma}</span> コマ
-                <span style={styles.totalPeople}> ≒ {(totalKoma * 1000).toLocaleString()} 人</span>
+                ≤ <span style={{ color: C.green }}>{totalKomaMax}</span> コマ
+                <span style={styles.totalPeople}> ≒ {(totalKomaMax * 1000).toLocaleString()} 人</span>
               </span>
             </div>
           </div>
@@ -239,21 +244,6 @@ function Param({ index, title, en, value, valueColor, hint, children }: {
   );
 }
 
-function VulnSlider({ name, dot, value, max, onChange }: {
-  name: string; dot: string; value: number; max: number; onChange: (v: number) => void;
-}) {
-  return (
-    <div style={styles.vuln}>
-      <div style={styles.vulnLabel}>
-        <span style={{ ...styles.vulnDot, background: dot, boxShadow: `0 0 6px ${dot}` }} />
-        <span>{name}</span>
-        <span style={{ ...styles.vulnValue, color: dot }}>{value}</span>
-      </div>
-      <input type="range" min={0} max={max} value={value}
-        onChange={e => onChange(Number(e.target.value))} style={styles.slider} />
-    </div>
-  );
-}
 
 function ReadoutRow({ dot, label, detail }: { dot: string; label: string; detail: string }) {
   return (
@@ -323,10 +313,9 @@ const styles: Record<string, React.CSSProperties> = {
   monthGrid: { display: 'grid', gap: 6 },
 
   fourCol: { display: 'grid', gap: 14 },
-  vuln: {},
-  vulnLabel: { display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, fontWeight: 600, color: C.body, marginBottom: 4 },
   vulnDot: { width: 8, height: 8, borderRadius: 2, flexShrink: 0 },
-  vulnValue: { marginLeft: 'auto', fontFamily: FONT.mono, fontWeight: 800, fontSize: 15 },
+  randNote: { background: 'rgba(0,0,0,0.22)', border: `1px solid ${C.border}`, borderRadius: 4, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 },
+  randRow: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: C.body, lineHeight: 1.5 },
 
   readout: {
     marginTop: 22, background: 'rgba(0,0,0,0.25)', border: `1px solid ${C.border}`,

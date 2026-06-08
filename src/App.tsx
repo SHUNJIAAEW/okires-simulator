@@ -198,7 +198,7 @@ export default function App() {
       }}>
         {/* 左：マップ + コントロール */}
         <div style={styles.leftCol}>
-          <SimulationMap areas={gameState.areas} />
+          <SimulationMap areas={gameState.areas} infra={gameState.infra} />
 
           <div style={styles.controlPanel}>
             {isComplete ? (

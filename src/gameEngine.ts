@@ -2,7 +2,7 @@
 
 import type {
   GameState, SetupConfig, AreaId, AreaState,
-  WeatherState, MilitaryState, TransportState,
+  WeatherState, MilitaryState, TransportState, InfraState,
   ActiveEvent, DayLog, EvacuationRecord, Phase,
   HourlyRoll, EvacuationOrder, DayCapacities, DayPhase1Result,
 } from './types';
@@ -10,12 +10,44 @@ import {
   getWeatherTrack, getInitialWeatherIndex, getInitialWindSpeedIndex,
   getInitialWindDirectionIndex, isStrongWind, AIRPORT_ALLOWED_WIND_DIRECTIONS,
   PREP_LEVEL_SETTINGS, TAKETOMI_TO_ISHIGAKI_FERRY_MAX, YONAGUNI_TO_ISHIGAKI_FERRY,
-  TOURIST_BY_MONTH, getEffectiveActions,
+  getEffectiveActions, TOURIST_MAX_BY_AREA, VULNERABLE_TOTAL_MAX, isTyphoonDay,
 } from './constants';
 
 // ===== サイコロ =====
 export function rollDie(): number {
   return Math.floor(Math.random() * 6) + 1;
+}
+
+// 0..max の一様乱数整数
+function randInt(max: number): number {
+  return Math.floor(Math.random() * (max + 1));
+}
+
+// 観光客を島別上限内で毎回ランダム配置（合計は自然に最大12以下）
+function randomTourists(): Record<AreaId, number> {
+  return {
+    yonaguni: randInt(TOURIST_MAX_BY_AREA.yonaguni),
+    taketomi: randInt(TOURIST_MAX_BY_AREA.taketomi),
+    ishigaki: randInt(TOURIST_MAX_BY_AREA.ishigaki),
+    miyako: randInt(TOURIST_MAX_BY_AREA.miyako),
+  };
+}
+
+// 要援護者を合計上限まで、人口で重み付けした「最適配置」へ毎回ランダムに割り当て
+function randomVulnerable(): Record<AreaId, number> {
+  // 重み＝住民人口（大きい島ほど要援護者が多いのが現実的）
+  const weights: Record<AreaId, number> = { yonaguni: 2, taketomi: 15, ishigaki: 43, miyako: 49 };
+  const result: Record<AreaId, number> = { yonaguni: 0, taketomi: 0, ishigaki: 0, miyako: 0 };
+  const ids = Object.keys(weights) as AreaId[];
+  const totalWeight = ids.reduce((s, id) => s + weights[id], 0);
+  for (let i = 0; i < VULNERABLE_TOTAL_MAX; i++) {
+    let r = Math.random() * totalWeight;
+    for (const id of ids) {
+      r -= weights[id];
+      if (r <= 0) { result[id] += 1; break; }
+    }
+  }
+  return result;
 }
 
 export function rollDice(n: number): number[] {
@@ -30,30 +62,33 @@ export function sumDice(n: number): number {
 export function createInitialState(config: SetupConfig): GameState {
   const { prepLevel, shelterLevel, month } = config;
   const settings = PREP_LEVEL_SETTINGS[prepLevel as keyof typeof PREP_LEVEL_SETTINGS];
-  const touristTotal = TOURIST_BY_MONTH[month];
+
+  // 観光客・要援護者は毎回ランダム配置（島別上限内 / 人口重み付け）
+  const tourists = randomTourists();
+  const vulnerable = randomVulnerable();
 
   const areas: Record<AreaId, AreaState> = {
     yonaguni: {
       id: 'yonaguni', name: '与那国島',
-      residents: 2, tourists: 0, vulnerable: config.vulnerableYonaguni,
+      residents: 2, tourists: tourists.yonaguni, vulnerable: vulnerable.yonaguni,
       fatigue: -shelterLevel, baseActions: 2,
       stagingAirport: 0, stagingPort: 0, inTransitToHub: 0,
     },
     taketomi: {
       id: 'taketomi', name: '竹富町全島',
-      residents: 15, tourists: Math.round(touristTotal * 0.15), vulnerable: config.vulnerableTaketomi,
+      residents: 15, tourists: tourists.taketomi, vulnerable: vulnerable.taketomi,
       fatigue: -shelterLevel, baseActions: 2,
       stagingAirport: 0, stagingPort: 0, inTransitToHub: 0,
     },
     ishigaki: {
       id: 'ishigaki', name: '石垣島',
-      residents: 43, tourists: Math.round(touristTotal * 0.5), vulnerable: config.vulnerableIshigaki,
+      residents: 43, tourists: tourists.ishigaki, vulnerable: vulnerable.ishigaki,
       fatigue: -shelterLevel, baseActions: 4,
       stagingAirport: 0, stagingPort: 0, inTransitToHub: 0,
     },
     miyako: {
       id: 'miyako', name: '宮古島・多良間',
-      residents: 49, tourists: Math.round(touristTotal * 0.35), vulnerable: config.vulnerableMiyako,
+      residents: 49, tourists: tourists.miyako, vulnerable: vulnerable.miyako,
       fatigue: -shelterLevel, baseActions: 3,
       stagingAirport: 0, stagingPort: 0, inTransitToHub: 0,
     },
@@ -147,7 +182,8 @@ export function checkAirportAvailability(
   return {
     shinIshigaki: airportOk('shinIshigaki', infraState.shinIshigakiAirport),
     miyako: airportOk('miyako', infraState.miyakoAirport),
-    shimoji: airportOk('shimoji', infraState.shimojiAirport),
+    // 下地島空港は伊良部大橋経由でしか到達できない＝橋が落ちると使用不能
+    shimoji: airportOk('shimoji', infraState.shimojiAirport && infraState.bridgeIrabu),
     yonaguni: airportOk('yonaguni', infraState.yonagunAirport),
     hateruma: airportOk('hateruma', infraState.haterumaAirport),
     tarama: airportOk('tarama', infraState.taramaAirport),
@@ -253,14 +289,23 @@ export function updateMilitary(state: GameState, log: string[]): MilitaryState {
 }
 
 // ===== 24時間イベントシステム =====
-// イベントスペース時刻（各4時間毎、1日6回）
-const EVENT_SPACE_HOURS = [2, 6, 10, 14, 18, 22];
+// イベント判定マスは毎日ランダムに6時刻へ配置（0〜23時から重複なく抽選）
+function pickEventSpaceHours(count = 6): Set<number> {
+  const pool = Array.from({ length: 24 }, (_, h) => h);
+  // Fisher–Yates で先頭count個をランダム抽出
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return new Set(pool.slice(0, count));
+}
 
 export interface EventResult {
   events: ActiveEvent[];
   log: string[];
   fatigueIncrease: Record<AreaId, number>;
   transportPenalty: Partial<TransportState>;
+  infraPenalty: Partial<InfraState>;
   newDead: number;
   hourlyRolls: HourlyRoll[];
   senkakuOccupied: boolean;
@@ -272,6 +317,7 @@ export function generateDailyEvents(state: GameState): EventResult {
     log: [],
     fatigueIncrease: { yonaguni: 0, taketomi: 0, ishigaki: 0, miyako: 0 },
     transportPenalty: {},
+    infraPenalty: {},
     newDead: 0,
     hourlyRolls: [],
     senkakuOccupied: false,
@@ -283,10 +329,13 @@ export function generateDailyEvents(state: GameState): EventResult {
   const phaseNum = phase === 'peacetime' ? 1 : phase === 'crisis' ? 2 : 3 + Math.floor(Math.max(0, day) / 3);
   const actualPhase = Math.min(4, Math.max(1, phaseNum));
 
+  // 毎日ランダムに6つのイベント判定マスを配置
+  const eventSpaceHours = pickEventSpaceHours(6);
+
   // 24時間ループ
   for (let hour = 0; hour < 24; hour++) {
     const roll = rollDie();
-    const isEventSpace = EVENT_SPACE_HOURS.includes(hour);
+    const isEventSpace = eventSpaceHours.has(hour);
 
     let eventType: 'A' | 'B' | 'C' | 'D' | null = null;
     // eslint-disable-next-line no-useless-assignment
@@ -427,13 +476,25 @@ function processEvent(
       const diceSum = sumDice(4);
       const calcValue = diceSum + chinaTotal - (jsdfTotal + pac3) + senkakuBonus;
       const threshold = 17;
-      const targets = ['石垣港', '平良港', '新石垣空港', '宮古空港'];
+      const targets = ['石垣港', '平良港', '新石垣空港', '宮古空港', '池間大橋', '来間大橋', '伊良部大橋'];
       const target = targets[Math.floor(Math.random() * targets.length)];
       result.log.push(`[イベントC|出目${subRoll}] 【施設ミサイル攻撃 → ${target}】ダイス${diceSum}+中${chinaTotal}-自${jsdfTotal+pac3}+尖${senkakuBonus}=計${calcValue} / 閾値${threshold}`);
       if (calcValue >= threshold) {
         result.log.push(`  ⚠️ 施設破壊! ${target}が使用不能`);
         result.fatigueIncrease.ishigaki += 1.5;
         result.fatigueIncrease.miyako += 1.5;
+        // 対象施設を実際に使用不能化（B1修正: ログと実挙動を一致させる）
+        const FACILITY_INFRA: Record<string, keyof InfraState> = {
+          '石垣港': 'ishigakiPort',
+          '平良港': 'hiraraPort',
+          '新石垣空港': 'shinIshigakiAirport',
+          '宮古空港': 'miyakoAirport',
+          '池間大橋': 'bridgeIkema',
+          '来間大橋': 'bridgeKurima',
+          '伊良部大橋': 'bridgeIrabu',
+        };
+        const infraKey = FACILITY_INFRA[target];
+        if (infraKey) result.infraPenalty[infraKey] = false;
         return `【施設破壊】${target} 計${calcValue}≥${threshold}`;
       }
       return `【ミサイル攻撃】${target} 計${calcValue}<${threshold} 耐えた`;
@@ -595,11 +656,20 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
   let newWeather = updateWeather(state.weather, month, log);
   newWeather = updateWeather(newWeather, month, log);
 
-  // 4. 空港・港の利用可否
-  const airportAvail = checkAirportAvailability(newWeather, month, state.infra);
-  const seaOk = isSeaAvailable(newWeather, month);
+  // 3b. 台風判定（7〜9月=高確率 / 6・10月=中確率）
+  const typhoon = isTyphoonDay(month, rollDie(), rollDie());
+  newWeather = { ...newWeather, typhoon };
 
-  const weatherSummary = buildWeatherSummary(newWeather, month, airportAvail, seaOk);
+  // 4. 空港・港の利用可否（台風直撃日は海路全停止・全空港欠航）
+  let airportAvail = checkAirportAvailability(newWeather, month, state.infra);
+  let seaOk = isSeaAvailable(newWeather, month);
+  if (typhoon) {
+    airportAvail = { shinIshigaki: false, miyako: false, shimoji: false, yonaguni: false, hateruma: false, tarama: false };
+    seaOk = false;
+    log.push('🌀 台風直撃! 海路は全停止・全空港が欠航。本日の避難はほぼ不能、全エリア疲労+1。');
+  }
+
+  const weatherSummary = (typhoon ? '🌀台風直撃 / ' : '') + buildWeatherSummary(newWeather, month, airportAvail, seaOk);
   log.push(`天候: ${weatherSummary}`);
 
   // 5. 軍事配置 (4:00)
@@ -614,32 +684,37 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
   for (const id of Object.keys(areasAfterEvents) as AreaId[]) {
     areasAfterEvents[id].fatigue += eventResult.fatigueIncrease[id];
     if (phaseChanged) areasAfterEvents[id].fatigue += 1;
+    if (typhoon) areasAfterEvents[id].fatigue += 1; // 台風による滞留・消耗
   }
+
+  // 施設破壊などインフラ被害を反映（B1修正）し、被害後の空港利用可否を再計算
+  const damagedInfra: InfraState = { ...state.infra, ...eventResult.infraPenalty };
+  const airportAvailFinal = checkAirportAvailability(newWeather, month, damagedInfra);
 
   const stateAfterEvents: GameState = {
     ...state,
     phase: newPhase,
     weather: newWeather,
     areas: areasAfterEvents,
+    infra: damagedInfra,
     military: {
       ...newMilitary,
       senkakuOccupied: newMilitary.senkakuOccupied || eventResult.senkakuOccupied,
     },
+    transport: {
+      ...state.transport,
+      civilianAirDisabled: state.transport.civilianAirDisabled || (eventResult.transportPenalty.civilianAirDisabled ?? false),
+      civilianShipDisabled: state.transport.civilianShipDisabled || (eventResult.transportPenalty.civilianShipDisabled ?? false),
+    },
   };
 
-  const capacities = getDayCapacities(stateAfterEvents, airportAvail, seaOk);
+  // B2修正: 輸送停止フラグ・インフラ被害を反映した後で容量を計算する
+  const capacities = getDayCapacities(stateAfterEvents, airportAvailFinal, seaOk);
 
   return {
-    stateAfterEvents: {
-      ...stateAfterEvents,
-      transport: {
-        ...stateAfterEvents.transport,
-        civilianAirDisabled: state.transport.civilianAirDisabled || (eventResult.transportPenalty.civilianAirDisabled ?? false),
-        civilianShipDisabled: state.transport.civilianShipDisabled || (eventResult.transportPenalty.civilianShipDisabled ?? false),
-      },
-    },
+    stateAfterEvents,
     newPhase, newMilitary, newWeather,
-    airportAvail, seaOk, capacities,
+    airportAvail: airportAvailFinal, seaOk, capacities,
     hourlyRolls: eventResult.hourlyRolls,
     eventLog: log,
     weatherSummary, phaseChanged,
@@ -795,9 +870,13 @@ export function executeDayPhase2(
   const areaSnapshots = Object.fromEntries(
     Object.entries(areas).map(([id, a]) => [id, {
       total: a.residents + a.tourists + a.vulnerable + a.stagingPort,
+      residents: a.residents,
+      tourists: a.tourists,
+      vulnerable: a.vulnerable,
+      staging: a.stagingPort,
       fatigue: a.fatigue,
     }])
-  ) as Record<AreaId, { total: number; fatigue: number }>;
+  ) as DayLog['areaSnapshots'];
 
   const dLog: DayLog = {
     day,
@@ -842,6 +921,13 @@ export function autoSelectOrders(phase1: DayPhase1Result): EvacuationOrder[] {
   const { transport } = state;
   const civAirOk = !transport.civilianAirDisabled;
 
+  // 橋（池間・来間・伊良部）が落ちると、その離島住民は宮古本島へ渡れず移動不可＝孤立
+  const lockedMiyako = (state.infra.bridgeIkema ? 0 : 1)
+    + (state.infra.bridgeKurima ? 0 : 1)
+    + (state.infra.bridgeIrabu ? 0 : 1);
+  // 宮古の「避難可能な住民数」（孤立分を差し引く）
+  const mRes = Math.max(0, areas.miyako.residents - lockedMiyako);
+
   // 与那国 → 本土(空路)
   if (capacities.yonaguniAirMax > 0) {
     const total = Math.min(capacities.yonaguniAirMax, areas.yonaguni.residents + areas.yonaguni.tourists);
@@ -871,9 +957,11 @@ export function autoSelectOrders(phase1: DayPhase1Result): EvacuationOrder[] {
     }
   }
 
-  // 石垣 → 本土(空路)
+  // 石垣 → 本土(空路) ※与那国・竹富からの待機コマ(stagingPort)を優先確保
   if (capacities.ishigakiAirMax > 0 && civAirOk && airportAvail.shinIshigaki) {
-    const total = Math.min(capacities.ishigakiAirMax, areas.ishigaki.residents + areas.ishigaki.tourists);
+    const reservedForWest = areas.ishigaki.stagingPort; // 西側避難民を優先
+    const ishigakiOwnAir = Math.max(0, capacities.ishigakiAirMax - reservedForWest);
+    const total = Math.min(ishigakiOwnAir, areas.ishigaki.residents + areas.ishigaki.tourists);
     if (total > 0) {
       const res = Math.min(areas.ishigaki.residents, total);
       const tour = Math.min(areas.ishigaki.tourists, total - res);
@@ -909,11 +997,11 @@ export function autoSelectOrders(phase1: DayPhase1Result): EvacuationOrder[] {
     }
   }
 
-  // 宮古 → 本土(空路)
+  // 宮古 → 本土(空路) ※橋崩落で孤立した住民(mRes)は移動不可
   if (capacities.miyakoAirMax > 0 && civAirOk && airportAvail.miyako) {
-    const total = Math.min(capacities.miyakoAirMax, areas.miyako.residents + areas.miyako.tourists);
+    const total = Math.min(capacities.miyakoAirMax, mRes + areas.miyako.tourists);
     if (total > 0) {
-      const res = Math.min(areas.miyako.residents, total);
+      const res = Math.min(mRes, total);
       const tour = Math.min(areas.miyako.tourists, total - res);
       orders.push({ from: 'miyako', to: 'mainland', method: '宮古空港(民間)', residents: res, tourists: tour, vulnerable: 0 });
     }
@@ -921,10 +1009,10 @@ export function autoSelectOrders(phase1: DayPhase1Result): EvacuationOrder[] {
 
   // 宮古 → 本土(下地島)
   if (capacities.shimojAirMax > 0 && civAirOk && airportAvail.shimoji) {
-    const remaining = areas.miyako.residents + areas.miyako.tourists;
+    const remaining = mRes + areas.miyako.tourists;
     const total = Math.min(capacities.shimojAirMax, remaining);
     if (total > 0) {
-      const res = Math.min(areas.miyako.residents, total);
+      const res = Math.min(mRes, total);
       const tour = Math.min(areas.miyako.tourists, total - res);
       orders.push({ from: 'miyako', to: 'mainland', method: '下地島空港(民間)', residents: res, tourists: tour, vulnerable: 0 });
     }
@@ -933,7 +1021,7 @@ export function autoSelectOrders(phase1: DayPhase1Result): EvacuationOrder[] {
   // 宮古 → 本土(海保)
   if (capacities.miyakoCoastGuardMax > 0) {
     const vuln = Math.min(areas.miyako.vulnerable, capacities.miyakoCoastGuardMax);
-    const res = Math.min(areas.miyako.residents, capacities.miyakoCoastGuardMax - vuln);
+    const res = Math.min(mRes, capacities.miyakoCoastGuardMax - vuln);
     if (vuln + res > 0) {
       orders.push({ from: 'miyako', to: 'mainland', method: '海保輸送船', residents: res, tourists: 0, vulnerable: vuln });
     }
@@ -942,7 +1030,7 @@ export function autoSelectOrders(phase1: DayPhase1Result): EvacuationOrder[] {
   // 宮古 → 本土(海自)
   if (capacities.miyakoJmsdfMax > 0) {
     const vuln = Math.min(areas.miyako.vulnerable, 1);
-    const res = Math.min(areas.miyako.residents, 1 - vuln);
+    const res = Math.min(mRes, 1 - vuln);
     if (vuln + res > 0) {
       orders.push({ from: 'miyako', to: 'mainland', method: '海自輸送艦', residents: res, tourists: 0, vulnerable: vuln });
     }
@@ -951,7 +1039,7 @@ export function autoSelectOrders(phase1: DayPhase1Result): EvacuationOrder[] {
   // 宮古 → 本土(民間フェリー)
   if (capacities.miyakoFerryMax > 0) {
     const vuln = Math.min(areas.miyako.vulnerable, capacities.miyakoFerryMax);
-    const res = Math.min(areas.miyako.residents, capacities.miyakoFerryMax - vuln);
+    const res = Math.min(mRes, capacities.miyakoFerryMax - vuln);
     if (vuln + res > 0) {
       orders.push({ from: 'miyako', to: 'mainland', method: '平良港フェリー', residents: res, tourists: 0, vulnerable: vuln });
     }

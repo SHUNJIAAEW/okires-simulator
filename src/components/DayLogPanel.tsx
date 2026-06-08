@@ -122,6 +122,11 @@ export function DayLogPanel({ logs }: Props) {
                       <div style={{ ...styles.snapTotal, color: snap.total === 0 ? C.green : C.bright }}>
                         {snap.total === 0 ? '✓完了' : `${snap.total}コマ`}
                       </div>
+                      {snap.total > 0 && (
+                        <div style={styles.snapBreakdown}>
+                          住{snap.residents}・観{snap.tourists}・要{snap.vulnerable}{snap.staging > 0 ? `・待${snap.staging}` : ''}
+                        </div>
+                      )}
                       <div style={styles.snapFatigue}>疲労{snap.fatigue >= 0 ? '+' : ''}{snap.fatigue.toFixed(1)}</div>
                     </div>
                   ))}
@@ -254,6 +259,7 @@ const styles: Record<string, React.CSSProperties> = {
   snapItem: { borderRadius: 4, padding: '6px 8px', borderWidth: 1, borderStyle: 'solid', borderColor: C.border, textAlign: 'center', background: C.bgCard },
   snapArea: { fontSize: 10, color: C.dim, marginBottom: 2 },
   snapTotal: { fontSize: 14, fontWeight: 700, fontFamily: FONT.mono },
+  snapBreakdown: { fontSize: 9, color: C.body, marginTop: 1, fontFamily: FONT.mono },
   snapFatigue: { fontSize: 10, color: C.dim, marginTop: 2 },
   totalBar: {
     display: 'flex', alignItems: 'center', gap: 8,

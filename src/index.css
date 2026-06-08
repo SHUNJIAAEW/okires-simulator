@@ -223,6 +223,33 @@ input[type='range']::-moz-range-thumb {
   animation: okires-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* ── Print (PDF出力) ─────────────────────────────────────── */
+@media print {
+  @page {
+    margin: 12mm;
+  }
+  html,
+  body {
+    background: #ffffff !important;
+    background-image: none !important;
+    color: #0b1726 !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  /* 印刷時はカードを白地・枠線ありで読みやすく */
+  .result-print-root {
+    color: #0b1726 !important;
+  }
+  .tac-card,
+  .tac-fade {
+    animation: none !important;
+    box-shadow: none !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
+
 /* ── Reduced motion ──────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   * {

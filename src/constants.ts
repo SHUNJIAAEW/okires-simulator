@@ -170,6 +170,29 @@ export const TOURIST_BY_MONTH: Record<number, number> = {
   11: 8, 12: 12,
 };
 
+// ===== 観光客 島別上限（合計最大12・毎回ランダム配置） =====
+export const TOURIST_MAX_BY_AREA = {
+  yonaguni: 0,
+  taketomi: 2,
+  ishigaki: 5,
+  miyako: 5,
+} as const;
+
+// ===== 要援護者 合計上限（毎回ランダム＝人口で重み付けした最適配置） =====
+export const VULNERABLE_TOTAL_MAX = 9;
+
+// ===== 台風ルール =====
+// 7〜9月: 台風シーズン本番（1日あたり高確率）
+// 6・10月: 台風シーズンの肩（中確率）
+// それ以外: 台風なし
+// 効果: 当日の海路は全停止・全空港欠航・全エリア疲労+1（避難不能日）
+// roll は 1〜6 のダイス2個（高=1個目で判定 / 中=2個で判定）
+export function isTyphoonDay(month: number, roll1: number, roll2: number): boolean {
+  if (month >= 7 && month <= 9) return roll1 === 1;            // 約16.7%/日
+  if (month === 6 || month === 10) return roll1 === 1 && roll2 <= 3; // 約8.3%/日
+  return false;
+}
+
 // ===== フェーズ別イベント発生確率 =====
 // フェーズ1でダイス出目1=A, フェーズ2で1-2=B, フェーズ3で1-3=C, フェーズ4で1-4=D
 // (簡略化: 各フェーズの発生しうるイベントタイプ)

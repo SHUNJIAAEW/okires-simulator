@@ -1,7 +1,7 @@
 // SimulationMap.tsx — マス目（board game grid）マップ
 // 与那国 → 竹富町 → 石垣島(ハブ) → 宮古島・多良間 の配置を再現
 
-import type { AreaId, AreaState } from '../types';
+import type { AreaId, AreaState, InfraState } from '../types';
 import { getEffectiveActions } from '../constants';
 import { useWindowWidth } from '../hooks/useWindowWidth';
 
@@ -26,6 +26,7 @@ const C = {
 
 interface Props {
   areas: Record<AreaId, AreaState>;
+  infra?: InfraState;
   selectedHour?: number;
 }
 
@@ -535,7 +536,7 @@ function IslandCard({ area, title, subtitle, color, bgLight, bgDark, rows, cellS
 // ─────────────────────────────────────────────────
 //  SimulationMap (main export)
 // ─────────────────────────────────────────────────
-export function SimulationMap({ areas }: Props) {
+export function SimulationMap({ areas, infra }: Props) {
   const windowWidth = useWindowWidth();
   const isMobile = windowWidth < 768;
   const isSmall = windowWidth < 480;
@@ -705,6 +706,33 @@ export function SimulationMap({ areas }: Props) {
           <div style={{ marginLeft: 'auto', fontSize: 7, color: C.dimText, fontFamily: 'monospace' }}>
             ※ 要援護者は海路のみ
           </div>
+        </div>
+      )}
+
+      {/* 橋ステータス（宮古圏：池間・来間・伊良部/下地） */}
+      {infra && (
+        <div style={{
+          marginTop: 8, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
+          background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 4, padding: '4px 8px',
+        }}>
+          <span style={{ fontSize: 8, color: C.dimText, fontFamily: 'monospace', letterSpacing: 1 }}>🌉 宮古圏の橋</span>
+          {[
+            { ok: infra.bridgeIkema, label: '池間大橋' },
+            { ok: infra.bridgeKurima, label: '来間大橋' },
+            { ok: infra.bridgeIrabu, label: '伊良部大橋(→下地島空港)' },
+          ].map(b => (
+            <div key={b.label} style={{
+              display: 'flex', alignItems: 'center', gap: 3,
+              background: b.ok ? 'rgba(0,255,136,0.08)' : 'rgba(255,59,59,0.12)',
+              border: `1px solid ${b.ok ? 'rgba(0,255,136,0.4)' : C.red}`,
+              borderRadius: 3, padding: '2px 6px',
+            }}>
+              <span style={{ fontSize: 9 }}>{b.ok ? '🌉' : '🚧'}</span>
+              <span style={{ fontSize: 8, fontWeight: 700, fontFamily: 'monospace', color: b.ok ? C.green : C.red }}>
+                {b.label}{b.ok ? '' : ' 崩落・通行不可'}
+              </span>
+            </div>
+          ))}
         </div>
       )}
     </div>

@@ -11,6 +11,7 @@ export interface WeatherState {
   conditionIndex: number;
   windSpeedIndex: number;
   windDirectionIndex: number;
+  typhoon?: boolean; // 台風直撃中（海路全停止・空港欠航）
 }
 
 export interface AreaState {
@@ -142,7 +143,14 @@ export interface DayLog {
   fatigueSummary: string;
   totalEvacuatedSoFar: number;
   totalDeadSoFar: number;
-  areaSnapshots: Record<AreaId, { total: number; fatigue: number }>;
+  areaSnapshots: Record<AreaId, {
+    total: number;
+    residents: number;
+    tourists: number;
+    vulnerable: number;
+    staging: number;
+    fatigue: number;
+  }>;
   hourlyRolls: HourlyRoll[];  // 24時間別ダイス
 }
 
@@ -170,10 +178,7 @@ export interface SetupConfig {
   prepLevel: number;
   shelterLevel: number;
   month: number;
-  vulnerableYonaguni: number;
-  vulnerableTaketomi: number;
-  vulnerableIshigaki: number;
-  vulnerableMiyako: number;
+  // 観光客・要援護者は createInitialState で毎回ランダム配置（島別上限内）
 }
 
 // フェーズ1完了後の中間状態（プレイヤーへの提示用）

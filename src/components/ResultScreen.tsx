@@ -1,8 +1,38 @@
-import React from 'react';
-import type { GameState } from '../types';
+import React, { useState } from 'react';
+import type { GameState, DayLog } from '../types';
 import type { AreaId } from '../types';
 import { useWindowWidth } from '../hooks/useWindowWidth';
+import { DayLogPanel } from './DayLogPanel';
 import { C, FONT } from '../theme';
+
+// ── 結果の内訳分析（いつ・なぜ・どのように・どうすべきか）を dayLogs から導出 ──
+interface CauseRow { when: string; what: string; count: number; }
+function analyzeDeaths(dayLogs: DayLog[]): { rows: CauseRow[]; total: number } {
+  const rows: CauseRow[] = [];
+  let prevDead = 0;
+  for (const log of dayLogs) {
+    const delta = log.totalDeadSoFar - prevDead;
+    prevDead = log.totalDeadSoFar;
+    if (delta <= 0) continue;
+    const ev = log.events.join(' ');
+    let what = '複合的な要因';
+    if (/撃沈|輸送便/.test(ev)) what = '輸送機・船舶の撃墜／撃沈';
+    else if (/施設破壊/.test(ev)) what = '空港・港湾の施設破壊';
+    else if (/X\+3|竹富以西|期限/.test(ev)) what = 'X+3日 避難期限切れ（竹富以西）';
+    else if (/疲労限界|疲労/.test(ev)) what = '住民の疲労限界（避難不能化）';
+    else if (/台風/.test(ev)) what = '台風による避難停止中の被害';
+    rows.push({ when: log.dayLabel, what, count: delta });
+  }
+  return { rows, total: prevDead };
+}
+const DEATH_FIX: Record<string, string> = {
+  '輸送機・船舶の撃墜／撃沈': '護衛（制空・制海）を伴う輸送に切替え、夜間・分散運航でリスクを下げる。早期に輸送量を前倒し。',
+  '空港・港湾の施設破壊': 'PAC3等の防空を該当拠点へ前進配備し、滑走路・岸壁の応急復旧部隊を事前展開する。',
+  'X+3日 避難期限切れ（竹富以西）': '与那国・竹富を最優先で先行避難（X-3日から着手）。離島フェリーの増便を平時から準備。',
+  '住民の疲労限界（避難不能化）': '抗堪性（シェルター）を引き上げ、避難所での休養と交代要員を確保。連続行動を避ける。',
+  '台風による避難停止中の被害': '台風シーズン（7〜9月）前に避難を完了させる前倒し計画。気象予測に基づく早期発令。',
+  '複合的な要因': '事前準備レベルを上げ、輸送・防空・気象の各リスクに多重の代替手段を用意する。',
+};
 
 interface Props {
   state: GameState;
@@ -139,8 +169,34 @@ export function ResultScreen({ state, onRestart }: Props) {
   const avgPerDay = activeDays.length > 0 ? activeDays.reduce((s, d) => s + d.delta, 0) / activeDays.length : 0;
   const benchmarkPct = (GOV_BENCHMARK / maxDelta) * 100;
 
+  // 内訳分析データ
+  const deathAnalysis = analyzeDeaths(dayLogs);
+  const [showDays, setShowDays] = useState(false);
+
+  // 避難方法の集計（どのように避難できたか）
+  const methodCount: Record<string, number> = {};
+  for (const log of dayLogs) {
+    for (const e of log.evacuations) {
+      methodCount[e.method] = (methodCount[e.method] || 0) + e.count;
+    }
+  }
+  const topMethods = Object.entries(methodCount).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+  // 取り残しの理由推定（最終状態ベース）
+  const strandedReasons: string[] = [];
+  if (totalRemaining > 0) {
+    if (!state.infra.bridgeIkema || !state.infra.bridgeKurima || !state.infra.bridgeIrabu)
+      strandedReasons.push('橋（池間・来間・伊良部）の崩落で離島住民が宮古本島へ渡れず孤立した');
+    if (state.transport.civilianAirDisabled) strandedReasons.push('民間航空が使用不能になり空路の避難量が激減した');
+    if (state.transport.civilianShipDisabled) strandedReasons.push('民間船舶が使用不能になり海路の避難量が激減した');
+    if (Object.values(areas).some(a => a.fatigue >= a.baseActions)) strandedReasons.push('住民の疲労が限界に達し避難行動が取れなくなった');
+    if (strandedReasons.length === 0) strandedReasons.push('輸送容量（便数・港湾処理量）が避難対象人数に追いつかなかった');
+  }
+
+  const handlePrint = () => window.print();
+
   return (
-    <div style={styles.page}>
+    <div className="result-print-root" style={styles.page}>
       {/* 機密バナー */}
       <div style={styles.classBar}>
         <span style={styles.classDot} />
@@ -160,6 +216,9 @@ export function ResultScreen({ state, onRestart }: Props) {
           <p style={styles.subtitle}>
             事前準備 <b style={styles.subHi}>Lv.{prepLevel}</b> ／ 抗堪性 <b style={styles.subHi}>Lv.{shelterLevel}</b> ／ <b style={styles.subHi}>{month}月</b> 発生
           </p>
+          <button className="no-print tac-ghost" style={styles.pdfBtn} onClick={handlePrint}>
+            🖨 PDFで出力 / 印刷
+          </button>
         </div>
 
         {/* スコア */}
@@ -231,6 +290,61 @@ export function ResultScreen({ state, onRestart }: Props) {
             <div style={styles.chartNote}>各バー＝その日に新たに避難完了したコマ数。緑＝政府目標達成、青＝目標未達、灰＝避難なし。</div>
           </Card>
         )}
+
+        {/* 内訳分析 ― いつ・なぜ・どのように・どうすべきか */}
+        <Card title="結果の内訳分析 ― いつ・なぜ・どのように・どうすべきか" en="WHEN / WHY / HOW / FIX" accent={C.amber}>
+          {/* 避難完了 */}
+          <div style={{ ...styles.anaBlock, borderLeft: `3px solid ${C.green}` }}>
+            <div style={{ ...styles.anaHead, color: C.green }}>✈ 避難完了 — {evacuated}コマ（{(evacuated * 1000).toLocaleString()}人）</div>
+            <AnaRow k="いつ" v={`X-3日〜X+8日の全期間。実績平均 ${avgPerDay.toFixed(1)}コマ/日（政府目標 ${GOV_BENCHMARK}コマ/日）。`} />
+            <AnaRow k="どのように" v={topMethods.length > 0 ? topMethods.map(([m, c]) => `${m}:${c}`).join(' / ') : '避難実績なし'} />
+            <AnaRow k="どうすべきか" v={avgPerDay >= GOV_BENCHMARK ? 'この水準を維持。さらに台風前の前倒しで安全余裕を確保。' : '輸送量が目標未達。事前準備Lvと輸送手段の多重化で日次スループットを底上げ。'} />
+          </div>
+
+          {/* 取り残し */}
+          {totalRemaining > 0 && (
+            <div style={{ ...styles.anaBlock, borderLeft: `3px solid ${C.amber}` }}>
+              <div style={{ ...styles.anaHead, color: C.amber }}>⏳ 取り残し — {totalRemaining}コマ（{(totalRemaining * 1000).toLocaleString()}人）</div>
+              <AnaRow k="いつ" v="シミュレーション終了時（X+8日）まで避難できず残存。" />
+              <AnaRow k="どこで" v={Object.entries(areas).filter(([, a]) => (a.residents + a.tourists + a.vulnerable + a.stagingPort) > 0).map(([id, a]) => `${AREA_NAMES[id as AreaId]}:${a.residents + a.tourists + a.vulnerable + a.stagingPort}`).join(' / ')} />
+              <AnaRow k="なぜ" v={strandedReasons.join('／')} />
+              <AnaRow k="どうすべきか" v="ボトルネック（橋・輸送・疲労）に応じ、橋の防護／輸送の多重化／早期着手で残存をゼロに近づける。" />
+            </div>
+          )}
+
+          {/* 死亡 */}
+          {deathAnalysis.total > 0 ? (
+            <div style={{ ...styles.anaBlock, borderLeft: `3px solid ${C.red}` }}>
+              <div style={{ ...styles.anaHead, color: C.red }}>💀 死亡 — {deathAnalysis.total}コマ（{(deathAnalysis.total * 1000).toLocaleString()}人）</div>
+              {deathAnalysis.rows.map((r, i) => (
+                <div key={i} style={styles.deathRow}>
+                  <span style={styles.deathWhen}>{r.when}</span>
+                  <span style={styles.deathWhat}>{r.what}</span>
+                  <span style={styles.deathCount}>{r.count}コマ</span>
+                </div>
+              ))}
+              <div style={{ ...styles.anaSubHead, color: C.red }}>どうすべきか（原因別）</div>
+              {[...new Set(deathAnalysis.rows.map(r => r.what))].map((cause, i) => (
+                <AnaRow key={i} k={cause} v={DEATH_FIX[cause] ?? DEATH_FIX['複合的な要因']} />
+              ))}
+            </div>
+          ) : (
+            <div style={{ ...styles.anaBlock, borderLeft: `3px solid ${C.green}` }}>
+              <div style={{ ...styles.anaHead, color: C.green }}>💀 死亡 — 0コマ（死者なし）</div>
+              <AnaRow k="評価" v="人的損失ゼロで避難を完遂。条件が悪化した場合に備え、この体制を標準化する。" />
+            </div>
+          )}
+        </Card>
+
+        {/* 1日ごとの詳細（各コマの振り返り） */}
+        <Card title="1日ごとの詳細 ― 各コマの振り返り" en="DAY-BY-DAY REVIEW" accent={C.blue}>
+          <button className="no-print tac-ghost" style={styles.dayToggle} onClick={() => setShowDays(s => !s)}>
+            {showDays ? '▲ 日別の詳細を閉じる' : `▼ 全${dayLogs.length}日分の詳細（天候・避難実績・イベント・24hダイス・エリア別残員）を開く`}
+          </button>
+          <div className={showDays ? undefined : 'no-print'} style={{ display: showDays ? 'block' : 'none', marginTop: 12 }}>
+            <DayLogPanel logs={dayLogs} />
+          </div>
+        </Card>
 
         {/* エリア別結果 */}
         <Card title="エリア別残員状況" en="SECTOR STATUS" accent={C.blue}>
@@ -324,13 +438,22 @@ export function ResultScreen({ state, onRestart }: Props) {
           </div>
         </Card>
 
-        <button className="tac-cta" style={styles.restartBtn} onClick={onRestart} onFocus={e => e.currentTarget.blur()} onMouseDown={e => e.preventDefault()}>
+        <button className="no-print tac-cta" style={styles.restartBtn} onClick={onRestart} onFocus={e => e.currentTarget.blur()} onMouseDown={e => e.preventDefault()}>
           <span style={styles.restartMain}>↻ もう一度シミュレーション</span>
           <span style={styles.restartSub}>RE-RUN MISSION</span>
         </button>
 
         <div style={styles.footer}>OKIRES2026 デジタルシミュレーター ／ ルール: OKIRES製作委員会 (okires2025@gmail.com)</div>
       </div>
+    </div>
+  );
+}
+
+function AnaRow({ k, v }: { k: string; v: string }) {
+  return (
+    <div style={styles.anaRow}>
+      <span style={styles.anaKey}>{k}</span>
+      <span style={styles.anaVal}>{v}</span>
     </div>
   );
 }
@@ -445,6 +568,19 @@ const styles: Record<string, React.CSSProperties> = {
   restartSub: { fontFamily: FONT.mono, fontSize: 10, fontWeight: 700, letterSpacing: 3, opacity: 0.7 },
   footer: { textAlign: 'center', color: C.dim, fontSize: 11, fontFamily: FONT.mono, marginTop: 4 },
 
+  // 内訳分析
+  pdfBtn: { marginTop: 12, padding: '8px 18px', background: 'rgba(42,100,150,0.12)', color: C.white, borderWidth: 1, borderStyle: 'solid', borderColor: C.borderHi, borderRadius: 4, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: FONT.jp },
+  anaBlock: { background: 'rgba(0,0,0,0.25)', borderRadius: 4, padding: '12px 14px', marginTop: 10, border: `1px solid ${C.border}` },
+  anaHead: { fontSize: 15, fontWeight: 800, marginBottom: 8 },
+  anaSubHead: { fontSize: 12, fontWeight: 700, marginTop: 10, marginBottom: 4, fontFamily: FONT.mono },
+  anaRow: { display: 'flex', gap: 10, padding: '4px 0', borderBottom: `1px solid ${C.border}`, fontSize: 12.5, alignItems: 'flex-start', lineHeight: 1.6 },
+  anaKey: { color: C.bright, fontWeight: 700, minWidth: 84, flexShrink: 0 },
+  anaVal: { color: C.body },
+  deathRow: { display: 'flex', gap: 10, padding: '4px 0', borderBottom: `1px solid ${C.border}`, fontSize: 12.5, alignItems: 'center' },
+  deathWhen: { fontFamily: FONT.mono, color: C.amber, fontWeight: 700, minWidth: 56 },
+  deathWhat: { color: C.body, flex: 1 },
+  deathCount: { fontFamily: FONT.mono, color: C.red, fontWeight: 800 },
+  dayToggle: { width: '100%', padding: '10px 14px', background: 'rgba(42,100,150,0.12)', color: C.white, borderWidth: 1, borderStyle: 'solid', borderColor: C.borderHi, borderRadius: 4, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: FONT.jp, textAlign: 'left' },
   // Chart
   chartLegend: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12, fontSize: 11, color: C.dim, flexWrap: 'wrap', fontFamily: FONT.mono },
   legendBar: { display: 'inline-block', width: 12, height: 12, borderRadius: 2, flexShrink: 0 },
