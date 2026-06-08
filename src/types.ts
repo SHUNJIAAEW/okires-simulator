@@ -11,7 +11,6 @@ export interface WeatherState {
   conditionIndex: number;
   windSpeedIndex: number;
   windDirectionIndex: number;
-  typhoon?: boolean; // 台風直撃中（海路全停止・空港欠航）
 }
 
 export interface AreaState {

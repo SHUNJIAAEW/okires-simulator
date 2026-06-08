@@ -66,8 +66,8 @@ export function SetupScreen({ onStart }: Props) {
   const [shelterLevel, setShelterLevel] = useState(3);
   const [month, setMonth] = useState(8);
 
-  const dangerSeason = month >= 6 && month <= 10;
-  const typhoonSeason = month >= 7 && month <= 9;
+  const heavyRainSeason = month >= 7 && month <= 9;      // 大雨に届きやすい短いトラック
+  const transitionSeason = [5, 6, 10, 11].includes(month); // 大雨まで遠い長いトラック
 
   const handleStart = () => {
     onStart({ prepLevel, shelterLevel, month });
@@ -149,13 +149,14 @@ export function SetupScreen({ onStart }: Props) {
           </Param>
 
           {/* 月 */}
-          <Param index="03" title="事態発生月" en="ONSET MONTH" value={`${month}月`} valueColor={dangerSeason ? C.amber : C.bright}>
+          <Param index="03" title="事態発生月" en="ONSET MONTH" value={`${month}月`} valueColor={heavyRainSeason ? C.red : transitionSeason ? C.amber : C.bright}>
             <p style={styles.desc}>
-              {typhoonSeason
-                ? <span style={{ color: C.red, fontWeight: 700 }}>🌀 7〜9月：台風の発生確率が高い（海路全停止・空港欠航のリスク大）</span>
-                : dangerSeason
-                  ? <span style={{ color: C.amber, fontWeight: 700 }}>⚠ 6・10月：台風・大雨の発生確率がやや高い季節</span>
-                  : <span>比較的安定した気象</span>}
+              {heavyRainSeason
+                ? <span style={{ color: C.red, fontWeight: 700 }}>☔ 7〜9月：天候トラックが短く<strong>大雨</strong>に届きやすい（大雨＝海路全停止＋空港閉鎖）</span>
+                : transitionSeason
+                  ? <span style={{ color: C.amber, fontWeight: 700 }}>⚠ 5・6・10・11月：トラックは長いが<strong>大雨</strong>に至ることがある</span>
+                  : <span>比較的安定（12〜4月。<strong>大雨</strong>はトラック終端でのみ）</span>}
+              <br /><span style={{ color: C.dim, fontSize: 11 }}>※ 大雨（天候）と強風（風速）は別個に独立。強風は風向次第で空港が欠航。</span>
             </p>
             <div style={{ ...styles.monthGrid, gridTemplateColumns: isMobile ? 'repeat(4, 1fr)' : 'repeat(6, 1fr)' }}>
               {Array.from({ length: 12 }, (_, i) => i + 1).map(m => {

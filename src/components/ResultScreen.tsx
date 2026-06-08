@@ -20,7 +20,7 @@ function analyzeDeaths(dayLogs: DayLog[]): { rows: CauseRow[]; total: number } {
     else if (/施設破壊/.test(ev)) what = '空港・港湾の施設破壊';
     else if (/X\+3|竹富以西|期限/.test(ev)) what = 'X+3日 避難期限切れ（竹富以西）';
     else if (/疲労限界|疲労/.test(ev)) what = '住民の疲労限界（避難不能化）';
-    else if (/台風/.test(ev)) what = '台風による避難停止中の被害';
+    else if (/大雨|強風/.test(ev)) what = '大雨・強風による避難停止中の被害';
     rows.push({ when: log.dayLabel, what, count: delta });
   }
   return { rows, total: prevDead };
@@ -30,7 +30,7 @@ const DEATH_FIX: Record<string, string> = {
   '空港・港湾の施設破壊': 'PAC3等の防空を該当拠点へ前進配備し、滑走路・岸壁の応急復旧部隊を事前展開する。',
   'X+3日 避難期限切れ（竹富以西）': '与那国・竹富を最優先で先行避難（X-3日から着手）。離島フェリーの増便を平時から準備。',
   '住民の疲労限界（避難不能化）': '抗堪性（シェルター）を引き上げ、避難所での休養と交代要員を確保。連続行動を避ける。',
-  '台風による避難停止中の被害': '台風シーズン（7〜9月）前に避難を完了させる前倒し計画。気象予測に基づく早期発令。',
+  '大雨・強風による避難停止中の被害': '大雨に届きやすい7〜9月を避ける／天候の悪化前に前倒しで避難完了。強風時は風向に強い航路・空港へ振り分ける。',
   '複合的な要因': '事前準備レベルを上げ、輸送・防空・気象の各リスクに多重の代替手段を用意する。',
 };
 
@@ -298,7 +298,7 @@ export function ResultScreen({ state, onRestart }: Props) {
             <div style={{ ...styles.anaHead, color: C.green }}>✈ 避難完了 — {evacuated}コマ（{(evacuated * 1000).toLocaleString()}人）</div>
             <AnaRow k="いつ" v={`X-3日〜X+8日の全期間。実績平均 ${avgPerDay.toFixed(1)}コマ/日（政府目標 ${GOV_BENCHMARK}コマ/日）。`} />
             <AnaRow k="どのように" v={topMethods.length > 0 ? topMethods.map(([m, c]) => `${m}:${c}`).join(' / ') : '避難実績なし'} />
-            <AnaRow k="どうすべきか" v={avgPerDay >= GOV_BENCHMARK ? 'この水準を維持。さらに台風前の前倒しで安全余裕を確保。' : '輸送量が目標未達。事前準備Lvと輸送手段の多重化で日次スループットを底上げ。'} />
+            <AnaRow k="どうすべきか" v={avgPerDay >= GOV_BENCHMARK ? 'この水準を維持。さらに大雨・強風の悪天候前に前倒しで安全余裕を確保。' : '輸送量が目標未達。事前準備Lvと輸送手段の多重化で日次スループットを底上げ。'} />
           </div>
 
           {/* 取り残し */}

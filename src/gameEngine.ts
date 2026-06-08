@@ -10,7 +10,7 @@ import {
   getWeatherTrack, getInitialWeatherIndex, getInitialWindSpeedIndex,
   getInitialWindDirectionIndex, isStrongWind, AIRPORT_ALLOWED_WIND_DIRECTIONS,
   PREP_LEVEL_SETTINGS, TAKETOMI_TO_ISHIGAKI_FERRY_MAX, YONAGUNI_TO_ISHIGAKI_FERRY,
-  getEffectiveActions, TOURIST_MAX_BY_AREA, VULNERABLE_TOTAL_MAX, isTyphoonDay,
+  getEffectiveActions, TOURIST_MAX_BY_AREA, VULNERABLE_TOTAL_MAX,
 } from './constants';
 
 // ===== サイコロ =====
@@ -656,20 +656,11 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
   let newWeather = updateWeather(state.weather, month, log);
   newWeather = updateWeather(newWeather, month, log);
 
-  // 3b. 台風判定（7〜9月=高確率 / 6・10月=中確率）
-  const typhoon = isTyphoonDay(month, rollDie(), rollDie());
-  newWeather = { ...newWeather, typhoon };
+  // 4. 空港・港の利用可否（大雨＝海路全停止+空港閉鎖 / 強風＝海路停止+風向次第で欠航。両者は独立）
+  const airportAvail = checkAirportAvailability(newWeather, month, state.infra);
+  const seaOk = isSeaAvailable(newWeather, month);
 
-  // 4. 空港・港の利用可否（台風直撃日は海路全停止・全空港欠航）
-  let airportAvail = checkAirportAvailability(newWeather, month, state.infra);
-  let seaOk = isSeaAvailable(newWeather, month);
-  if (typhoon) {
-    airportAvail = { shinIshigaki: false, miyako: false, shimoji: false, yonaguni: false, hateruma: false, tarama: false };
-    seaOk = false;
-    log.push('🌀 台風直撃! 海路は全停止・全空港が欠航。本日の避難はほぼ不能、全エリア疲労+1。');
-  }
-
-  const weatherSummary = (typhoon ? '🌀台風直撃 / ' : '') + buildWeatherSummary(newWeather, month, airportAvail, seaOk);
+  const weatherSummary = buildWeatherSummary(newWeather, month, airportAvail, seaOk);
   log.push(`天候: ${weatherSummary}`);
 
   // 5. 軍事配置 (4:00)
@@ -684,7 +675,6 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
   for (const id of Object.keys(areasAfterEvents) as AreaId[]) {
     areasAfterEvents[id].fatigue += eventResult.fatigueIncrease[id];
     if (phaseChanged) areasAfterEvents[id].fatigue += 1;
-    if (typhoon) areasAfterEvents[id].fatigue += 1; // 台風による滞留・消耗
   }
 
   // 施設破壊などインフラ被害を反映（B1修正）し、被害後の空港利用可否を再計算

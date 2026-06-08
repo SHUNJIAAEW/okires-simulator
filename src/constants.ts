@@ -5,9 +5,9 @@ import type { AreaId, WeatherCondition } from './types';
 // ===== 天候トラック =====
 // 月別の天候トラック (1-indexed)
 export const WEATHER_TRACKS: Record<string, WeatherCondition[]> = {
-  summer: ['rain', 'cloudy', 'sunny', 'cloudy', 'rain', 'heavy-rain'], // 7-9月 (6段階)
-  transition: ['rain', 'cloudy', 'cloudy', 'sunny', 'sunny', 'sunny', 'cloudy', 'cloudy', 'rain', 'heavy-rain'], // 5,6,10,11月 (10段階)
-  winter: ['rain', 'cloudy', 'cloudy', 'sunny', 'cloudy', 'rain'], // 12-4月 (6段階)
+  summer: ['rain', 'cloudy', 'sunny', 'cloudy', 'rain', 'heavy-rain'], // 7-9月 (1雨〜6大雨)
+  transition: ['rain', 'cloudy', 'cloudy', 'sunny', 'sunny', 'sunny', 'cloudy', 'cloudy', 'rain', 'heavy-rain'], // 5,6,10,11月 (1雨〜10大雨)
+  winter: ['rain', 'cloudy', 'cloudy', 'sunny', 'cloudy', 'heavy-rain'], // 12-4月 (1雨〜6大雨)
 };
 
 export function getWeatherTrack(month: number): WeatherCondition[] {
@@ -180,18 +180,6 @@ export const TOURIST_MAX_BY_AREA = {
 
 // ===== 要援護者 合計上限（毎回ランダム＝人口で重み付けした最適配置） =====
 export const VULNERABLE_TOTAL_MAX = 9;
-
-// ===== 台風ルール =====
-// 7〜9月: 台風シーズン本番（1日あたり高確率）
-// 6・10月: 台風シーズンの肩（中確率）
-// それ以外: 台風なし
-// 効果: 当日の海路は全停止・全空港欠航・全エリア疲労+1（避難不能日）
-// roll は 1〜6 のダイス2個（高=1個目で判定 / 中=2個で判定）
-export function isTyphoonDay(month: number, roll1: number, roll2: number): boolean {
-  if (month >= 7 && month <= 9) return roll1 === 1;            // 約16.7%/日
-  if (month === 6 || month === 10) return roll1 === 1 && roll2 <= 3; // 約8.3%/日
-  return false;
-}
 
 // ===== フェーズ別イベント発生確率 =====
 // フェーズ1でダイス出目1=A, フェーズ2で1-2=B, フェーズ3で1-3=C, フェーズ4で1-4=D
