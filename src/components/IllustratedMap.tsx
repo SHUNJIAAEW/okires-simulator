@@ -14,7 +14,9 @@ interface Props {
 }
 
 const VW = 320, VH = 180;
-const FH = "'Zen Kurenaido', 'Yomogi', sans-serif"; // 手書き風
+const FH = "'Yusei Magic', 'Noto Sans JP', sans-serif"; // 太め手書き風
+// 文字を読みやすくする白フチ
+const HALO = '1px 1px 0 #fff, -1px 1px 0 #fff, 1px -1px 0 #fff, -1px -1px 0 #fff, 0 2px 3px rgba(0,0,0,0.35)';
 
 // svg座標→%（HTMLオーバーレイ用）
 const px = (x: number) => `${(x / VW) * 100}%`;
@@ -150,7 +152,6 @@ export function IllustratedMap({ areas, infra, evacuated = 0, dead = 0, dayLogs 
   return (
     <div style={styles.frame}>
       <div style={styles.titleBar}>
-        <span style={styles.titleMain}>🏝 先島諸島 ひなんマップ</span>
         <span style={styles.liveBadges}>
           <span style={{ ...styles.liveBadge, color: '#1b8a4b' }}>避難 {evacuated}</span>
           <span style={{ ...styles.liveBadge, color: '#c0392b' }}>死亡 {dead}</span>
@@ -191,8 +192,8 @@ export function IllustratedMap({ areas, infra, evacuated = 0, dead = 0, dayLogs 
             ))}
           </g>
 
-          {/* 航路（点線） */}
-          <g stroke="rgba(255,255,255,0.85)" strokeWidth="1" strokeDasharray="2 2" fill="none" filter="url(#rough)">
+          {/* 航路（流れる点線で移動方向を表示） */}
+          <g className="route-flow" stroke="rgba(255,255,255,0.92)" strokeWidth="1.4" fill="none" filter="url(#rough)">
             <path d={`M ${ISLAND_CENTER.yonaguni.x} ${ISLAND_CENTER.yonaguni.y} Q 95 70 ${HUB.x} ${HUB.y}`} markerEnd="url(#amk)" />
             <path d={`M ${ISLAND_CENTER.taketomi.x} ${ISLAND_CENTER.taketomi.y} Q 130 100 ${HUB.x} ${HUB.y}`} markerEnd="url(#amk)" />
             <path d={`M ${HUB.x} ${HUB.y} Q 150 45 150 22`} markerEnd="url(#amk)" />
@@ -225,26 +226,31 @@ export function IllustratedMap({ areas, infra, evacuated = 0, dead = 0, dayLogs 
 
         {/* HTMLオーバーレイ：トークン・ラベル・施設・残数 */}
         <div style={styles.overlay}>
-          {/* 移動トークン（蓄積して消えない） */}
-          {tokens.map(t => (
-            <div key={t.id} style={{
-              position: 'absolute',
-              width: 8, height: 8, borderRadius: '50%',
-              background: TCOLOR[t.kind], border: '1.5px solid #fff',
-              boxShadow: `0 0 5px ${TCOLOR[t.kind]}, 0 1px 2px rgba(0,0,0,0.4)`,
-              zIndex: 5,
-              animation: t.last
-                ? `okires-token-stay 1.5s cubic-bezier(0.4,0,0.2,1) ${t.delay}ms both`
-                : undefined,
-              left: t.last ? undefined : px(t.x1),
-              top: t.last ? undefined : py(t.y1),
-              transform: t.last ? undefined : 'translate(-50%,-50%)',
-              ['--x0' as string]: px(t.x0),
-              ['--y0' as string]: py(t.y0),
-              ['--x1' as string]: px(t.x1),
-              ['--y1' as string]: py(t.y1),
-            } as React.CSSProperties} />
-          ))}
+          {/* 移動トークン（蓄積して消えない）。移動中(最新日)は大きく光らせて見やすく */}
+          {tokens.map(t => {
+            const sz = t.last ? 15 : 9;
+            return (
+              <div key={t.id} style={{
+                position: 'absolute',
+                width: sz, height: sz, borderRadius: '50%',
+                background: TCOLOR[t.kind], border: `${t.last ? 2.5 : 1.5}px solid #fff`,
+                boxShadow: t.last
+                  ? `0 0 12px ${TCOLOR[t.kind]}, 0 0 4px #fff, 0 1px 3px rgba(0,0,0,0.5)`
+                  : `0 0 4px ${TCOLOR[t.kind]}, 0 1px 2px rgba(0,0,0,0.4)`,
+                zIndex: t.last ? 7 : 5,
+                animation: t.last
+                  ? `okires-token-stay 1.9s cubic-bezier(0.45,0,0.2,1) ${t.delay}ms both`
+                  : undefined,
+                left: t.last ? undefined : px(t.x1),
+                top: t.last ? undefined : py(t.y1),
+                transform: t.last ? undefined : 'translate(-50%,-50%)',
+                ['--x0' as string]: px(t.x0),
+                ['--y0' as string]: py(t.y0),
+                ['--x1' as string]: px(t.x1),
+                ['--y1' as string]: py(t.y1),
+              } as React.CSSProperties} />
+            );
+          })}
 
           {/* 施設アイコン＋名前 */}
           {FACILITIES.map(f => (
@@ -269,7 +275,7 @@ export function IllustratedMap({ areas, infra, evacuated = 0, dead = 0, dayLogs 
           {/* 島名ラベル */}
           {ISLAND_LABELS.map(l => (
             <div key={l.name} style={{ position: 'absolute', left: px(l.x), top: py(l.y), transform: 'translate(-50%,-50%)', zIndex: 4 }}>
-              <span style={{ ...styles.islandLabel, fontSize: l.big ? 11 : 8 }}>{l.name}</span>
+              <span style={{ ...styles.islandLabel, fontSize: l.big ? 13 : 9.5 }}>{l.name}</span>
             </div>
           ))}
 
@@ -313,14 +319,14 @@ const styles: Record<string, React.CSSProperties> = {
   svg: { position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block' },
   overlay: { position: 'absolute', inset: 0, pointerEvents: 'none' },
 
-  airDot: { width: 13, height: 13, borderRadius: '50%', background: '#ffd633', border: '1.5px solid #b88a00', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 7, boxShadow: '0 0 4px rgba(255,214,51,0.8)' },
-  seaDot: { width: 13, height: 13, borderRadius: '50%', background: '#3b9eff', border: '1.5px solid #1763a8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 7, boxShadow: '0 0 4px rgba(59,158,255,0.8)' },
-  facLabel: { fontFamily: FH, fontSize: 6.5, color: '#2a4d2a', fontWeight: 700, marginTop: 1, whiteSpace: 'nowrap', textShadow: '0 1px 2px rgba(255,255,255,0.9)' },
+  airDot: { width: 15, height: 15, borderRadius: '50%', background: '#ffd633', border: '2px solid #8f6a00', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, boxShadow: '0 0 5px rgba(255,214,51,0.9)' },
+  seaDot: { width: 15, height: 15, borderRadius: '50%', background: '#3b9eff', border: '2px solid #0f4f8f', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, boxShadow: '0 0 5px rgba(59,158,255,0.9)' },
+  facLabel: { fontFamily: FH, fontSize: 8, color: '#173a17', fontWeight: 700, marginTop: 1, whiteSpace: 'nowrap', textShadow: HALO },
 
-  islandLabel: { fontFamily: FH, fontWeight: 700, color: '#1f3d52', whiteSpace: 'nowrap', textShadow: '0 1px 2px rgba(255,255,255,0.95), 0 0 4px rgba(255,255,255,0.8)' },
-  komaBadge: { fontFamily: FONT.mono, fontWeight: 800, fontSize: 8, color: '#fff', borderRadius: 7, padding: '1px 6px', whiteSpace: 'nowrap', boxShadow: '0 1px 2px rgba(0,0,0,0.3)' },
-  bridgeLabel: { fontFamily: FH, fontWeight: 700, fontSize: 7, borderRadius: 6, padding: '1px 4px', whiteSpace: 'nowrap', boxShadow: '0 1px 2px rgba(0,0,0,0.2)' },
-  destLabel: { fontFamily: FH, fontWeight: 700, fontSize: 9, color: '#b3541e', background: 'rgba(255,250,240,0.92)', border: '1.5px dashed #e07a2e', borderRadius: 8, padding: '2px 6px', whiteSpace: 'nowrap', textAlign: 'center', lineHeight: 1.15, boxShadow: '0 2px 5px rgba(0,0,0,0.18)' },
+  islandLabel: { fontFamily: FH, fontWeight: 700, color: '#0e2f47', whiteSpace: 'nowrap', textShadow: HALO },
+  komaBadge: { fontFamily: FONT.jp, fontWeight: 900, fontSize: 9.5, color: '#fff', borderRadius: 8, padding: '1px 7px', whiteSpace: 'nowrap', boxShadow: '0 1px 3px rgba(0,0,0,0.35)', border: '1.5px solid rgba(255,255,255,0.6)' },
+  bridgeLabel: { fontFamily: FH, fontWeight: 700, fontSize: 8.5, borderRadius: 6, padding: '1px 5px', whiteSpace: 'nowrap', boxShadow: '0 1px 3px rgba(0,0,0,0.25)', border: '1px solid rgba(0,0,0,0.15)' },
+  destLabel: { fontFamily: FH, fontWeight: 700, fontSize: 11, color: '#9c3d12', background: 'rgba(255,250,240,0.96)', border: '2px dashed #e07a2e', borderRadius: 10, padding: '3px 8px', whiteSpace: 'nowrap', textAlign: 'center', lineHeight: 1.2, boxShadow: '0 2px 6px rgba(0,0,0,0.22)' },
 
   caption: { padding: '6px 12px', background: '#fffaf0', fontFamily: FONT.jp, fontSize: 10.5, color: '#334155', lineHeight: 1.5, borderTop: '1px solid #eadfc8' },
 };
