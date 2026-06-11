@@ -1,8 +1,8 @@
 // IllustratedMap.tsx — 添付PDF(AI判定マップ ver2.0)を忠実なベースマップに、
 // ライブ状態（各島の残コマ・橋崩落・避難/死亡）を重ねるマップ。
 
-import React from 'react';
-import type { AreaId, AreaState, InfraState } from '../types';
+import React, { useMemo } from 'react';
+import type { AreaId, AreaState, InfraState, EvacuationRecord } from '../types';
 import { FONT } from '../theme';
 
 interface Props {
@@ -10,6 +10,8 @@ interface Props {
   infra?: InfraState;
   evacuated?: number;
   dead?: number;
+  flowKey?: number;                 // 日が進むたびに変わるキー（アニメ発火）
+  flowMoves?: EvacuationRecord[];    // その日の避難実績（島→ハブ/本土）
 }
 
 // ベースマップ上の位置（画像幅・高さに対する%）。実画像に合わせて調整。
@@ -19,6 +21,24 @@ const ISLAND_POS: Record<AreaId, { x: number; y: number; name: string }> = {
   ishigaki: { x: 35.5, y: 50, name: '石垣島' },
   miyako: { x: 80, y: 33, name: '宮古島・多良間' },
 };
+
+// 本土（避難先）の到達点。PDFの赤矢印の先に対応。
+const MAINLAND_DEST: Record<AreaId, { x: number; y: number }> = {
+  yonaguni: { x: 10, y: 14 },   // 那覇経由 福岡空港（左上）
+  taketomi: { x: 50, y: 50 },   // 主に石垣ハブ経由→福岡空港
+  ishigaki: { x: 50, y: 50 },   // 福岡空港（中央）
+  miyako: { x: 62, y: 25 },     // 鹿児島港・鹿児島空港（右上）
+};
+
+// 移動トークン
+interface FlowToken {
+  id: string;
+  x0: number; y0: number; x1: number; y1: number;
+  kind: 'r' | 'v';
+  delay: number;
+}
+
+const TOKEN_COLOR = { r: '#3b9eff', v: '#ff5a5a' } as const;
 
 const BRIDGE_POS: { key: keyof InfraState; label: string; x: number; y: number }[] = [
   { key: 'bridgeIkema', label: '池間大橋', x: 75, y: 20 },
@@ -30,7 +50,32 @@ function totalKoma(a: AreaState): number {
   return a.residents + a.tourists + a.vulnerable + a.stagingPort;
 }
 
-export function IllustratedMap({ areas, infra, evacuated = 0, dead = 0 }: Props) {
+export function IllustratedMap({ areas, infra, evacuated = 0, dead = 0, flowKey, flowMoves }: Props) {
+  // その日の避難実績からトークンを導出（CSSアニメで島→ハブ/本土へ移動。終端で消える）
+  const tokens = useMemo<FlowToken[]>(() => {
+    const built: FlowToken[] = [];
+    if (flowKey === undefined || !flowMoves) return built;
+    flowMoves.forEach((mv, i) => {
+      const from = ISLAND_POS[mv.from];
+      if (!from) return;
+      const to = mv.to === '石垣島' ? ISLAND_POS.ishigaki : MAINLAND_DEST[mv.from];
+      const n = Math.max(1, Math.min(mv.count, 5)); // 表示は最大5トークン
+      for (let k = 0; k < n; k++) {
+        // 出発位置を少しばらけさせる（番号で決定的＝再描画でも安定）
+        const jx = ((i * 7 + k * 13) % 7 - 3) * 0.7;
+        const jy = ((i * 5 + k * 11) % 7 - 3) * 0.7;
+        built.push({
+          id: `${flowKey}-${i}-${k}`,
+          x0: from.x + jx, y0: from.y + jy,
+          x1: to.x + jx, y1: to.y + jy,
+          kind: mv.isVulnerable ? 'v' : 'r',
+          delay: i * 90 + k * 70,
+        });
+      }
+    });
+    return built;
+  }, [flowKey, flowMoves]);
+
   return (
     <div style={styles.frame}>
       <div style={styles.titleBar}>
@@ -45,6 +90,26 @@ export function IllustratedMap({ areas, infra, evacuated = 0, dead = 0 }: Props)
       <div style={styles.stage}>
         {/* 忠実なベースマップ（PDF由来） */}
         <img src="/sakishima-basemap.jpg" alt="先島諸島 避難判定マップ" style={styles.basemap} />
+
+        {/* 移動トークン（信長の野望風：島→ハブ/本土へ） */}
+        <div style={styles.overlay}>
+          {tokens.map(t => (
+            <div key={t.id} style={{
+              position: 'absolute',
+              transform: 'translate(-50%,-50%)',
+              width: 12, height: 12, borderRadius: '50%',
+              background: TOKEN_COLOR[t.kind],
+              border: '2px solid #fff',
+              boxShadow: `0 0 8px ${TOKEN_COLOR[t.kind]}, 0 1px 3px rgba(0,0,0,0.4)`,
+              zIndex: 6,
+              animation: `okires-token 1.6s cubic-bezier(0.4,0,0.2,1) ${t.delay}ms both`,
+              ['--x0' as string]: `${t.x0}%`,
+              ['--y0' as string]: `${t.y0}%`,
+              ['--x1' as string]: `${t.x1}%`,
+              ['--y1' as string]: `${t.y1}%`,
+            } as React.CSSProperties} />
+          ))}
+        </div>
 
         {/* ライブ状態オーバーレイ */}
         <div style={styles.overlay}>

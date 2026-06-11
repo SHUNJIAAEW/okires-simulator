@@ -160,6 +160,13 @@ input[type='range']::-moz-range-thumb {
     box-shadow: 0 0 0 6px rgba(255, 59, 59, 0);
   }
 }
+/* マップのコマ移動トークン（島→ハブ/本土） */
+@keyframes okires-token {
+  0% { left: var(--x0); top: var(--y0); opacity: 0; transform: translate(-50%, -50%) scale(0.6); }
+  12% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  82% { opacity: 1; }
+  100% { left: var(--x1); top: var(--y1); opacity: 0; transform: translate(-50%, -50%) scale(0.7); }
+}
 @keyframes okires-sweep {
   from {
     transform: translateX(-120%) skewX(-20deg);

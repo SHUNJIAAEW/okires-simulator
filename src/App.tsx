@@ -90,7 +90,7 @@ export default function App() {
         }
         setIsSimulating(false);
       }, 400);
-    }, 900);
+    }, 1800); // コマ移動アニメ（約1.8秒）を見せるため間隔を確保
     return () => { if (autoPlayRef.current) clearTimeout(autoPlayRef.current); };
   }, [autoPlay, isComplete, isSimulating, gameState]);
 
@@ -198,7 +198,14 @@ export default function App() {
       }}>
         {/* 左：マップ + コントロール */}
         <div style={styles.leftCol}>
-          <IllustratedMap areas={gameState.areas} infra={gameState.infra} evacuated={gameState.evacuated} dead={gameState.dead} />
+          <IllustratedMap
+            areas={gameState.areas}
+            infra={gameState.infra}
+            evacuated={gameState.evacuated}
+            dead={gameState.dead}
+            flowKey={gameState.day}
+            flowMoves={gameState.dayLogs[gameState.dayLogs.length - 1]?.evacuations}
+          />
 
           <div style={styles.controlPanel}>
             {isComplete ? (
