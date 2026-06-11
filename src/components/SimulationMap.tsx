@@ -17,6 +17,10 @@ const C = {
   green:     '#00ff88',
   amber:     '#ffb300',
   red:       '#ff3b3b',
+  airYellow: '#ffd633',   // 🟡 空港
+  seaBlue:   '#3b9eff',   // 🔵 海港
+  airStage:  '#ff3b3b',   // 🔴 空港の待機場所
+  seaStage:  '#ff9e3d',   // 🟠 海港の待機場所
   dimText:   '#4a7a9b',
   bodyText:  '#8eb8d4',
   brightText:'#c8e6f8',
@@ -30,7 +34,7 @@ interface Props {
   selectedHour?: number;
 }
 
-type CellType = 'town' | 'staging_air' | 'staging_sea' | 'shelter' | 'empty' | 'label';
+type CellType = 'town' | 'airport' | 'seaport' | 'staging_air' | 'staging_sea' | 'shelter' | 'empty' | 'label';
 
 interface GridCell {
   type: CellType;
@@ -91,22 +95,33 @@ function Cell({ cell, islandColor, cellSize = 32 }: CellProps) {
     );
   }
 
+  const isAirport    = cell.type === 'airport';
+  const isSeaport    = cell.type === 'seaport';
   const isStagingAir = cell.type === 'staging_air';
   const isStagingSea = cell.type === 'staging_sea';
   const isShelter    = cell.type === 'shelter';
-  const isStaging    = isStagingAir || isStagingSea || isShelter;
+  // 施設・待機マスは円形（PDF準拠）。待機マスは点線。
+  const isFacility   = isAirport || isSeaport;
+  const isRound      = isFacility || isStagingAir || isStagingSea;
 
-  const bg = isStagingAir ? '#0a1f0a'
-    : isStagingSea ? '#0a1020'
-    : isShelter    ? '#1a1000'
-    : C.bgPanel;
-
-  const borderColor = isStagingAir ? C.green
-    : isStagingSea ? C.borderHi
+  // PDF配色: 🟡空港 / 🔵海港 / 🔴空港待機 / 🟠海港待機
+  const accent = isAirport ? C.airYellow
+    : isSeaport    ? C.seaBlue
+    : isStagingAir ? C.airStage
+    : isStagingSea ? C.seaStage
     : isShelter    ? C.amber
     : islandColor;
 
-  const icon = isStagingAir ? '✈' : isStagingSea ? '⚓' : isShelter ? '🏠' : null;
+  const bg = isAirport ? 'rgba(255,214,51,0.14)'
+    : isSeaport    ? 'rgba(59,158,255,0.14)'
+    : isStagingAir ? 'rgba(255,59,59,0.14)'
+    : isStagingSea ? 'rgba(255,158,61,0.14)'
+    : isShelter    ? '#1a1000'
+    : C.bgPanel;
+
+  const borderColor = accent;
+
+  const icon = (isAirport || isStagingAir) ? '✈' : (isSeaport || isStagingSea) ? '⚓' : isShelter ? '🏠' : null;
 
   const totalPieces = (cell.residents ?? 0) + (cell.tourists ?? 0) + (cell.vulnerable ?? 0);
   const pieceSize = cellSize <= 20 ? 8 : 10;
@@ -114,9 +129,10 @@ function Cell({ cell, islandColor, cellSize = 32 }: CellProps) {
   return (
     <div style={{
       width: CELL, height: CELL, flexShrink: 0,
-      border: `1.5px ${isStaging ? 'dashed' : 'solid'} ${borderColor}`,
+      border: `1.5px ${(isStagingAir || isStagingSea || isShelter) ? 'dashed' : 'solid'} ${borderColor}`,
       background: bg,
-      borderRadius: 3,
+      borderRadius: isRound ? '50%' : 3,
+      boxShadow: isFacility ? `0 0 6px ${accent}66` : 'none',
       display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center',
       position: 'relative',
@@ -198,14 +214,16 @@ function IslandGrid({ title, subtitle, color, rows, cellSize = 32, compact = fal
       {!compact && (
         <div style={{ padding: '3px 6px', background: C.bgDeep, display: 'flex', gap: 5, flexWrap: 'wrap', borderTop: `1px solid ${C.border}` }}>
           {[
-            { color: C.border,   border: C.borderHi, label: '市街地',   dashed: false },
-            { color: '#0a1f0a',  border: C.green,    label: '空港待機',  dashed: true },
-            { color: '#0a1020',  border: C.borderHi, label: '港待機',    dashed: true },
+            { border: C.borderHi,  label: '市街地', dashed: false, round: false },
+            { border: C.airYellow, label: '空港',   dashed: false, round: true },
+            { border: C.seaBlue,   label: '海港',   dashed: false, round: true },
+            { border: C.airStage,  label: '空港待機', dashed: true,  round: true },
+            { border: C.seaStage,  label: '海港待機', dashed: true,  round: true },
           ].map(leg => (
             <div key={leg.label} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
               <div style={{
                 width: 8, height: 8, border: `1.5px ${leg.dashed ? 'dashed' : 'solid'} ${leg.border}`,
-                background: leg.color, borderRadius: 2,
+                background: 'transparent', borderRadius: leg.round ? '50%' : 2,
               }} />
               <span style={{ fontSize: 7, color: C.dimText, fontFamily: 'monospace' }}>{leg.label}</span>
             </div>
@@ -347,8 +365,8 @@ function buildYonagunGrid(area: AreaState): GridCell[][] {
   const dist = distributePieces(area, 2);
   const town = (i: number): GridCell => ({ type: 'town', residents: dist.res[i], tourists: dist.tour[i], vulnerable: dist.vuln[i] });
   return [
-    [town(0), town(1), { type: 'staging_air', label: '与那国空港' }, { type: 'staging_air' }],
-    [{ type: 'empty' }, { type: 'empty' }, { type: 'staging_sea', label: '久部良港' }, { type: 'empty' }],
+    [town(0), town(1), { type: 'airport', label: '与那国空港' }, { type: 'staging_air' }],
+    [{ type: 'empty' }, { type: 'empty' }, { type: 'seaport', label: '久部良港' }, { type: 'empty' }],
   ];
 }
 
@@ -374,13 +392,13 @@ function buildTaketomiGrid(area: AreaState): GridCell[][] {
       { type: 'label', label: '西表島' },
       { type: 'town', residents: Math.ceil(iriomoteR / 2), tourists: Math.ceil(iriomoteT / 2), vulnerable: Math.ceil(iriomoteV / 2) },
       { type: 'town', residents: Math.floor(iriomoteR / 2), tourists: Math.floor(iriomoteT / 2), vulnerable: Math.floor(iriomoteV / 2) },
-      { type: 'staging_sea', label: '大原港' },
-      { type: 'staging_sea', label: '上原港' },
+      { type: 'seaport', label: '大原港' },
+      { type: 'seaport', label: '上原港' },
     ],
     [
       { type: 'label', label: '竹富島' },
       { type: 'town', residents: takeR, tourists: takeT, vulnerable: takeV },
-      { type: 'staging_sea', label: '竹富港' },
+      { type: 'seaport', label: '竹富港' },
       { type: 'label', label: '黒島' },
       { type: 'town', residents: kuroR, tourists: kuroT, vulnerable: kuroV },
     ],
@@ -388,8 +406,8 @@ function buildTaketomiGrid(area: AreaState): GridCell[][] {
       { type: 'label', label: '波照間' },
       { type: 'town', residents: Math.ceil(hatR / 2), tourists: Math.ceil(hatT / 2), vulnerable: Math.ceil(hatV / 2) },
       { type: 'town', residents: Math.floor(hatR / 2), tourists: Math.floor(hatT / 2), vulnerable: Math.floor(hatV / 2) },
-      { type: 'staging_air', label: '波照間空港' },
-      { type: 'staging_sea', label: '波照間港' },
+      { type: 'airport', label: '波照間空港' },
+      { type: 'seaport', label: '波照間港' },
     ],
   ];
 }
@@ -423,13 +441,13 @@ function buildIshigakiGrid(area: AreaState, cols: number = 8): GridCell[][] {
   // 空港・港待機行（列数に合わせる）
   const airportRow: GridCell[] = [
     { type: 'shelter', label: '中央運動公園' },
-    { type: 'staging_air', label: '新石垣空港' },
+    { type: 'airport', label: '新石垣空港' },
   ];
   for (let c = 2; c < Math.min(cols, 6); c++) airportRow.push({ type: 'staging_air' });
   while (airportRow.length < cols) airportRow.push({ type: 'empty' });
   rows.push(airportRow);
 
-  const seaRow: GridCell[] = [{ type: 'staging_sea', label: '石垣港' }];
+  const seaRow: GridCell[] = [{ type: 'seaport', label: '石垣港' }];
   for (let c = 1; c < Math.min(cols, 4); c++) seaRow.push({ type: 'staging_sea' });
   while (seaRow.length < cols) seaRow.push({ type: 'empty' });
   rows.push(seaRow);
@@ -467,8 +485,8 @@ function buildMiyakoGrid(area: AreaState, cols: number = 8): GridCell[][] {
   const taramaRow: GridCell[] = [
     { type: 'label', label: '多良間島' },
     { type: 'town' }, { type: 'town' },
-    { type: 'staging_air', label: '多良間空港' },
-    { type: 'staging_sea', label: '多良間港' },
+    { type: 'airport', label: '多良間空港' },
+    { type: 'seaport', label: '多良間港' },
   ];
   while (taramaRow.length < cols) taramaRow.push({ type: 'empty' });
   rows.push(taramaRow);
@@ -477,7 +495,7 @@ function buildMiyakoGrid(area: AreaState, cols: number = 8): GridCell[][] {
   const shimojiRow: GridCell[] = [
     { type: 'label', label: '下地島' },
     { type: 'town' }, { type: 'town' },
-    { type: 'staging_air', label: '下地島空港' },
+    { type: 'airport', label: '下地島空港' },
     { type: 'staging_air' },
   ];
   while (shimojiRow.length < cols) shimojiRow.push({ type: 'empty' });
@@ -486,13 +504,13 @@ function buildMiyakoGrid(area: AreaState, cols: number = 8): GridCell[][] {
   // 宮古空港・平良港
   const airportRow: GridCell[] = [
     { type: 'shelter', label: 'JTAドーム' },
-    { type: 'staging_air', label: '宮古空港' },
+    { type: 'airport', label: '宮古空港' },
   ];
   for (let c = 2; c < Math.min(cols, 6); c++) airportRow.push({ type: 'staging_air' });
   while (airportRow.length < cols) airportRow.push({ type: 'empty' });
   rows.push(airportRow);
 
-  const seaRow: GridCell[] = [{ type: 'staging_sea', label: '平良港' }];
+  const seaRow: GridCell[] = [{ type: 'seaport', label: '平良港' }];
   for (let c = 1; c < Math.min(cols, 3); c++) seaRow.push({ type: 'staging_sea' });
   while (seaRow.length < cols) seaRow.push({ type: 'empty' });
   rows.push(seaRow);
