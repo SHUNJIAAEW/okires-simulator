@@ -198,7 +198,7 @@ export default function App() {
       }}>
         {/* 左：マップ + コントロール */}
         <div style={styles.leftCol}>
-          <IllustratedMap areas={gameState.areas} infra={gameState.infra} />
+          <IllustratedMap areas={gameState.areas} infra={gameState.infra} evacuated={gameState.evacuated} dead={gameState.dead} />
 
           <div style={styles.controlPanel}>
             {isComplete ? (
