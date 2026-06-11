@@ -4,7 +4,7 @@ import { createInitialState, prepareDayPhase1, executeDayPhase2, autoSelectOrder
 import { SetupScreen } from './components/SetupScreen';
 import { DayLogPanel } from './components/DayLogPanel';
 import { ResultScreen } from './components/ResultScreen';
-import { SimulationMap } from './components/SimulationMap';
+import { IllustratedMap } from './components/IllustratedMap';
 import { useWindowWidth } from './hooks/useWindowWidth';
 import { C, FONT } from './theme';
 
@@ -198,7 +198,7 @@ export default function App() {
       }}>
         {/* 左：マップ + コントロール */}
         <div style={styles.leftCol}>
-          <SimulationMap areas={gameState.areas} infra={gameState.infra} />
+          <IllustratedMap areas={gameState.areas} infra={gameState.infra} />
 
           <div style={styles.controlPanel}>
             {isComplete ? (
