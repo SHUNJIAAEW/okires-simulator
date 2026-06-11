@@ -167,6 +167,12 @@ input[type='range']::-moz-range-thumb {
   82% { opacity: 1; }
   100% { left: var(--x1); top: var(--y1); opacity: 0; transform: translate(-50%, -50%) scale(0.7); }
 }
+/* 移動後に到達点で静止して残る（蓄積） */
+@keyframes okires-token-stay {
+  0% { left: var(--x0); top: var(--y0); opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+  14% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { left: var(--x1); top: var(--y1); opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
 @keyframes okires-sweep {
   from {
     transform: translateX(-120%) skewX(-20deg);

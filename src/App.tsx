@@ -203,8 +203,7 @@ export default function App() {
             infra={gameState.infra}
             evacuated={gameState.evacuated}
             dead={gameState.dead}
-            flowKey={gameState.day}
-            flowMoves={gameState.dayLogs[gameState.dayLogs.length - 1]?.evacuations}
+            dayLogs={gameState.dayLogs}
           />
 
           <div style={styles.controlPanel}>
