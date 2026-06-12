@@ -389,7 +389,8 @@ export function IllustratedMap({ areas, infra, evacuated = 0, dead = 0, dayLogs 
       </div>
 
       <div style={styles.caption}>
-        🟡 空港 ／ 🔵 海港 ／ 🌉 橋（崩落で🚧＝該当島は避難不可）。自動再生中、避難したコマ（青＝住民・赤＝要援護者）が本土へ移動して積み上がります。
+        コマ：<b style={{ color: '#2f80ed' }}>●青＝住民</b> ／ <b style={{ color: '#c98f00' }}>●黄＝観光客</b> ／ <b style={{ color: '#eb5757' }}>●赤＝要援護者</b> ／ <b style={{ color: '#1b8a4b' }}>●緑＝待機（石垣ハブ等に集結し避難手段を待つ避難民）</b>。
+        施設：🟡空港 ／ 🔵海港 ／ 🌉橋（崩落で🚧＝該当島は避難不可）。自動再生中、避難したコマは本土へ移動して積み上がり、死亡は右下の枠に入ります。
       </div>
     </div>
   );
