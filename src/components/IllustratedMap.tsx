@@ -372,6 +372,19 @@ export function IllustratedMap({ areas, infra, evacuated = 0, dead = 0, dayLogs 
               <span style={styles.destLabel}>{d.label.split('\n').map((s, i) => <React.Fragment key={i}>{i > 0 && <br />}{s}</React.Fragment>)}</span>
             </div>
           ))}
+
+          {/* 死亡コマ枠（右下） */}
+          <div style={styles.deathBox}>
+            <div style={styles.deathLabel}>💀 死亡コマ <b>{Math.round(dead * 10) / 10}</b></div>
+            {dead > 0 && (
+              <div style={styles.deathGrid}>
+                {Array.from({ length: Math.min(Math.round(dead), 28) }, (_, i) => (
+                  <span key={i} style={styles.deathDot} />
+                ))}
+                {Math.round(dead) > 28 && <span style={styles.deathMore}>+{Math.round(dead) - 28}</span>}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -403,4 +416,15 @@ const styles: Record<string, React.CSSProperties> = {
   destLabel: { fontFamily: FH, fontWeight: 700, fontSize: 11, color: '#9c3d12', background: 'rgba(255,250,240,0.96)', border: '2px dashed #e07a2e', borderRadius: 10, padding: '3px 8px', whiteSpace: 'nowrap', textAlign: 'center', lineHeight: 1.2, boxShadow: '0 2px 6px rgba(0,0,0,0.22)' },
 
   caption: { padding: '6px 12px', background: '#fffaf0', fontFamily: FONT.jp, fontSize: 10.5, color: '#334155', lineHeight: 1.5, borderTop: '1px solid #eadfc8' },
+
+  // 死亡コマ枠（右下）
+  deathBox: {
+    position: 'absolute', right: '1.5%', bottom: '2.5%', width: '20%', maxWidth: 190,
+    background: 'rgba(38,34,40,0.92)', borderWidth: 2, borderStyle: 'dashed', borderColor: '#c0392b',
+    borderRadius: 8, padding: '4px 6px', zIndex: 6, boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
+  },
+  deathLabel: { fontFamily: FH, fontWeight: 700, fontSize: 9.5, color: '#fff', textAlign: 'center', marginBottom: 3, textShadow: '0 1px 2px rgba(0,0,0,0.6)' },
+  deathGrid: { display: 'flex', flexWrap: 'wrap', gap: 2, justifyContent: 'center', alignItems: 'center' },
+  deathDot: { width: 7, height: 7, borderRadius: '50%', background: '#1a1a1f', borderWidth: 1.5, borderStyle: 'solid', borderColor: '#e74c3c', boxShadow: '0 0 3px rgba(231,76,60,0.6)' },
+  deathMore: { fontFamily: FONT.mono, fontSize: 8, fontWeight: 800, color: '#ff9d9d', marginLeft: 2 },
 };
