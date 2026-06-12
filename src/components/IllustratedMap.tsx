@@ -111,6 +111,60 @@ const MAINLAND_DEST: Record<AreaId, { x: number; y: number }> = {
 interface Tok { id: string; x0: number; y0: number; x1: number; y1: number; kind: 'r' | 'v'; delay: number; last: boolean }
 const TCOLOR = { r: '#2f80ed', v: '#eb5757' } as const;
 
+// 島ごとのセル(白マス)配置領域（svg座標・楕円範囲）
+const AREA_BLOB: Record<AreaId, { cx: number; cy: number; rx: number; ry: number }> = {
+  yonaguni: { cx: 38, cy: 100, rx: 15, ry: 10 },
+  taketomi: { cx: 90, cy: 126, rx: 24, ry: 16 },
+  ishigaki: { cx: 154, cy: 88, rx: 30, ry: 22 },
+  miyako: { cx: 246, cy: 92, rx: 24, ry: 17 },
+};
+
+// コマ種別の色（白マスに乗るコマ）
+const KOMA_COLOR: Record<string, string> = {
+  r: '#2f80ed', // 住民
+  t: '#e0a800', // 観光客
+  v: '#eb5757', // 要援護者
+  s: '#1b8a4b', // 待機
+};
+
+interface Cell { x: number; y: number; size: number; kind: string }
+
+// 島の中に白マスを格子配置し、現在のコマを種別色で乗せる
+function buildCells(area: AreaState, blob: { cx: number; cy: number; rx: number; ry: number }): Cell[] {
+  // 小数（死亡0.5コマ等）や負値で Array() が落ちないよう整数化
+  const ci = (x: number) => Math.max(0, Math.round(x));
+  const kinds: string[] = [
+    ...Array(ci(area.residents)).fill('r'),
+    ...Array(ci(area.tourists)).fill('t'),
+    ...Array(ci(area.vulnerable)).fill('v'),
+    ...Array(ci(area.stagingPort)).fill('s'),
+  ];
+  const n = kinds.length;
+  if (n === 0) return [];
+  // 種別を散らす（初期配置をランダムに見せる：決定的シャッフル）
+  for (let i = n - 1; i > 0; i--) {
+    const j = (i * 7 + 3) % (i + 1);
+    [kinds[i], kinds[j]] = [kinds[j], kinds[i]];
+  }
+  const cols = Math.max(1, Math.round(Math.sqrt(n * (blob.rx / blob.ry))));
+  const rows = Math.ceil(n / cols);
+  const spanX = blob.rx * 1.5, spanY = blob.ry * 1.4;
+  const stepX = spanX / cols, stepY = spanY / rows;
+  const size = Math.max(2.2, Math.min(stepX, stepY) * 0.78);
+  const cells: Cell[] = [];
+  for (let i = 0; i < n; i++) {
+    const col = i % cols, row = Math.floor(i / cols);
+    const jx = ((i * 13 + 5) % 7 - 3) * 0.18;
+    const jy = ((i * 11 + 2) % 7 - 3) * 0.18;
+    cells.push({
+      x: blob.cx + (col - (cols - 1) / 2) * stepX + jx,
+      y: blob.cy + (row - (rows - 1) / 2) * stepY + jy,
+      size, kind: kinds[i],
+    });
+  }
+  return cells;
+}
+
 function totalKoma(a: AreaState): number {
   return a.residents + a.tourists + a.vulnerable + a.stagingPort;
 }
@@ -148,6 +202,13 @@ export function IllustratedMap({ areas, infra, evacuated = 0, dead = 0, dayLogs 
     });
     return out;
   }, [dayLogs]);
+
+  // 各島の白マス（現在のコマ配置）
+  const cellsByArea = useMemo(() => {
+    return (Object.keys(AREA_BLOB) as AreaId[]).map(id => ({
+      id, cells: buildCells(areas[id], AREA_BLOB[id]),
+    }));
+  }, [areas]);
 
   return (
     <div style={styles.frame}>
@@ -224,8 +285,21 @@ export function IllustratedMap({ areas, infra, evacuated = 0, dead = 0, dayLogs 
           })}
         </svg>
 
-        {/* HTMLオーバーレイ：トークン・ラベル・施設・残数 */}
+        {/* HTMLオーバーレイ：白マス・トークン・ラベル・施設・残数 */}
         <div style={styles.overlay}>
+          {/* 白マス（人口マス）＋現在のコマ。初期配置＝ランダムで表示 */}
+          {cellsByArea.map(g => g.cells.map((c, i) => (
+            <div key={`${g.id}-${i}`} style={{
+              position: 'absolute',
+              left: px(c.x), top: py(c.y), transform: 'translate(-50%,-50%)',
+              width: `${(c.size / VW) * 100}%`, aspectRatio: '1',
+              borderRadius: '50%', background: '#ffffff',
+              border: `1.5px solid ${KOMA_COLOR[c.kind]}`,
+              boxShadow: `inset 0 0 0 1px ${KOMA_COLOR[c.kind]}55, 0 1px 1px rgba(0,0,0,0.25)`,
+              zIndex: 3,
+            }} />
+          )))}
+
           {/* 移動トークン（蓄積して消えない）。移動中(最新日)は大きく光らせて見やすく */}
           {tokens.map(t => {
             const sz = t.last ? 15 : 9;

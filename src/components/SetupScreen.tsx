@@ -303,7 +303,7 @@ const styles: Record<string, React.CSSProperties> = {
   segGrid: { display: 'flex', flexWrap: 'wrap', gap: 6 },
   seg: {
     flex: 1, minWidth: 46, textAlign: 'center', padding: '9px 4px',
-    border: `1px solid ${C.border}`, borderRadius: 3, background: C.bgCard,
+    borderWidth: 1, borderStyle: 'solid', borderColor: C.border, borderRadius: 3, background: C.bgCard,
     cursor: 'pointer', fontWeight: 700, fontSize: 13, color: C.dim,
     fontFamily: FONT.mono, letterSpacing: 0.5,
   },
