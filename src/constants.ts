@@ -7,7 +7,7 @@ import type { AreaId, WeatherCondition } from './types';
 export const WEATHER_TRACKS: Record<string, WeatherCondition[]> = {
   summer: ['rain', 'cloudy', 'sunny', 'cloudy', 'rain', 'heavy-rain'], // 7-9月 (1雨〜6大雨)
   transition: ['rain', 'cloudy', 'cloudy', 'sunny', 'sunny', 'sunny', 'cloudy', 'cloudy', 'rain', 'heavy-rain'], // 5,6,10,11月 (1雨〜10大雨)
-  winter: ['rain', 'cloudy', 'cloudy', 'sunny', 'cloudy', 'heavy-rain'], // 12-4月 (1雨〜6大雨)
+  winter: ['rain', 'cloudy', 'cloudy', 'sunny', 'cloudy', 'rain'], // 12-4月 (最大でも「雨」。大雨は発生しない)
 };
 
 export function getWeatherTrack(month: number): WeatherCondition[] {
@@ -232,8 +232,8 @@ export const ROUTE_SCHEDULES: Record<string, { type: 'fixed' | 'hourly'; hours: 
   shinishigaki_air:     { type: 'hourly', hours: Array.from({ length: 11 }, (_, i) => i + 8),   label: '8〜18時(毎時)' },
   miyako_air:           { type: 'hourly', hours: Array.from({ length: 11 }, (_, i) => i + 8),   label: '8〜18時(毎時)' },
   ferry_main:           { type: 'fixed',  hours: [9, 14],                                        label: '午前(9時)・午後(14時)' },
-  coast_guard:          { type: 'hourly', hours: Array.from({ length: 24 }, (_, i) => i),        label: '24時間' },
-  jmsdf:                { type: 'hourly', hours: Array.from({ length: 24 }, (_, i) => i),        label: '24時間' },
+  coast_guard:          { type: 'hourly', hours: Array.from({ length: 24 }, (_, i) => i + 1),    label: '24時間' },
+  jmsdf:                { type: 'hourly', hours: Array.from({ length: 24 }, (_, i) => i + 1),    label: '24時間' },
   asdf:                 { type: 'hourly', hours: Array.from({ length: 11 }, (_, i) => i + 8),   label: '8〜18時' },
 };
 

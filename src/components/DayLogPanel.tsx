@@ -181,7 +181,7 @@ function HourlyRollGrid({ rolls }: { rolls: HourlyRoll[] }) {
               <div style={{ fontSize: 15, fontWeight: 900, color: r.eventType ? C.amber : C.bright, fontFamily: FONT.mono }}>⚄{r.roll}</div>
               {r.eventType
                 ? <div style={{ fontSize: 9, color: C.red, fontWeight: 700 }}>{r.eventType}イベント</div>
-                : <div style={{ fontSize: 9, color: C.green }}>なし</div>
+                : <div style={{ fontSize: 9, color: '#9aacba' }}>なし</div>
               }
             </div>
           ))}
@@ -194,11 +194,11 @@ function HourlyRollGrid({ rolls }: { rolls: HourlyRoll[] }) {
               border: r.eventType
                 ? `1px solid ${r.eventType === 'D' ? C.red : r.eventType === 'C' ? '#ff9e3d' : r.eventType === 'B' ? C.amber : C.blue}`
                 : r.isEventSpace ? `1px solid ${C.borderHi}` : `1px solid ${C.border}`,
-              background: r.eventType ? 'rgba(255,179,0,0.1)' : r.isEventSpace ? 'rgba(0,255,136,0.06)' : C.bgCard,
+              background: r.eventType ? 'rgba(255,179,0,0.1)' : r.isEventSpace ? 'rgba(154,172,186,0.10)' : C.bgCard,
               borderRadius: 3, padding: '3px 1px', textAlign: 'center',
             }}>
               <div style={{ fontSize: 7, color: C.dim, fontFamily: FONT.mono }}>{String(r.hour).padStart(2,'0')}時</div>
-              <div style={{ fontSize: 12, fontWeight: 900, color: r.eventType ? C.amber : r.isEventSpace ? C.green : C.dim, fontFamily: FONT.mono }}>{r.roll}</div>
+              <div style={{ fontSize: 12, fontWeight: 900, color: r.eventType ? C.amber : r.isEventSpace ? '#9aacba' : C.dim, fontFamily: FONT.mono }}>{r.roll}</div>
               {r.eventType && (
                 <div style={{ fontSize: 7, background: r.eventType === 'D' ? C.red : r.eventType === 'C' ? '#ff9e3d' : r.eventType === 'B' ? C.amber : C.blue, color: '#06121f', borderRadius: 2, fontWeight: 700 }}>
                   {r.eventType}

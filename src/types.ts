@@ -86,7 +86,7 @@ export interface EvacuationRecord {
 
 // 時間別ダイス記録
 export interface HourlyRoll {
-  hour: number;         // 0-23
+  hour: number;         // 1-24（1日は1時〜24時）
   roll: number;         // 1-6
   isEventSpace: boolean; // このマスでイベント判定あり
   eventType: 'A' | 'B' | 'C' | 'D' | null;
@@ -189,6 +189,7 @@ export interface DayPhase1Result {
   airportAvail: Record<string, boolean>;
   seaOk: boolean;
   capacities: DayCapacities;
+  capacityMultiplier: Record<AreaId, number>; // イベント由来のエリア別容量倍率
   hourlyRolls: HourlyRoll[];
   eventLog: string[];
   weatherSummary: string;
