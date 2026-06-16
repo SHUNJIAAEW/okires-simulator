@@ -6,6 +6,7 @@ import { DayLogPanel } from './components/DayLogPanel';
 import { ResultScreen } from './components/ResultScreen';
 import { IllustratedMap } from './components/IllustratedMap';
 import { useWindowWidth } from './hooks/useWindowWidth';
+import { exportDailyReportPdf } from './dailyReport';
 import { C, FONT } from './theme';
 
 type Screen = 'setup' | 'simulation' | 'result';
@@ -242,6 +243,7 @@ export default function App() {
                 </button>
               </>
             )}
+            <button className="tac-ghost" style={styles.restartBtn} onClick={() => exportDailyReportPdf(gameState)}>📄 毎日の行動記録をPDF保存</button>
             <button className="tac-ghost" style={styles.restartBtn} onClick={handleRestart}>← 設定に戻る</button>
           </div>
 

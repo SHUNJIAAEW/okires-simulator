@@ -198,22 +198,23 @@ export function isSeaAvailable(weather: WeatherState, month: number): boolean {
 
 // ===== フェーズ移行 =====
 export function checkPhaseTransition(state: GameState, log: string[]): Phase {
-  const { day, phase } = state;
+  const { day } = state;
 
-  if (day === 0) {
-    if (phase !== 'wartime') {
-      log.push('X日: 政府が緊急対処事態を発令。有事モードに移行。全エリア24時間避難行動可能。');
-    }
-    return 'wartime';
-  }
-
-  if (day >= -3 && day <= -1) {
-    // X-3〜X-1 は常にフェーズ1（平時）。発生し得るのはAイベントのみ。
+  // 日付固定のフェーズ進行（ダイス昇格は廃止）
+  //   X-3〜X-1(day -3..-1): フェーズ1 平時         … Aイベントのみ
+  //   X日   (day 0)       : フェーズ2 存立危機事態   … A/B
+  //   X+1〜X+4(day 1..4)  : フェーズ3 有事初期       … A/B/C
+  //   X+5〜 (day 5..)     : フェーズ4 有事後期       … A/B/C/D
+  if (day <= -1) {
     log.push('平時（フェーズ1）継続 — X-3〜X-1はAイベントのみ発生');
     return 'peacetime';
   }
-
-  return phase;
+  if (day === 0) {
+    log.push('X日: 存立危機事態を認定（フェーズ2）— A/Bイベント。避難本格化');
+    return 'crisis';
+  }
+  log.push(`有事（フェーズ${day <= 4 ? '3 有事初期 — A/B/C' : '4 有事後期 — A/B/C/D'}）`);
+  return 'wartime';
 }
 
 // ===== 地震判定 =====
@@ -318,8 +319,9 @@ export function generateDailyEvents(state: GameState): EventResult {
 
   const { phase, prepLevel, military, day } = state;
 
-  // フェーズ番号 (1=平時, 2=存立危機, 3=有事初期, 4=有事後期)
-  const phaseNum = phase === 'peacetime' ? 1 : phase === 'crisis' ? 2 : 3 + Math.floor(Math.max(0, day) / 3);
+  // フェーズ番号 (1=平時 A / 2=存立危機 A,B / 3=有事初期 A,B,C / 4=有事後期 A,B,C,D)
+  //   X日(0)=2, X+1〜X+4(1..4)=3, X+5〜(5..)=4
+  const phaseNum = phase === 'peacetime' ? 1 : phase === 'crisis' ? 2 : (day >= 5 ? 4 : 3);
   const actualPhase = Math.min(4, Math.max(1, phaseNum));
 
   // 毎日ランダムに6つのイベント判定マスを配置
@@ -924,20 +926,23 @@ export function autoSelectOrders(phase1: DayPhase1Result): EvacuationOrder[] {
   // 宮古の「避難可能な住民数」（孤立分を差し引く）
   const mRes = Math.max(0, areas.miyako.residents - lockedMiyako);
 
-  // 与那国 → 本土(空路)
+  // 与那国 → 本土(空路) ※存立危機・有事では直行便が使えるので住民・観光客を最優先で直送
+  let yonaAirRes = 0;
   if (capacities.yonaguniAirMax > 0) {
     const total = Math.min(capacities.yonaguniAirMax, areas.yonaguni.residents + areas.yonaguni.tourists);
     if (total > 0) {
       const res = Math.min(areas.yonaguni.residents, total);
       const tour = Math.min(areas.yonaguni.tourists, total - res);
+      yonaAirRes = res;
       orders.push({ from: 'yonaguni', to: 'mainland', method: '与那国空港(民間)', residents: res, tourists: tour, vulnerable: 0 });
     }
   }
 
-  // 与那国 → 石垣(フェリー)
+  // 与那国 → 石垣(フェリー) ※航空不可の要援護者＋直行便に乗りきれなかった住民のみ（むやみに石垣へ送らない）
   if (capacities.yonaguniSeaMax > 0) {
     const vuln = Math.min(areas.yonaguni.vulnerable, capacities.yonaguniSeaMax);
-    const res = Math.min(areas.yonaguni.residents, capacities.yonaguniSeaMax - vuln);
+    const remainRes = Math.max(0, areas.yonaguni.residents - yonaAirRes);
+    const res = Math.min(remainRes, capacities.yonaguniSeaMax - vuln);
     if (vuln + res > 0) {
       orders.push({ from: 'yonaguni', to: 'ishigaki', method: 'フェリー', residents: res, tourists: 0, vulnerable: vuln });
     }

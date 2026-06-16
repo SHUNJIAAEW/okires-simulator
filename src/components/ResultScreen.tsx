@@ -3,6 +3,7 @@ import type { GameState, DayLog } from '../types';
 import type { AreaId } from '../types';
 import { useWindowWidth } from '../hooks/useWindowWidth';
 import { DayLogPanel } from './DayLogPanel';
+import { exportDailyReportPdf } from '../dailyReport';
 import { C, FONT } from '../theme';
 
 // ── 結果の内訳分析（いつ・なぜ・どのように・どうすべきか）を dayLogs から導出 ──
@@ -247,7 +248,10 @@ export function ResultScreen({ state, onRestart }: Props) {
             事前準備 <b style={styles.subHi}>Lv.{prepLevel}</b> ／ 抗堪性 <b style={styles.subHi}>Lv.{shelterLevel}</b> ／ <b style={styles.subHi}>{month}月</b> 発生
           </p>
           <button className="no-print tac-ghost" style={styles.pdfBtn} onClick={handlePrint}>
-            🖨 PDFで出力 / 印刷
+            🖨 結果をPDFで出力
+          </button>
+          <button className="no-print tac-ghost" style={{ ...styles.pdfBtn, marginLeft: 8 }} onClick={() => exportDailyReportPdf(state)}>
+            📄 毎日の行動記録をPDF保存
           </button>
         </div>
 
