@@ -724,9 +724,8 @@ export function executeDayPhase2(
   phase1: DayPhase1Result,
   orders: EvacuationOrder[]
 ): { newState: GameState; log: DayLog } {
-  const { stateAfterEvents, newPhase, newWeather, newMilitary, airportAvail, hourlyRolls, eventLog, weatherSummary, capacityMultiplier } = phase1;
-  const { day, prepLevel } = stateAfterEvents;
-  const settings = PREP_LEVEL_SETTINGS[prepLevel as keyof typeof PREP_LEVEL_SETTINGS];
+  const { stateAfterEvents, newPhase, newWeather, newMilitary, airportAvail, hourlyRolls, eventLog, weatherSummary, capacities } = phase1;
+  const { day } = stateAfterEvents;
   const dayLabel = day === 0 ? 'X日' : day > 0 ? `X+${day}日` : `X${day}日`;
 
   const evacLog: string[] = [];
@@ -790,11 +789,11 @@ export function executeDayPhase2(
   if (newPhase === 'wartime') {
     const civAirOk = !transport.civilianAirDisabled;
 
-    // 石垣空路（軍民運航錯綜等の容量倍率を反映）
+    // 石垣空路（容量は phase1.capacities=倍率反映＋0.5丸め済を使用。同日ordersが使った空路分を差し引き二重使用を防止）
     if (airportAvail.shinIshigaki && civAirOk) {
-      const airMax = settings.airFlightsWartime.shinIshigaki * (capacityMultiplier?.ishigaki ?? 1);
-      // 既にordersで石垣→本土を指定していたら空路分を合算するが、
-      // stagingPortにある竹富/与那国からの流入コマを優先輸送
+      const usedByOrders = evacuations.filter(e => e.method === '新石垣空港(民間)').reduce((s, e) => s + e.count, 0);
+      const airMax = Math.max(0, capacities.ishigakiAirMax - usedByOrders);
+      // 残り容量で stagingPort(竹富/与那国からの流入コマ)を本土へ輸送
       const staging = Math.min(airMax, areas.ishigaki.stagingPort);
       if (staging > 0) {
         areas.ishigaki.stagingPort -= staging;
@@ -804,13 +803,15 @@ export function executeDayPhase2(
       }
     }
 
-    // 宮古待機コマ（容量倍率を反映）
+    // 宮古待機コマ（同上。同日ordersが使った空路分を差し引く）
     if (airportAvail.miyako && civAirOk) {
-      const miyakoAirMax = settings.airFlightsWartime.miyako * (capacityMultiplier?.miyako ?? 1);
+      const usedByOrders = evacuations.filter(e => e.method === '宮古空港(民間)').reduce((s, e) => s + e.count, 0);
+      const miyakoAirMax = Math.max(0, capacities.miyakoAirMax - usedByOrders);
       const staging = Math.min(miyakoAirMax, areas.miyako.stagingPort);
       if (staging > 0) {
         areas.miyako.stagingPort -= staging;
         evacuatedCount += staging;
+        evacuations.push({ from: 'miyako', to: '本土', count: staging, method: '宮古空港(港待機)', isVulnerable: false });
         evacLog.push(`宮古空港: 待機${staging}コマ → 本土`);
       }
     }

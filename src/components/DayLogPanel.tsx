@@ -178,7 +178,7 @@ function HourlyRollGrid({ rolls }: { rolls: HourlyRoll[] }) {
               borderRadius: 4, padding: '4px', textAlign: 'center',
             }}>
               <div style={{ fontSize: 9, color: C.dim, fontFamily: FONT.mono }}>{String(r.hour).padStart(2, '0')}:00</div>
-              <div style={{ fontSize: 15, fontWeight: 900, color: r.eventType ? C.amber : C.bright, fontFamily: FONT.mono }}>⚄{r.roll}</div>
+              <div style={{ fontSize: 15, fontWeight: 900, color: r.eventType ? C.amber : '#9aacba', fontFamily: FONT.mono }}>⚄{r.roll}</div>
               {r.eventType
                 ? <div style={{ fontSize: 9, color: C.red, fontWeight: 700 }}>{r.eventType}イベント</div>
                 : <div style={{ fontSize: 9, color: '#9aacba' }}>なし</div>
