@@ -11,6 +11,7 @@ import {
   getInitialWindDirectionIndex, isStrongWind, AIRPORT_ALLOWED_WIND_DIRECTIONS,
   PREP_LEVEL_SETTINGS, TAKETOMI_TO_ISHIGAKI_FERRY_MAX, YONAGUNI_TO_ISHIGAKI_FERRY,
   getEffectiveActions, TOURIST_MAX_BY_AREA, VULNERABLE_TOTAL_MAX,
+  TOURIST_BY_MONTH, RESIDENT_TOTAL_BY_AREA,
 } from './constants';
 
 // ===== サイコロ =====
@@ -18,32 +19,35 @@ export function rollDie(): number {
   return Math.floor(Math.random() * 6) + 1;
 }
 
-// 0..max の一様乱数整数
-function randInt(max: number): number {
-  return Math.floor(Math.random() * (max + 1));
-}
-
-// 観光客を島別上限内で毎回ランダム配置（合計は自然に最大12以下）
-function randomTourists(): Record<AreaId, number> {
-  return {
-    yonaguni: randInt(TOURIST_MAX_BY_AREA.yonaguni),
-    taketomi: randInt(TOURIST_MAX_BY_AREA.taketomi),
-    ishigaki: randInt(TOURIST_MAX_BY_AREA.ishigaki),
-    miyako: randInt(TOURIST_MAX_BY_AREA.miyako),
-  };
-}
-
-// 要援護者を合計上限まで、人口で重み付けした「最適配置」へ毎回ランダムに割り当て
-function randomVulnerable(): Record<AreaId, number> {
-  // 重み＝住民人口（大きい島ほど要援護者が多いのが現実的）
-  const weights: Record<AreaId, number> = { yonaguni: 2, taketomi: 15, ishigaki: 43, miyako: 49 };
+// 観光客：その月の総数(TOURIST_BY_MONTH)を島別上限(0/2/5/5)内でランダム配分
+function randomTourists(month: number): Record<AreaId, number> {
   const result: Record<AreaId, number> = { yonaguni: 0, taketomi: 0, ishigaki: 0, miyako: 0 };
-  const ids = Object.keys(weights) as AreaId[];
-  const totalWeight = ids.reduce((s, id) => s + weights[id], 0);
+  // 月の観光客総数（8月など=12、その他は少なめ）。上限合計12を超えない
+  const maxTotal = TOURIST_MAX_BY_AREA.yonaguni + TOURIST_MAX_BY_AREA.taketomi + TOURIST_MAX_BY_AREA.ishigaki + TOURIST_MAX_BY_AREA.miyako;
+  const total = Math.min(TOURIST_BY_MONTH[month] ?? maxTotal, maxTotal);
+  // 残容量のある島へ1コマずつランダムに割り当て
+  const ids: AreaId[] = ['yonaguni', 'taketomi', 'ishigaki', 'miyako'];
+  for (let i = 0; i < total; i++) {
+    const avail = ids.filter(id => result[id] < TOURIST_MAX_BY_AREA[id]);
+    if (avail.length === 0) break;
+    const id = avail[Math.floor(Math.random() * avail.length)];
+    result[id] += 1;
+  }
+  return result;
+}
+
+// 要援護者：合計9コマを住民総数で重み付けしてランダム配分（各島の住民総数を超えない＝住民の一部）
+function randomVulnerable(residentTotal: Record<AreaId, number>): Record<AreaId, number> {
+  const result: Record<AreaId, number> = { yonaguni: 0, taketomi: 0, ishigaki: 0, miyako: 0 };
+  const ids = Object.keys(residentTotal) as AreaId[];
   for (let i = 0; i < VULNERABLE_TOTAL_MAX; i++) {
-    let r = Math.random() * totalWeight;
-    for (const id of ids) {
-      r -= weights[id];
+    // まだ住民総数に空きのある島だけを対象に、住民総数で重み付け抽選
+    const cand = ids.filter(id => result[id] < residentTotal[id]);
+    if (cand.length === 0) break;
+    const totalW = cand.reduce((s, id) => s + residentTotal[id], 0);
+    let r = Math.random() * totalW;
+    for (const id of cand) {
+      r -= residentTotal[id];
       if (r <= 0) { result[id] += 1; break; }
     }
   }
@@ -63,32 +67,34 @@ export function createInitialState(config: SetupConfig): GameState {
   const { prepLevel, shelterLevel, month } = config;
   const settings = PREP_LEVEL_SETTINGS[prepLevel as keyof typeof PREP_LEVEL_SETTINGS];
 
-  // 観光客・要援護者は毎回ランダム配置（島別上限内 / 人口重み付け）
-  const tourists = randomTourists();
-  const vulnerable = randomVulnerable();
+  // 住民総数はマニュアル2.5準拠(2/9/44/54=109)。要援護者9はこの住民の一部。
+  // 観光客はその月の総数を島別上限内で配分。residents=住民総数−要援護者(=健常住民)。
+  const tourists = randomTourists(month);
+  const vulnerable = randomVulnerable(RESIDENT_TOTAL_BY_AREA);
+  const rt = RESIDENT_TOTAL_BY_AREA;
 
   const areas: Record<AreaId, AreaState> = {
     yonaguni: {
       id: 'yonaguni', name: '与那国島',
-      residents: 2, tourists: tourists.yonaguni, vulnerable: vulnerable.yonaguni,
+      residents: rt.yonaguni - vulnerable.yonaguni, tourists: tourists.yonaguni, vulnerable: vulnerable.yonaguni,
       fatigue: -shelterLevel, baseActions: 2,
       stagingAirport: 0, stagingPort: 0, inTransitToHub: 0,
     },
     taketomi: {
       id: 'taketomi', name: '竹富町全島',
-      residents: 15, tourists: tourists.taketomi, vulnerable: vulnerable.taketomi,
+      residents: rt.taketomi - vulnerable.taketomi, tourists: tourists.taketomi, vulnerable: vulnerable.taketomi,
       fatigue: -shelterLevel, baseActions: 2,
       stagingAirport: 0, stagingPort: 0, inTransitToHub: 0,
     },
     ishigaki: {
       id: 'ishigaki', name: '石垣島',
-      residents: 43, tourists: tourists.ishigaki, vulnerable: vulnerable.ishigaki,
+      residents: rt.ishigaki - vulnerable.ishigaki, tourists: tourists.ishigaki, vulnerable: vulnerable.ishigaki,
       fatigue: -shelterLevel, baseActions: 4,
       stagingAirport: 0, stagingPort: 0, inTransitToHub: 0,
     },
     miyako: {
       id: 'miyako', name: '宮古島・多良間',
-      residents: 49, tourists: tourists.miyako, vulnerable: vulnerable.miyako,
+      residents: rt.miyako - vulnerable.miyako, tourists: tourists.miyako, vulnerable: vulnerable.miyako,
       fatigue: -shelterLevel, baseActions: 3,
       stagingAirport: 0, stagingPort: 0, inTransitToHub: 0,
     },
@@ -197,24 +203,37 @@ export function isSeaAvailable(weather: WeatherState, month: number): boolean {
 }
 
 // ===== フェーズ移行 =====
+// 事態モード（平時→存立危機事態→有事）。マニュアル3.1：避難の可否を決める。フェーズ(F1-F4)とは無関係。
+//   X日(day 0)以降: 強制的に有事
+//   X-3〜X-1(day -3..-1): 1:00のダイスが「1〜事前準備Lv(Lv6はLv5扱い)」なら1段階上昇
 export function checkPhaseTransition(state: GameState, log: string[]): Phase {
-  const { day } = state;
+  const { day, phase, prepLevel } = state;
 
-  // 日付固定のフェーズ進行（ダイス昇格は廃止）
-  //   X-3〜X-1(day -3..-1): フェーズ1 平時         … Aイベントのみ
-  //   X日   (day 0)       : フェーズ2 存立危機事態   … A/B
-  //   X+1〜X+4(day 1..4)  : フェーズ3 有事初期       … A/B/C
-  //   X+5〜 (day 5..)     : フェーズ4 有事後期       … A/B/C/D
-  if (day <= -1) {
-    log.push('平時（フェーズ1）継続 — X-3〜X-1はAイベントのみ発生');
-    return 'peacetime';
+  if (day >= 0) {
+    if (phase !== 'wartime') log.push('X日: 武力攻撃事態を発令 → 有事モードに移行（全エリア24時間避難可能）');
+    return 'wartime';
   }
-  if (day === 0) {
-    log.push('X日: 存立危機事態を認定（フェーズ2）— A/Bイベント。避難本格化');
-    return 'crisis';
+
+  // X-3〜X-1: ダイスでモード上昇（有事まで上がりうる）
+  if (phase === 'wartime') return 'wartime';
+  const lv = Math.min(prepLevel, 5);
+  const roll = rollDie();
+  if (roll <= lv) {
+    const next: Phase = phase === 'peacetime' ? 'crisis' : 'wartime';
+    log.push(`事態上昇: ダイス${roll} ≤ 事前準備Lv${lv} → ${next === 'crisis' ? '存立危機事態' : '有事'}に移行`);
+    return next;
   }
-  log.push(`有事（フェーズ${day <= 4 ? '3 有事初期 — A/B/C' : '4 有事後期 — A/B/C/D'}）`);
-  return 'wartime';
+  log.push(`事態維持: ダイス${roll} > 事前準備Lv${lv} → ${phase === 'peacetime' ? '平時' : '存立危機事態'}継続`);
+  return phase;
+}
+
+// フェーズ(F1-F4)＝日付固定（事態モードとは無関係）。発生し得るイベント種別を決める。
+//   F1: X-3〜X-1(A) / F2: X〜X+2(A,B) / F3: X+3〜X+5(A,B,C) / F4: X+6〜X+8(A,B,C,D)
+function eventPhase(day: number): number {
+  if (day <= -1) return 1;
+  if (day <= 2) return 2;
+  if (day <= 5) return 3;
+  return 4;
 }
 
 // ===== 地震判定 =====
@@ -299,6 +318,8 @@ export interface EventResult {
   infraPenalty: Partial<InfraState>;
   // その日のエリア別 輸送容量倍率（1=通常）。軍民運航錯綜=半日停止(0.5)、交通混乱=一部通行不能 等
   capacityMultiplier: Record<AreaId, number>;
+  // その日だけ使用不能になる空港(airportAvailのキー)。乗員ボイコット等で1空港のみ閉鎖(全空港停止ではない)
+  facilityClosedToday: string[];
   newDead: number;
   hourlyRolls: HourlyRoll[];
   senkakuOccupied: boolean;
@@ -312,17 +333,17 @@ export function generateDailyEvents(state: GameState): EventResult {
     transportPenalty: {},
     infraPenalty: {},
     capacityMultiplier: { yonaguni: 1, taketomi: 1, ishigaki: 1, miyako: 1 },
+    facilityClosedToday: [],
     newDead: 0,
     hourlyRolls: [],
     senkakuOccupied: false,
   };
 
-  const { phase, prepLevel, military, day } = state;
+  const { prepLevel, military, day } = state;
 
-  // フェーズ番号 (1=平時 A / 2=存立危機 A,B / 3=有事初期 A,B,C / 4=有事後期 A,B,C,D)
-  //   X日(0)=2, X+1〜X+4(1..4)=3, X+5〜(5..)=4
-  const phaseNum = phase === 'peacetime' ? 1 : phase === 'crisis' ? 2 : (day >= 5 ? 4 : 3);
-  const actualPhase = Math.min(4, Math.max(1, phaseNum));
+  // フェーズ(F1-F4)は日付で固定（事態モードとは無関係。マニュアル3.10/図13）。
+  //   F1: roll1→A / F2: +roll2→B / F3: +roll3→C / F4: +roll4→D
+  const actualPhase = eventPhase(day);
 
   // 毎日ランダムに6つのイベント判定マスを配置
   const eventSpaceHours = pickEventSpaceHours(6);
@@ -397,13 +418,17 @@ function processEvent(
       result.capacityMultiplier[targetArea] *= 0.7;
       return `【交通混乱】${areaName} 一部通行不能`;
     } else if (subRoll === 3) {
-      if (prepLevel < 5) {
-        result.log.push(`[イベントA|出目${subRoll}] 【乗員ボイコット】民間空港・海港が本日停止 (Lv${prepLevel}<5)`);
-        result.transportPenalty.civilianAirDisabled = true;
-        return '【乗員ボイコット】民間輸送停止';
+      // 乗員ボイコット: ダイスで決めた1空港だけが本日24時まで使用不能（全空港停止ではない）。Lv5以上で未遂
+      if (prepLevel >= 5) {
+        result.log.push(`[イベントA|出目${subRoll}] 【乗員ボイコット未遂】Lv${prepLevel}≥5で回避`);
+        return '【ボイコット未遂】Lv高で回避';
       }
-      result.log.push(`[イベントA|出目${subRoll}] 【乗員ボイコット未遂】Lv${prepLevel}≥5で回避`);
-      return '【ボイコット未遂】Lv高で回避';
+      const apts = ['shinIshigaki', 'miyako', 'shimoji', 'yonaguni'];
+      const apt = apts[Math.floor(Math.random() * apts.length)];
+      const aptJp = { shinIshigaki: '新石垣空港', miyako: '宮古空港', shimoji: '下地島空港', yonaguni: '与那国空港' }[apt];
+      result.facilityClosedToday.push(apt);
+      result.log.push(`[イベントA|出目${subRoll}] 【乗員ボイコット】${aptJp}が本日24時まで使用不能（他空港は通常運用）`);
+      return `【乗員ボイコット】${aptJp}停止`;
     } else if (subRoll === 4) {
       result.log.push(`[イベントA|出目${subRoll}] 【避難拒否】${areaName} — 説得に時間 疲労+0.5`);
       result.fatigueIncrease[targetArea] += 0.5;
@@ -413,10 +438,13 @@ function processEvent(
       areas.forEach(a => { result.fatigueIncrease[a] += 0.3; });
       return '【通信障害】全エリア疲労+0.3';
     } else {
-      result.log.push(`[イベントA|出目${subRoll}] 【外国人観光客混乱】空港・海港で騒動 石垣/宮古 疲労+0.5`);
-      result.fatigueIncrease.ishigaki += 0.5;
-      result.fatigueIncrease.miyako += 0.5;
-      return '【外国人混乱】石垣/宮古 疲労+0.5';
+      // 外国人観光客 大乱闘: ダイスで決めた1空港だけが本日24時まで使用不能（全空港停止ではない・疲労上昇なし）
+      const apts = ['shinIshigaki', 'miyako', 'shimoji', 'yonaguni'];
+      const apt = apts[Math.floor(Math.random() * apts.length)];
+      const aptJp = { shinIshigaki: '新石垣空港', miyako: '宮古空港', shimoji: '下地島空港', yonaguni: '与那国空港' }[apt];
+      result.facilityClosedToday.push(apt);
+      result.log.push(`[イベントA|出目${subRoll}] 【外国人観光客大乱闘】${aptJp}で騒動 → 本日24時まで使用不能（他空港は通常運用）`);
+      return `【観光客大乱闘】${aptJp}停止`;
     }
   }
 
@@ -590,19 +618,23 @@ export function getDayCapacities(
   const { prepLevel, transport, phase } = state;
   const settings = PREP_LEVEL_SETTINGS[prepLevel as keyof typeof PREP_LEVEL_SETTINGS];
   const isWartime = phase === 'wartime';
-  const isCrisisOrMore = phase === 'crisis' || isWartime;
+  const isCrisis = phase === 'crisis';
   const civAirOk = !transport.civilianAirDisabled;
   const civShipOk = !transport.civilianShipDisabled;
+  // マニュアル3.1: 平時は島外避難不可(全0)。存立危機は与那国・竹富のみ(石垣港入港はLv2以上)。有事は全可。
+  // 石垣港が破壊されている場合は受け入れ不可。
+  const ishigakiPortOpen = state.infra.ishigakiPort && (isWartime || (isCrisis && prepLevel >= 2));
 
+  // 与那国空港→本土: 平時0 / 存立危機1便 / 有事は便数表
   const yonaguniAirMax = airportAvail.yonaguni && civAirOk
-    ? (isCrisisOrMore
-      ? (isWartime ? settings.airFlightsWartime.yonaguni : (prepLevel >= 6 ? 3 : 2))
-      : 1)
+    ? (isWartime ? settings.airFlightsWartime.yonaguni : isCrisis ? 1 : 0)
     : 0;
 
-  const yonaguniSeaMax = seaOk && isCrisisOrMore ? YONAGUNI_TO_ISHIGAKI_FERRY : 0;
+  // 与那国→石垣フェリー: 石垣港が開いている時のみ(存立危機はLv2+、有事は常時)
+  const yonaguniSeaMax = seaOk && ishigakiPortOpen ? YONAGUNI_TO_ISHIGAKI_FERRY : 0;
 
-  const taketomiFerryMax = seaOk && isCrisisOrMore ? TAKETOMI_TO_ISHIGAKI_FERRY_MAX : 0;
+  // 竹富→石垣フェリー: 同上(存立危機Lv2+ / 有事)
+  const taketomiFerryMax = seaOk && ishigakiPortOpen ? TAKETOMI_TO_ISHIGAKI_FERRY_MAX : 0;
 
   const ishigakiAirMax = isWartime && airportAvail.shinIshigaki && civAirOk
     ? settings.airFlightsWartime.shinIshigaki : 0;
@@ -686,6 +718,10 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
   // 施設破壊などインフラ被害を反映（B1修正）し、被害後の空港利用可否を再計算
   const damagedInfra: InfraState = { ...state.infra, ...eventResult.infraPenalty };
   const airportAvailFinal = checkAirportAvailability(newWeather, month, damagedInfra);
+  // 乗員ボイコット・観光客大乱闘で当日のみ閉鎖される空港を反映（その空港だけ／同日24時まで）
+  for (const apt of eventResult.facilityClosedToday) {
+    if (apt in airportAvailFinal) airportAvailFinal[apt] = false;
+  }
 
   const stateAfterEvents: GameState = {
     ...state,

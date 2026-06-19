@@ -157,10 +157,11 @@ export const AREA_CONFIGS: Record<AreaId, {
   initialResidents: number;
   color: string;
 }> = {
+  // initialResidents=住民総数(マニュアル2.5: 計109)。要援護者9はこの中に含む。手数(baseActions)は2/2/4/3。
   yonaguni: { name: '与那国島', baseActions: 2, initialResidents: 2, color: '#ef4444' },
-  taketomi: { name: '竹富町全島', baseActions: 2, initialResidents: 15, color: '#f97316' },
-  ishigaki: { name: '石垣島', baseActions: 4, initialResidents: 43, color: '#3b82f6' },
-  miyako:   { name: '宮古島・多良間', baseActions: 3, initialResidents: 49, color: '#22c55e' },
+  taketomi: { name: '竹富町全島', baseActions: 2, initialResidents: 9, color: '#f97316' },
+  ishigaki: { name: '石垣島', baseActions: 4, initialResidents: 44, color: '#3b82f6' },
+  miyako:   { name: '宮古島・多良間', baseActions: 3, initialResidents: 54, color: '#22c55e' },
 };
 
 // ===== 観光客数 (月別) =====
@@ -170,7 +171,7 @@ export const TOURIST_BY_MONTH: Record<number, number> = {
   11: 8, 12: 12,
 };
 
-// ===== 観光客 島別上限（合計最大12・毎回ランダム配置） =====
+// ===== 観光客 島別上限（合計最大12＝8月。毎回ランダム配置。月で総数が変わる） =====
 export const TOURIST_MAX_BY_AREA = {
   yonaguni: 0,
   taketomi: 2,
@@ -178,7 +179,17 @@ export const TOURIST_MAX_BY_AREA = {
   miyako: 5,
 } as const;
 
-// ===== 要援護者 合計上限（毎回ランダム＝人口で重み付けした最適配置） =====
+// ===== エリア別 住民総数（マニュアル2.5: 合計109コマ。要援護者はこの中に含む） =====
+// コマ上限は 与那国2 / 竹富11(観光2) / 石垣49(観光5) / 宮古多良間59(観光5)。
+// 住民総数 = 上限 − 観光上限 = 2 / 9 / 44 / 54。要援護者9コマはこの住民の一部。
+export const RESIDENT_TOTAL_BY_AREA = {
+  yonaguni: 2,
+  taketomi: 9,
+  ishigaki: 44,
+  miyako: 54,
+} as const;
+
+// ===== 要援護者 合計（住民の一部・9コマを人口比でランダム配分） =====
 export const VULNERABLE_TOTAL_MAX = 9;
 
 // ===== フェーズ別イベント発生確率 =====

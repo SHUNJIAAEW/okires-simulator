@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { SetupConfig } from '../types';
-import { TOURIST_MAX_BY_AREA, VULNERABLE_TOTAL_MAX } from '../constants';
+import { TOURIST_MAX_BY_AREA, VULNERABLE_TOTAL_MAX, RESIDENT_TOTAL_BY_AREA } from '../constants';
 import { useWindowWidth } from '../hooks/useWindowWidth';
 import { C, FONT } from '../theme';
 
@@ -73,9 +73,10 @@ export function SetupScreen({ onStart }: Props) {
     onStart({ prepLevel, shelterLevel, month });
   };
 
-  // 観光客・要援護者は実行時ランダム。概算は上限値ベースで表示
+  // 観光客は実行時ランダム。総コマ上限＝住民総数(109、要援護者9含む)＋観光客上限。
   const touristMax = TOURIST_MAX_BY_AREA.yonaguni + TOURIST_MAX_BY_AREA.taketomi + TOURIST_MAX_BY_AREA.ishigaki + TOURIST_MAX_BY_AREA.miyako;
-  const totalKomaMax = 2 + 15 + 43 + 49 + touristMax + VULNERABLE_TOTAL_MAX;
+  const residentTotal = RESIDENT_TOTAL_BY_AREA.yonaguni + RESIDENT_TOTAL_BY_AREA.taketomi + RESIDENT_TOTAL_BY_AREA.ishigaki + RESIDENT_TOTAL_BY_AREA.miyako;
+  const totalKomaMax = residentTotal + touristMax;
 
   return (
     <div style={{ ...styles.container, padding: isMobile ? '0 0 40px' : '0 0 56px' }}>
@@ -198,10 +199,10 @@ export function SetupScreen({ onStart }: Props) {
               <span style={styles.readoutTitle}>INITIAL DEPLOYMENT // 初期配置概要（住民は固定・観光/要援護はランダム）</span>
             </div>
             <div style={{ ...styles.readoutGrid, gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr' }}>
-              <ReadoutRow dot="#ff5a5a" label="与那国島" detail="住民2 ＋ 観光/要援護(ランダム)" />
-              <ReadoutRow dot="#ff9e3d" label="竹富町全島" detail="住民15 ＋ 観光/要援護(ランダム)" />
-              <ReadoutRow dot="#38bdf8" label="石垣島" detail="住民43 ＋ 観光/要援護(ランダム)" />
-              <ReadoutRow dot="#00ff88" label="宮古島・多良間" detail="住民49 ＋ 観光/要援護(ランダム)" />
+              <ReadoutRow dot="#ff5a5a" label="与那国島" detail={`住民${RESIDENT_TOTAL_BY_AREA.yonaguni}（要援護含む）＋ 観光(ランダム)`} />
+              <ReadoutRow dot="#ff9e3d" label="竹富町全島" detail={`住民${RESIDENT_TOTAL_BY_AREA.taketomi}（要援護含む）＋ 観光最大${TOURIST_MAX_BY_AREA.taketomi}`} />
+              <ReadoutRow dot="#38bdf8" label="石垣島" detail={`住民${RESIDENT_TOTAL_BY_AREA.ishigaki}（要援護含む）＋ 観光最大${TOURIST_MAX_BY_AREA.ishigaki}`} />
+              <ReadoutRow dot="#00ff88" label="宮古島・多良間" detail={`住民${RESIDENT_TOTAL_BY_AREA.miyako}（要援護含む）＋ 観光最大${TOURIST_MAX_BY_AREA.miyako}`} />
             </div>
             <div style={styles.totalLine}>
               <span style={styles.totalLabel}>TOTAL FORCE (MAX)</span>
