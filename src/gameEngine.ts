@@ -11,7 +11,7 @@ import {
   getInitialWindDirectionIndex, isStrongWind, AIRPORT_ALLOWED_WIND_DIRECTIONS,
   PREP_LEVEL_SETTINGS, TAKETOMI_TO_ISHIGAKI_FERRY_MAX, YONAGUNI_TO_ISHIGAKI_FERRY,
   getEffectiveActions, TOURIST_MAX_BY_AREA, VULNERABLE_TOTAL_MAX,
-  TOURIST_BY_MONTH, RESIDENT_TOTAL_BY_AREA,
+  TOURIST_BY_MONTH, RESIDENT_TOTAL_BY_AREA, PAC3_BY_LEVEL,
 } from './constants';
 
 // ===== サイコロ =====
@@ -123,7 +123,10 @@ export function createInitialState(config: SetupConfig): GameState {
     },
     military: {
       chineseSea: 0, chineseAir: 0, jsdfSea: 0, jsdfAir: 0,
-      pac3Ishigaki: false, pac3Miyako: false, senkakuOccupied: false,
+      // PAC3は事前準備Lv別の数を初期配備。合計を石垣優先(奇数は石垣)で分配。ダイス無関係。
+      pac3Ishigaki: Math.ceil((PAC3_BY_LEVEL[prepLevel] ?? 0) / 2),
+      pac3Miyako: Math.floor((PAC3_BY_LEVEL[prepLevel] ?? 0) / 2),
+      senkakuOccupied: false,
     },
     transport: {
       coastGuardToday: settings.coastGuardTripsPerDay,
@@ -279,20 +282,7 @@ export function updateMilitary(state: GameState, log: string[]): MilitaryState {
       log.push(`自衛隊配置ダイス: ${jsdfRoll} → 今日は増強なし`);
     }
 
-    if (prepLevel >= 3 && !mil.pac3Ishigaki) {
-      const r = rollDie();
-      if (r <= prepLevel) {
-        mil.pac3Ishigaki = true;
-        log.push(`PAC3配備: 石垣・竹富エリアに配備完了 (ダイス${r})`);
-      }
-    }
-    if (prepLevel >= 3 && !mil.pac3Miyako) {
-      const r = rollDie();
-      if (r <= prepLevel) {
-        mil.pac3Miyako = true;
-        log.push(`PAC3配備: 宮古・下地島エリアに配備完了 (ダイス${r})`);
-      }
-    }
+    // PAC3は事前準備Lvで初期配備済み（ダイス配備は廃止）。ここでは増減しない。
   }
 
   return mil;
@@ -316,8 +306,10 @@ export interface EventResult {
   fatigueIncrease: Record<AreaId, number>;
   transportPenalty: Partial<TransportState>;
   infraPenalty: Partial<InfraState>;
-  // その日のエリア別 輸送容量倍率（1=通常）。軍民運航錯綜=半日停止(0.5)、交通混乱=一部通行不能 等
+  // その日のエリア別 輸送容量倍率（1=通常）。軍民運航錯綜=半日停止(0.5)、交通混乱=一部通行不能 等（空海両方）
   capacityMultiplier: Record<AreaId, number>;
+  // 海路だけに掛かる倍率（機雷=海上のみ半減。空路は影響しない）
+  seaCapacityMultiplier: Record<AreaId, number>;
   // その日だけ使用不能になる空港(airportAvailのキー)。乗員ボイコット等で1空港のみ閉鎖(全空港停止ではない)
   facilityClosedToday: string[];
   newDead: number;
@@ -333,6 +325,7 @@ export function generateDailyEvents(state: GameState): EventResult {
     transportPenalty: {},
     infraPenalty: {},
     capacityMultiplier: { yonaguni: 1, taketomi: 1, ishigaki: 1, miyako: 1 },
+    seaCapacityMultiplier: { yonaguni: 1, taketomi: 1, ishigaki: 1, miyako: 1 },
     facilityClosedToday: [],
     newDead: 0,
     hourlyRolls: [],
@@ -461,9 +454,17 @@ function processEvent(
       result.fatigueIncrease.miyako += 0.5;
       return '【海上民兵】石垣/宮古 疲労+0.5';
     } else if (subRoll === 5) {
-      result.log.push(`[イベントB|出目${subRoll}] 【機雷敷設の疑い】海上輸送ルートへの脅威 宮古 疲労+1`);
-      result.fatigueIncrease.miyako += 1;
-      return '【機雷疑い】宮古 疲労+1';
+      // 機雷敷設: 発生した港(航路)を明記。その港のあるエリアの海上輸送が当日大きく低下(疲労ではない)
+      const mineSpots: { port: string; area: AreaId }[] = [
+        { port: '平良港(宮古)', area: 'miyako' },
+        { port: '石垣港(石垣)', area: 'ishigaki' },
+        { port: '久部良港(与那国)', area: 'yonaguni' },
+        { port: '大原港(竹富・西表)', area: 'taketomi' },
+      ];
+      const spot = mineSpots[Math.floor(Math.random() * mineSpots.length)];
+      result.seaCapacityMultiplier[spot.area] *= 0.5; // 海路のみ半減（空路は影響なし）
+      result.log.push(`[イベントB|出目${subRoll}] 【機雷敷設の疑い】${spot.port}の航路で機雷の脅威 → 当日の海上輸送のみ半減（空路は影響なし・要掃海）`);
+      return `【機雷】${spot.port} 海路半減`;
     } else {
       // 軍民運航錯綜: 空港・海港が半日間 使用不能になるだけ（疲労上昇なし）→ 石垣/宮古の輸送容量を半減
       result.log.push(`[イベントB|出目${subRoll}] 【軍民運航錯綜】管制混乱で空港・海港が半日使用不能 — 石垣/宮古の本日の輸送量50%減`);
@@ -478,7 +479,7 @@ function processEvent(
     // 計算式: サイコロ(3or4個)合計 + 中国軍計 - 自衛隊計 ± PAC3
     const chinaTotal = military.chineseSea + military.chineseAir;
     const jsdfTotal = military.jsdfSea + military.jsdfAir;
-    const pac3 = (military.pac3Ishigaki ? 1 : 0) + (military.pac3Miyako ? 1 : 0);
+    const pac3 = military.pac3Ishigaki + military.pac3Miyako;
     const senkakuBonus = military.senkakuOccupied ? 3 : 0;
 
     if (subRoll <= 2) {
@@ -530,10 +531,17 @@ function processEvent(
       const threshold = 17;
       result.log.push(`[イベントC|出目${subRoll}] 【電力設備攻撃】ダイス${diceSum}+中${chinaTotal}-自${jsdfTotal+pac3}+尖${senkakuBonus}=計${calcValue} / 閾値${threshold}`);
       if (calcValue >= threshold) {
-        result.log.push('  ⚠️ 電力設備破壊! 停電・断水 石垣/宮古 疲労+2');
-        result.fatigueIncrease.ishigaki += 2;
-        result.fatigueIncrease.miyako += 2;
-        return `【電力破壊】計${calcValue}≥${threshold} 石垣/宮古 疲労+2`;
+        // 発電所破壊→停電。発生エリアの発電所infraをfalse化。即時+1、以後毎日+1(夏季+2)はprepareDayPhase1で加算。
+        const powerTargets: { key: keyof InfraState; area: AreaId; jp: string }[] = [
+          { key: 'powerIshigaki', area: 'ishigaki', jp: '石垣島' },
+          { key: 'powerMiyako', area: 'miyako', jp: '宮古島' },
+          { key: 'powerYonaguni', area: 'yonaguni', jp: '与那国島' },
+        ];
+        const pt = powerTargets[Math.floor(Math.random() * powerTargets.length)];
+        result.infraPenalty[pt.key] = false;
+        result.fatigueIncrease[pt.area] += 1; // 即時+1
+        result.log.push(`  ⚠️ 発電所破壊! ${pt.jp}が停電・断水 → 即時 疲労+1、以後毎日 疲労+1(夏季+2)`);
+        return `【電力破壊】${pt.jp} 停電(以後毎日疲労)`;
       }
       return `【電力攻撃】計${calcValue}<${threshold} 防護成功`;
     }
@@ -543,7 +551,7 @@ function processEvent(
     // イベントD: 直接攻撃・占領
     const chinaTotal = military.chineseSea + military.chineseAir;
     const jsdfTotal = military.jsdfSea + military.jsdfAir;
-    const pac3num = (military.pac3Ishigaki ? 1 : 0) + (military.pac3Miyako ? 1 : 0);
+    const pac3num = military.pac3Ishigaki + military.pac3Miyako;
     const senkakuBonus = military.senkakuOccupied ? 3 : 0;
 
     if (subRoll <= 2) {
@@ -613,7 +621,8 @@ export function getDayCapacities(
   state: GameState,
   airportAvail: Record<string, boolean>,
   seaOk: boolean,
-  capMul: Record<AreaId, number> = { yonaguni: 1, taketomi: 1, ishigaki: 1, miyako: 1 }
+  capMul: Record<AreaId, number> = { yonaguni: 1, taketomi: 1, ishigaki: 1, miyako: 1 },
+  seaMul: Record<AreaId, number> = { yonaguni: 1, taketomi: 1, ishigaki: 1, miyako: 1 }
 ): DayCapacities {
   const { prepLevel, transport, phase } = state;
   const settings = PREP_LEVEL_SETTINGS[prepLevel as keyof typeof PREP_LEVEL_SETTINGS];
@@ -660,15 +669,17 @@ export function getDayCapacities(
   // 任意小数を避けるため 0.5 コマ単位へ丸める（通常日=倍率1では整数/0.5のまま無変化）。
   const r05 = (x: number) => Math.round(x * 2) / 2;
   const my = capMul.yonaguni, mt = capMul.taketomi, mi = capMul.ishigaki, mm = capMul.miyako;
+  // 海路専用倍率(機雷など)。海路フィールドにのみ追加で掛ける。空路には掛けない。
+  const sy = seaMul.yonaguni, st = seaMul.taketomi, si = seaMul.ishigaki, sm = seaMul.miyako;
   return {
-    yonaguniAirMax: r05(yonaguniAirMax * my), yonaguniSeaMax: r05(yonaguniSeaMax * my),
-    taketomiFerryMax: r05(taketomiFerryMax * mt),
+    yonaguniAirMax: r05(yonaguniAirMax * my), yonaguniSeaMax: r05(yonaguniSeaMax * my * sy),
+    taketomiFerryMax: r05(taketomiFerryMax * mt * st),
     ishigakiAirMax: r05(ishigakiAirMax * mi), ishigakiJasdfMax: r05(ishigakiJasdfMax * mi),
-    ishigakiCoastGuardMax: r05(ishigakiCoastGuardMax * mi), ishigakiJmsdfMax: r05(ishigakiJmsdfMax * mi),
-    ishigakiFerryMax: r05(ishigakiFerryMax * mi),
+    ishigakiCoastGuardMax: r05(ishigakiCoastGuardMax * mi * si), ishigakiJmsdfMax: r05(ishigakiJmsdfMax * mi * si),
+    ishigakiFerryMax: r05(ishigakiFerryMax * mi * si),
     miyakoAirMax: r05(miyakoAirMax * mm), shimojAirMax: r05(shimojAirMax * mm),
-    miyakoCoastGuardMax: r05(miyakoCoastGuardMax * mm), miyakoJmsdfMax: r05(miyakoJmsdfMax * mm),
-    miyakoFerryMax: r05(miyakoFerryMax * mm),
+    miyakoCoastGuardMax: r05(miyakoCoastGuardMax * mm * sm), miyakoJmsdfMax: r05(miyakoJmsdfMax * mm * sm),
+    miyakoFerryMax: r05(miyakoFerryMax * mm * sm),
     seaOk, airportAvail, civilianAirOk: civAirOk, civilianShipOk: civShipOk,
     phase,
     prepLevel,
@@ -708,12 +719,24 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
   const eventResult = generateDailyEvents({ ...state, phase: newPhase, military: newMilitary });
   log.push(...eventResult.log);
 
-  // 7. フェーズ変化による疲労
+  // 7. 疲労度の上昇（マニュアル3.9）。回復はしない。
   const areasAfterEvents = JSON.parse(JSON.stringify(state.areas)) as Record<AreaId, AreaState>;
+  // フェーズ(F)が1上昇する日(X=F2, X+3=F3, X+6=F4)は全エリア+1
+  const fRose = eventPhase(day) > eventPhase(day - 1);
+  // 発電所破壊で停電中のエリアは毎日1:00に+1(6〜10月の夏季は+2)。波照間→竹富、多良間→宮古に加算。
+  const outageInc = (month >= 6 && month <= 10) ? 2 : 1;
+  const powerOutage: Record<AreaId, boolean> = {
+    yonaguni: !state.infra.powerYonaguni,
+    taketomi: !state.infra.powerHateruma,
+    ishigaki: !state.infra.powerIshigaki,
+    miyako: !state.infra.powerMiyako || !state.infra.powerTarama,
+  };
   for (const id of Object.keys(areasAfterEvents) as AreaId[]) {
     areasAfterEvents[id].fatigue += eventResult.fatigueIncrease[id];
-    if (phaseChanged) areasAfterEvents[id].fatigue += 1;
+    if (fRose) areasAfterEvents[id].fatigue += 1;
+    if (powerOutage[id]) areasAfterEvents[id].fatigue += outageInc;
   }
+  if (fRose) log.push(`フェーズF${eventPhase(day)}に上昇 → 全エリア疲労+1`);
 
   // 施設破壊などインフラ被害を反映（B1修正）し、被害後の空港利用可否を再計算
   const damagedInfra: InfraState = { ...state.infra, ...eventResult.infraPenalty };
@@ -741,7 +764,7 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
   };
 
   // B2修正: 輸送停止フラグ・インフラ被害を反映した後で容量を計算する
-  const capacities = getDayCapacities(stateAfterEvents, airportAvailFinal, seaOk, eventResult.capacityMultiplier);
+  const capacities = getDayCapacities(stateAfterEvents, airportAvailFinal, seaOk, eventResult.capacityMultiplier, eventResult.seaCapacityMultiplier);
 
   return {
     stateAfterEvents,
@@ -1014,6 +1037,18 @@ export function autoSelectOrders(phase1: DayPhase1Result): EvacuationOrder[] {
     const res = Math.min(areas.ishigaki.residents, rest);
     if (vuln + res > 0) {
       orders.push({ from: 'ishigaki', to: 'mainland', method: '海保輸送船', residents: res, tourists: 0, vulnerable: vuln });
+    }
+  }
+
+  // 石垣 → 本土(空自輸送機) ※積極使用。要援護者(空路だが軍用機で搬送可)＋住民・観光客
+  if (capacities.ishigakiJasdfMax > 0 && airportAvail.shinIshigaki) {
+    const cap = capacities.ishigakiJasdfMax;
+    const vuln = Math.min(areas.ishigaki.vulnerable, cap);
+    const rest = cap - vuln;
+    const res = Math.min(areas.ishigaki.residents, rest);
+    const tour = Math.min(areas.ishigaki.tourists, rest - res);
+    if (vuln + res + tour > 0) {
+      orders.push({ from: 'ishigaki', to: 'mainland', method: '空自輸送機', residents: res, tourists: tour, vulnerable: vuln });
     }
   }
 

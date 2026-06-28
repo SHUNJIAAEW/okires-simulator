@@ -51,8 +51,8 @@ export interface MilitaryState {
   chineseAir: number;
   jsdfSea: number;
   jsdfAir: number;
-  pac3Ishigaki: boolean;
-  pac3Miyako: boolean;
+  pac3Ishigaki: number; // PAC3配備数(石垣・竹富)。事前準備Lvで決定、奇数は石垣優先
+  pac3Miyako: number;   // PAC3配備数(宮古・下地島)
   senkakuOccupied: boolean;
 }
 

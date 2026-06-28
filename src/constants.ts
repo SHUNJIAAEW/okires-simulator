@@ -81,7 +81,7 @@ export const PREP_LEVEL_SETTINGS = {
     mainPortCapacityPerTrip: 0.5,
     haterumaAirport: false,
     taramaAirport: false,
-    coastGuardTripsPerDay: 1,
+    coastGuardTripsPerDay: 2,
     jmsdfTotal: 1,
     jasdfTotal: 1,
     jgsdfTotal: 1,
@@ -107,7 +107,7 @@ export const PREP_LEVEL_SETTINGS = {
     mainPortCapacityPerTrip: 1.0,
     haterumaAirport: true,
     taramaAirport: true,
-    coastGuardTripsPerDay: 2,
+    coastGuardTripsPerDay: 3,
     jmsdfTotal: 3,
     jasdfTotal: 3,
     jgsdfTotal: 3,
@@ -125,7 +125,8 @@ export const PREP_LEVEL_SETTINGS = {
     jasdfTotal: 4,
     jgsdfTotal: 4,
     airFlights: { shinIshigaki: 0, miyako: 0, shimoji: 0, yonaguni: 1 },
-    airFlightsWartime: { shinIshigaki: 13, miyako: 10, shimoji: 5, yonaguni: 2 },
+    // 24h運用はLv6のみ。Lv5は有事便数(10/7/3/2)
+    airFlightsWartime: { shinIshigaki: 10, miyako: 7, shimoji: 3, yonaguni: 2 },
     crisis24h: false,
   },
   6: {
@@ -191,6 +192,9 @@ export const RESIDENT_TOTAL_BY_AREA = {
 
 // ===== 要援護者 合計（住民の一部・9コマを人口比でランダム配分） =====
 export const VULNERABLE_TOTAL_MAX = 9;
+
+// ===== PAC3配備数（事前準備Lv別の合計・図3）。石垣+宮古の合計。奇数は石垣優先。ダイス無関係 =====
+export const PAC3_BY_LEVEL: Record<number, number> = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 4, 6: 4 };
 
 // ===== フェーズ別イベント発生確率 =====
 // フェーズ1でダイス出目1=A, フェーズ2で1-2=B, フェーズ3で1-3=C, フェーズ4で1-4=D
