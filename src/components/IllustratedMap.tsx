@@ -111,13 +111,49 @@ const MAINLAND_DEST: Record<AreaId, { x: number; y: number }> = {
 interface Tok { id: string; x0: number; y0: number; x1: number; y1: number; kind: 'r' | 'v'; delay: number; last: boolean }
 const TCOLOR = { r: '#2f80ed', v: '#eb5757' } as const;
 
-// 島ごとのセル(白マス)配置領域（svg座標・楕円範囲）
-const AREA_BLOB: Record<AreaId, { cx: number; cy: number; rx: number; ry: number }> = {
-  yonaguni: { cx: 38, cy: 100, rx: 15, ry: 10 },
-  taketomi: { cx: 90, cy: 126, rx: 24, ry: 16 },
-  ishigaki: { cx: 154, cy: 88, rx: 30, ry: 22 },
-  miyako: { cx: 246, cy: 92, rx: 24, ry: 17 },
+// エリア内の個別島ごとのコマ配置領域＋按分ウェイト（svg座標・楕円範囲）
+// 比率は SimulationMap のボード盤（以前共有した公式マップ）由来:
+//  竹富町＝西表6/竹富2/波照間3/黒島2/小浜2(計15)、宮古は人口比で多良間・伊良部等にも配置
+type SubBlob = { cx: number; cy: number; rx: number; ry: number };
+const SUB_ISLANDS: Record<AreaId, { blob: SubBlob; weight: number }[]> = {
+  yonaguni: [
+    { blob: { cx: 38, cy: 100, rx: 15, ry: 10 }, weight: 1 }, // 与那国島
+  ],
+  taketomi: [
+    { blob: { cx: 88, cy: 126, rx: 20, ry: 13 }, weight: 6 }, // 西表島
+    { blob: { cx: 120, cy: 120, rx: 4, ry: 3 }, weight: 2 },  // 竹富島
+    { blob: { cx: 100, cy: 160, rx: 5, ry: 4 }, weight: 3 },  // 波照間島
+    { blob: { cx: 132, cy: 140, rx: 5, ry: 4 }, weight: 2 },  // 黒島
+    { blob: { cx: 116, cy: 104, rx: 4, ry: 3 }, weight: 2 },  // 小浜島
+  ],
+  ishigaki: [
+    { blob: { cx: 154, cy: 88, rx: 30, ry: 22 }, weight: 1 }, // 石垣島
+  ],
+  miyako: [
+    { blob: { cx: 246, cy: 92, rx: 22, ry: 16 }, weight: 85 }, // 宮古島
+    { blob: { cx: 216, cy: 92, rx: 7, ry: 5 }, weight: 6 },    // 伊良部島
+    { blob: { cx: 202, cy: 93, rx: 4, ry: 4 }, weight: 1 },    // 下地島
+    { blob: { cx: 200, cy: 150, rx: 7, ry: 5 }, weight: 3 },   // 多良間島
+    { blob: { cx: 240, cy: 64, rx: 5, ry: 4 }, weight: 1 },    // 池間島
+    { blob: { cx: 236, cy: 118, rx: 4, ry: 3 }, weight: 1 },   // 来間島
+  ],
 };
+
+// 整数 total を weights で按分（最大剰余法）。総数を保ったまま各島へ配分する。
+function apportion(total: number, weights: number[]): number[] {
+  // 負の weight は 0 に丸めて防御（負の配分を返さない）
+  const w = weights.map(x => Math.max(0, x));
+  const sum = w.reduce((a, b) => a + b, 0);
+  if (sum <= 0 || total <= 0) return w.map(() => 0);
+  const raw = w.map(x => (total * x) / sum);
+  const base = raw.map(Math.floor);
+  let rem = total - base.reduce((a, b) => a + b, 0);
+  const order = raw
+    .map((r, i) => ({ i, frac: r - Math.floor(r) }))
+    .sort((a, b) => b.frac - a.frac);
+  for (let k = 0; rem > 0 && order.length > 0; k++, rem--) base[order[k % order.length].i]++;
+  return base;
+}
 
 // コマ種別の色（白マスに乗るコマ）
 const KOMA_COLOR: Record<string, string> = {
@@ -205,9 +241,24 @@ export function IllustratedMap({ areas, infra, evacuated = 0, dead = 0, dayLogs 
 
   // 各島の白マス（現在のコマ配置）
   const cellsByArea = useMemo(() => {
-    return (Object.keys(AREA_BLOB) as AreaId[]).map(id => ({
-      id, cells: buildCells(areas[id], AREA_BLOB[id]),
-    }));
+    const ci = (x: number) => Math.max(0, Math.round(x));
+    const out: { id: string; cells: Cell[] }[] = [];
+    (Object.keys(SUB_ISLANDS) as AreaId[]).forEach(id => {
+      const a = areas[id];
+      const subs = SUB_ISLANDS[id];
+      const w = subs.map(s => s.weight);
+      const res = apportion(ci(a.residents), w);
+      const tou = apportion(ci(a.tourists), w);
+      const vul = apportion(ci(a.vulnerable), w);
+      const stg = apportion(ci(a.stagingPort), w);
+      subs.forEach((s, si) => {
+        const subArea: AreaState = {
+          ...a, residents: res[si], tourists: tou[si], vulnerable: vul[si], stagingPort: stg[si],
+        };
+        out.push({ id: `${id}-${si}`, cells: buildCells(subArea, s.blob) });
+      });
+    });
+    return out;
   }, [areas]);
 
   return (
