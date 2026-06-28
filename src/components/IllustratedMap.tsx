@@ -43,21 +43,22 @@ const ISLANDS: { cx: number; cy: number; rx: number; ry: number }[] = [
 ];
 
 // ── 島の名前ラベル ──
+// ラベルは島本体（コマ配置領域）に被らないよう、各島の外側へ配置する
 const ISLAND_LABELS: { x: number; y: number; name: string; big?: boolean }[] = [
-  { x: 38, y: 100, name: '与那国島', big: true },
-  { x: 92, y: 128, name: '西表島', big: true },
-  { x: 80, y: 94, name: '鳩間島' },
-  { x: 116, y: 98, name: '小浜島' },
-  { x: 122, y: 120, name: '竹富島' },
-  { x: 132, y: 134, name: '黒島' },
-  { x: 100, y: 170, name: '波照間島' },
-  { x: 155, y: 86, name: '石垣島', big: true },
-  { x: 245, y: 90, name: '宮古島', big: true },
-  { x: 214, y: 84, name: '伊良部島' },
-  { x: 199, y: 100, name: '下地島' },
-  { x: 240, y: 57, name: '池間島' },
-  { x: 234, y: 124, name: '来間島' },
-  { x: 200, y: 158, name: '多良間島' },
+  { x: 36, y: 86, name: '与那国島', big: true },
+  { x: 64, y: 144, name: '西表島', big: true },
+  { x: 79, y: 92, name: '鳩間島' },
+  { x: 114, y: 97, name: '小浜島' },
+  { x: 130, y: 122, name: '竹富島' },
+  { x: 134, y: 135, name: '黒島' },
+  { x: 100, y: 169, name: '波照間島' },
+  { x: 162, y: 68, name: '石垣島', big: true },
+  { x: 250, y: 74, name: '宮古島', big: true },
+  { x: 210, y: 84, name: '伊良部島' },
+  { x: 196, y: 104, name: '下地島' },
+  { x: 240, y: 56, name: '池間島' },
+  { x: 230, y: 124, name: '来間島' },
+  { x: 200, y: 160, name: '多良間島' },
 ];
 
 // ── 施設（空港🟡 / 海港🔵）＋名前 ──
@@ -117,25 +118,26 @@ const TCOLOR = { r: '#2f80ed', v: '#eb5757' } as const;
 type SubBlob = { cx: number; cy: number; rx: number; ry: number };
 const SUB_ISLANDS: Record<AreaId, { blob: SubBlob; weight: number }[]> = {
   yonaguni: [
-    { blob: { cx: 38, cy: 100, rx: 15, ry: 10 }, weight: 1 }, // 与那国島
+    { blob: { cx: 36, cy: 104, rx: 14, ry: 8 }, weight: 1 }, // 与那国島（ラベル上・港左を避け島中央下に）
   ],
   taketomi: [
-    { blob: { cx: 88, cy: 126, rx: 20, ry: 13 }, weight: 6 }, // 西表島
-    { blob: { cx: 120, cy: 120, rx: 4, ry: 3 }, weight: 2 },  // 竹富島
-    { blob: { cx: 100, cy: 160, rx: 5, ry: 4 }, weight: 3 },  // 波照間島
-    { blob: { cx: 132, cy: 140, rx: 5, ry: 4 }, weight: 2 },  // 黒島
-    { blob: { cx: 116, cy: 104, rx: 4, ry: 3 }, weight: 2 },  // 小浜島
+    { blob: { cx: 86, cy: 131, rx: 18, ry: 10 }, weight: 6 }, // 西表島
+    { blob: { cx: 124, cy: 124, rx: 4, ry: 3 }, weight: 2 },  // 竹富島
+    { blob: { cx: 100, cy: 159, rx: 5, ry: 4 }, weight: 3 },  // 波照間島
+    { blob: { cx: 134, cy: 144, rx: 5, ry: 4 }, weight: 2 },  // 黒島
+    { blob: { cx: 114, cy: 106, rx: 4, ry: 3 }, weight: 2 },  // 小浜島
+    { blob: { cx: 79, cy: 102, rx: 4, ry: 3 }, weight: 1 },   // 鳩間島
   ],
   ishigaki: [
-    { blob: { cx: 154, cy: 88, rx: 30, ry: 22 }, weight: 1 }, // 石垣島
+    { blob: { cx: 154, cy: 92, rx: 23, ry: 14 }, weight: 1 }, // 石垣島（港・空港アイコンを縁に残すため内側に）
   ],
   miyako: [
-    { blob: { cx: 246, cy: 92, rx: 22, ry: 16 }, weight: 85 }, // 宮古島
-    { blob: { cx: 216, cy: 92, rx: 7, ry: 5 }, weight: 6 },    // 伊良部島
-    { blob: { cx: 202, cy: 93, rx: 4, ry: 4 }, weight: 1 },    // 下地島
-    { blob: { cx: 200, cy: 150, rx: 7, ry: 5 }, weight: 3 },   // 多良間島
-    { blob: { cx: 240, cy: 64, rx: 5, ry: 4 }, weight: 1 },    // 池間島
-    { blob: { cx: 236, cy: 118, rx: 4, ry: 3 }, weight: 1 },   // 来間島
+    { blob: { cx: 246, cy: 95, rx: 18, ry: 11 }, weight: 85 }, // 宮古島（同上）
+    { blob: { cx: 216, cy: 94, rx: 6, ry: 4 }, weight: 6 },    // 伊良部島
+    { blob: { cx: 203, cy: 96, rx: 4, ry: 3 }, weight: 1 },    // 下地島
+    { blob: { cx: 200, cy: 151, rx: 7, ry: 4 }, weight: 3 },   // 多良間島
+    { blob: { cx: 240, cy: 65, rx: 4, ry: 3 }, weight: 1 },    // 池間島
+    { blob: { cx: 236, cy: 119, rx: 4, ry: 3 }, weight: 1 },   // 来間島
   ],
 };
 
@@ -267,6 +269,18 @@ export function IllustratedMap({ areas, infra, evacuated = 0, dead = 0, dayLogs 
       const tou = apportion(ci(a.tourists), w);
       const vul = apportion(ci(a.vulnerable), w);
       const stg = apportion(ci(a.stagingPort), w);
+      // 描画された各島が空にならないよう、weight>0 の島へ最低1コマを保証する
+      // （住民を最多の島から1つ移して総数は保持。住民が足りる時のみ実施）
+      const totalOf = (i: number) => res[i] + tou[i] + vul[i] + stg[i];
+      subs.forEach((_s, i) => {
+        if (w[i] > 0 && totalOf(i) === 0) {
+          let donor = -1;
+          for (let j = 0; j < subs.length; j++) {
+            if (res[j] > (donor === -1 ? 1 : res[donor])) donor = j;
+          }
+          if (donor !== -1 && res[donor] > 1) { res[donor]--; res[i]++; }
+        }
+      });
       subs.forEach((s, si) => {
         const subArea: AreaState = {
           ...a, residents: res[si], tourists: tou[si], vulnerable: vul[si], stagingPort: stg[si],
@@ -361,7 +375,7 @@ export function IllustratedMap({ areas, infra, evacuated = 0, dead = 0, dayLogs 
               left: px(c.x), top: py(c.y), transform: 'translate(-50%,-50%)',
               width: `${(c.size / VW) * 100}%`, aspectRatio: '24 / 30',
               filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.35))',
-              zIndex: 3,
+              zIndex: 5,
             }}>
               <PersonIcon color={KOMA_COLOR[c.kind]} />
             </div>
@@ -393,9 +407,9 @@ export function IllustratedMap({ areas, infra, evacuated = 0, dead = 0, dayLogs 
             );
           })}
 
-          {/* 施設アイコン＋名前 */}
+          {/* 施設アイコン＋名前（コマより前面に出して常に視認可能に） */}
           {FACILITIES.map(f => (
-            <div key={f.name} style={{ position: 'absolute', left: px(f.x), top: py(f.y), transform: 'translate(-50%,-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 4 }}>
+            <div key={f.name} style={{ position: 'absolute', left: px(f.x), top: py(f.y), transform: 'translate(-50%,-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 7 }}>
               <span style={f.kind === 'air' ? styles.airDot : styles.seaDot}>{f.kind === 'air' ? '✈' : '⚓'}</span>
               <span style={styles.facLabel}>{f.name}</span>
             </div>
@@ -425,7 +439,7 @@ export function IllustratedMap({ areas, infra, evacuated = 0, dead = 0, dayLogs 
             const a = areas[id]; const c = ISLAND_CENTER[id];
             const total = totalKoma(a); const done = total === 0;
             return (
-              <div key={id} style={{ position: 'absolute', left: px(c.x), top: py(c.y + 16), transform: 'translate(-50%,-50%)', zIndex: 4 }}>
+              <div key={id} style={{ position: 'absolute', left: px(c.x), top: py(c.y + 20), transform: 'translate(-50%,-50%)', zIndex: 6 }}>
                 <span style={{ ...styles.komaBadge, background: done ? '#1b8a4b' : '#ef7d00' }}>
                   {done ? '✓完了' : `残${total}`}
                 </span>
