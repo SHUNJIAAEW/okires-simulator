@@ -165,6 +165,21 @@ const KOMA_COLOR: Record<string, string> = {
 
 interface Cell { x: number; y: number; size: number; kind: string }
 
+// 人コマの統一サイズ（svg座標単位）。全島・全種別で共通。
+const KOMA_SIZE = 4.4;
+
+// 人型シルエット（頭＋胴）。color で塗り分け、白フチで島背景でも視認可能に。
+function PersonIcon({ color }: { color: string }) {
+  return (
+    <svg viewBox="0 0 24 30" width="100%" height="100%" style={{ display: 'block', overflow: 'visible' }}>
+      <g fill={color} stroke="#ffffff" strokeWidth={1.6} strokeLinejoin="round">
+        <circle cx="12" cy="6" r="5" />
+        <path d="M12 12c-5 0-8 4-8 10v6h16v-6c0-6-3-10-8-10z" />
+      </g>
+    </svg>
+  );
+}
+
 // 島の中に白マスを格子配置し、現在のコマを種別色で乗せる
 function buildCells(area: AreaState, blob: { cx: number; cy: number; rx: number; ry: number }): Cell[] {
   // 小数（死亡0.5コマ等）や負値で Array() が落ちないよう整数化
@@ -186,7 +201,8 @@ function buildCells(area: AreaState, blob: { cx: number; cy: number; rx: number;
   const rows = Math.ceil(n / cols);
   const spanX = blob.rx * 1.5, spanY = blob.ry * 1.4;
   const stepX = spanX / cols, stepY = spanY / rows;
-  const size = Math.max(2.2, Math.min(stepX, stepY) * 0.78);
+  // コマ（人型）のサイズは全島で統一。配置はグリッドで散らす。
+  const size = KOMA_SIZE;
   const cells: Cell[] = [];
   for (let i = 0; i < n; i++) {
     const col = i % cols, row = Math.floor(i / cols);
@@ -338,17 +354,17 @@ export function IllustratedMap({ areas, infra, evacuated = 0, dead = 0, dayLogs 
 
         {/* HTMLオーバーレイ：白マス・トークン・ラベル・施設・残数 */}
         <div style={styles.overlay}>
-          {/* 白マス（人口マス）＋現在のコマ。初期配置＝ランダムで表示 */}
+          {/* 人コマ（人型・統一サイズ）。種別色で塗り分け、初期配置＝ランダム散らし */}
           {cellsByArea.map(g => g.cells.map((c, i) => (
             <div key={`${g.id}-${i}`} style={{
               position: 'absolute',
               left: px(c.x), top: py(c.y), transform: 'translate(-50%,-50%)',
-              width: `${(c.size / VW) * 100}%`, aspectRatio: '1',
-              borderRadius: '50%', background: '#ffffff',
-              border: `1.5px solid ${KOMA_COLOR[c.kind]}`,
-              boxShadow: `inset 0 0 0 1px ${KOMA_COLOR[c.kind]}55, 0 1px 1px rgba(0,0,0,0.25)`,
+              width: `${(c.size / VW) * 100}%`, aspectRatio: '24 / 30',
+              filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.35))',
               zIndex: 3,
-            }} />
+            }}>
+              <PersonIcon color={KOMA_COLOR[c.kind]} />
+            </div>
           )))}
 
           {/* 移動トークン（蓄積して消えない）。移動中(最新日)は大きく光らせて見やすく */}
