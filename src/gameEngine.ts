@@ -142,7 +142,7 @@ export function createInitialState(config: SetupConfig): GameState {
 }
 
 // ===== 天候更新 =====
-export function updateWeather(weather: WeatherState, month: number, log: string[]): WeatherState {
+export function updateWeather(weather: WeatherState, month: number, log: string[], timeLabel?: string): WeatherState {
   const track = getWeatherTrack(month);
   const maxIdx = track.length;
   let { conditionIndex, windSpeedIndex, windDirectionIndex } = weather;
@@ -169,7 +169,8 @@ export function updateWeather(weather: WeatherState, month: number, log: string[
   const windLabel = ['西', '北西', '北東', '東', '南東', '南西'][windDirectionIndex - 1];
   const speedLabel = strong ? '強風' : '微風';
   const condLabel = condition === 'sunny' ? '晴' : condition === 'cloudy' ? '曇' : condition === 'rain' ? '雨' : '大雨';
-  log.push(`天候変化ダイス: 天候${wRoll}→${condLabel} / 風速${wsRoll}→${speedLabel}(${windLabel}) / 風向${wdRoll}`);
+  const prefix = timeLabel ? `${timeLabel} ` : '';
+  log.push(`${prefix}天候変化ダイス: 天候${wRoll}→${condLabel} / 風速${wsRoll}→${speedLabel}(${windLabel}) / 風向${wdRoll}`);
 
   return { condition, conditionIndex, windSpeedIndex, windDirectionIndex };
 }
@@ -702,8 +703,8 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
   checkEarthquake(state, log); // ログのみ、結果は phase2 で使う
 
   // 3. 天候更新 (1:00 & 13:00)
-  let newWeather = updateWeather(state.weather, month, log);
-  newWeather = updateWeather(newWeather, month, log);
+  let newWeather = updateWeather(state.weather, month, log, '1時');
+  newWeather = updateWeather(newWeather, month, log, '13時');
 
   // 4. 空港・港の利用可否（大雨＝海路全停止+空港閉鎖 / 強風＝海路停止+風向次第で欠航。両者は独立）
   const airportAvail = checkAirportAvailability(newWeather, month, state.infra);
