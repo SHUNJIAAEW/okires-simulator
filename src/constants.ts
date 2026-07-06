@@ -7,7 +7,7 @@ import type { AreaId, WeatherCondition } from './types';
 export const WEATHER_TRACKS: Record<string, WeatherCondition[]> = {
   summer: ['rain', 'cloudy', 'sunny', 'cloudy', 'rain', 'heavy-rain'], // 7-9月 (1雨〜6大雨)
   transition: ['rain', 'cloudy', 'cloudy', 'sunny', 'sunny', 'sunny', 'cloudy', 'cloudy', 'rain', 'heavy-rain'], // 5,6,10,11月 (1雨〜10大雨)
-  winter: ['rain', 'cloudy', 'cloudy', 'sunny', 'cloudy', 'rain'], // 12-4月 (最大でも「雨」。大雨は発生しない)
+  winter: ['rain', 'cloudy', 'sunny', 'cloudy', 'cloudy', 'rain'], // 12-4月 (1雨2曇3晴4曇5曇6雨。大雨は発生しない)
 };
 
 export function getWeatherTrack(month: number): WeatherCondition[] {
@@ -22,12 +22,12 @@ export function getInitialWeatherIndex(month: number): number {
   return 4; // 曇(4)
 }
 
-// ===== 風速トラック =====
-// 3-11月: 8段階、8のみ強風
-// 12-2月: 8段階、4と8が強風
+// ===== 風速トラック =====（仕様2026.7.6）
+// 3-11月: 8段階、4と8が強風（1微2微3微4強5微6微7微8強）
+// 12,1,2月: 8段階、8のみ強風（1..7微風,8強風）
 export const WIND_SPEED_TRACKS = {
-  warmSeason: ['calm', 'calm', 'calm', 'calm', 'calm', 'calm', 'calm', 'strong'] as const,
-  coldSeason: ['calm', 'calm', 'calm', 'strong', 'calm', 'calm', 'calm', 'strong'] as const,
+  warmSeason: ['calm', 'calm', 'calm', 'strong', 'calm', 'calm', 'calm', 'strong'] as const,
+  coldSeason: ['calm', 'calm', 'calm', 'calm', 'calm', 'calm', 'calm', 'strong'] as const,
 };
 
 export function getInitialWindSpeedIndex(month: number): number {
@@ -37,8 +37,9 @@ export function getInitialWindSpeedIndex(month: number): number {
 }
 
 export function isStrongWind(speedIndex: number, month: number): boolean {
-  if (month >= 3 && month <= 11) return speedIndex === 8;
-  return speedIndex === 4 || speedIndex === 8; // 12-2月
+  // 仕様2026.7.6: 3-11月は4と8が強風、12,1,2月は8のみ強風
+  if (month >= 3 && month <= 11) return speedIndex === 4 || speedIndex === 8;
+  return speedIndex === 8; // 12,1,2月
 }
 
 // ===== 風向 =====
@@ -71,7 +72,7 @@ export const PREP_LEVEL_SETTINGS = {
     coastGuardTripsPerDay: 1,
     jmsdfTotal: 0,  // 使用不可
     jasdfTotal: 0,
-    jgsdfTotal: 1,
+    jgsdfTotal: 0,  // 陸自ヘリ Lv1=0（仕様2026.7.6: 0/1/2/3/4/4）
     airFlights: { shinIshigaki: 0, miyako: 0, shimoji: 0, yonaguni: 0 }, // 準有事なし
     airFlightsWartime: { shinIshigaki: 10, miyako: 7, shimoji: 3, yonaguni: 2 },
     crisis24h: false,
@@ -143,6 +144,50 @@ export const PREP_LEVEL_SETTINGS = {
     crisis24h: true,
   },
 } as const;
+
+// ===== 波照間空港→新石垣空港 民間航空便 コマ/日（Lv別・仕様2026.7.6 Sec4）=====
+export const HATERUMA_AIR_FLIGHTS_BY_LEVEL: Record<number, number> = {
+  1: 0, 2: 0, 3: 0, 4: 0.5, 5: 0.5, 6: 0.5,
+};
+
+// ===== 海自 海空警護 / 空自 空域警護 毎日4時ダイス派遣 最大部隊数（Lv別・仕様2026.7.6 Sec4）=====
+// ダイス条件式を満たしても、最大数に達すればそれ以上は派遣不可
+export const SEA_GUARD_MAX_BY_LEVEL: Record<number, number> = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 4, 6: 4 };
+export const AIR_GUARD_MAX_BY_LEVEL: Record<number, number> = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 4, 6: 4 };
+
+// ===== 存立危機で竹富町各島・与那国→石垣避難 / 2島間往復 / 臨時増援交渉 の可否レベル（仕様2026.7.6 Sec4）=====
+export const CRISIS_EVAC_MIN_LEVEL = 2;      // 存立危機で竹富町各島・与那国→石垣港/新石垣空港 避難可: Lv2以上
+export const SHUTTLE_MIN_LEVEL = 2;          // 石垣島⇔宮古島 2島間往復輸送 可: Lv2以上
+export const REINFORCEMENT_MIN_LEVEL = 3;    // 自衛隊輸送臨時増援交渉 可: Lv3以上
+
+// ===== 疲労度→手数テーブル（島別・非線形。仕様2026.7.6 Sec5）=====
+// 与那国: ≤1→2, 2→1, ≥3→0 / 竹富: ≤3→2, 4→1, 5→1, ≥6→0
+// 石垣: ≤2→4, 3→3, 4→3, 5→2, 6→2, 7→1, 8→1, ≥9→0
+// 宮古多良間: ≤3→3, 4→2, 5→2, 6→2, 7→1, 8→1, ≥9→0
+export function handsByFatigue(area: AreaId, fatigue: number): number {
+  const f = Math.round(fatigue);
+  switch (area) {
+    case 'yonaguni':
+      if (f <= 1) return 2;
+      if (f === 2) return 1;
+      return 0;
+    case 'taketomi':
+      if (f <= 3) return 2;
+      if (f <= 5) return 1;
+      return 0;
+    case 'ishigaki':
+      if (f <= 2) return 4;
+      if (f <= 4) return 3;
+      if (f <= 6) return 2;
+      if (f <= 8) return 1;
+      return 0;
+    case 'miyako':
+      if (f <= 3) return 3;
+      if (f <= 6) return 2;
+      if (f <= 8) return 1;
+      return 0;
+  }
+}
 
 // ===== 島間フェリー容量 =====
 // 竹富町各島→石垣 (1日最大)
