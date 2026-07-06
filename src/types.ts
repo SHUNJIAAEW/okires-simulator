@@ -123,6 +123,7 @@ export interface DayCapacities {
   yonaguniSeaMax: number;    // フェリー→石垣
   // 竹富
   taketomiFerryMax: number;  // フェリー→石垣
+  haterumaAirMax: number;    // 波照間空港→新石垣空港 民間航空便(Lv4+ 0.5コマ/日)。竹富エリアの避難補助
   // 石垣
   ishigakiAirMax: number;    // 空路→本土 (新石垣空港)
   ishigakiJasdfMax: number;  // 空自輸送機→本土
@@ -211,6 +212,8 @@ export interface GameState {
   haterumaTempApplied: number;
   haterumaPowerBroken: boolean;
   haterumaEvacDone: boolean;
+  // 自衛隊輸送臨時増援交渉（Lv3以上・有事で1回のみ発動）。発動済みか。
+  reinforcementDone: boolean;
 }
 
 export interface SetupConfig {

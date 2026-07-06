@@ -14,6 +14,8 @@ import {
   handsByFatigue, TOURIST_MAX_BY_AREA, VULNERABLE_TOTAL_MAX,
   TOURIST_BY_MONTH, RESIDENT_TOTAL_BY_AREA, PAC3_BY_LEVEL,
   SHUTTLE_MIN_LEVEL, SHUTTLE_MULTIPLIER,
+  HATERUMA_AIR_FLIGHTS_BY_LEVEL, SEA_GUARD_MAX_BY_LEVEL, AIR_GUARD_MAX_BY_LEVEL,
+  CRISIS_EVAC_MIN_LEVEL, REINFORCEMENT_MIN_LEVEL,
 } from './constants';
 
 // ===== サイコロ =====
@@ -146,6 +148,8 @@ export function createInitialState(config: SetupConfig): GameState {
     // 一時疲労トラッカー（多良間・波照間）
     taramaTempFatigue: 0, taramaTempApplied: 0, taramaPowerBroken: false, taramaEvacDone: false,
     haterumaTempFatigue: 0, haterumaTempApplied: 0, haterumaPowerBroken: false, haterumaEvacDone: false,
+    // 自衛隊輸送臨時増援交渉（Lv3以上・有事で1回のみ）。まだ未発動。
+    reinforcementDone: false,
   };
 }
 
@@ -276,19 +280,34 @@ export function updateMilitary(state: GameState, log: string[]): MilitaryState {
   }
 
   if (day >= -2) {
-    const jsdfRoll = rollDie();
-    const effectiveLevel = Math.min(prepLevel, 5);
-    if (jsdfRoll <= effectiveLevel) {
-      const seaOrAir = rollDie() <= 3 ? 'sea' : 'air';
-      if (seaOrAir === 'sea') {
-        mil.jsdfSea = Math.min(effectiveLevel, mil.jsdfSea + 1);
-        log.push(`自衛隊配置: ダイス${jsdfRoll} → 海上自衛隊 計${mil.jsdfSea}`);
-      } else {
-        mil.jsdfAir = Math.min(effectiveLevel, mil.jsdfAir + 1);
-        log.push(`自衛隊配置: ダイス${jsdfRoll} → 航空自衛隊 計${mil.jsdfAir}`);
-      }
+    // 仕様2026.7.6 Sec4: 毎日4時に「海自 海空警護」「空自 空域警護」を別枠でダイス判定し配備する。
+    // 各々ダイス出目 <= 事前準備Lv(Lv6は5扱い) なら +1。ただしレベル別最大部隊数を超えて増えない
+    // （ダイス条件を満たしても最大に達すればそれ以上は派遣不可）。海自と空自は別枠(それぞれの最大数)。
+    const rollThreshold = Math.min(prepLevel, 5);
+    const seaMax = SEA_GUARD_MAX_BY_LEVEL[prepLevel] ?? 0;
+    const airMax = AIR_GUARD_MAX_BY_LEVEL[prepLevel] ?? 0;
+    // レベル別最大を厳守: 既存値が(旧state/手動構築等で)最大超過していても上限へクランプする。
+    mil.jsdfSea = Math.min(mil.jsdfSea, seaMax);
+    mil.jsdfAir = Math.min(mil.jsdfAir, airMax);
+
+    const seaRoll = rollDie();
+    if (seaRoll <= rollThreshold && mil.jsdfSea < seaMax) {
+      mil.jsdfSea = Math.min(seaMax, mil.jsdfSea + 1);
+      log.push(`海自 海空警護配備: ダイス${seaRoll} → 計${mil.jsdfSea}/${seaMax}`);
+    } else if (mil.jsdfSea >= seaMax) {
+      log.push(`海自 海空警護: ダイス${seaRoll} → 最大数(${seaMax})に達済み・増強なし`);
     } else {
-      log.push(`自衛隊配置ダイス: ${jsdfRoll} → 今日は増強なし`);
+      log.push(`海自 海空警護: ダイス${seaRoll} → 今日は増強なし`);
+    }
+
+    const airRoll = rollDie();
+    if (airRoll <= rollThreshold && mil.jsdfAir < airMax) {
+      mil.jsdfAir = Math.min(airMax, mil.jsdfAir + 1);
+      log.push(`空自 空域警護配備: ダイス${airRoll} → 計${mil.jsdfAir}/${airMax}`);
+    } else if (mil.jsdfAir >= airMax) {
+      log.push(`空自 空域警護: ダイス${airRoll} → 最大数(${airMax})に達済み・増強なし`);
+    } else {
+      log.push(`空自 空域警護: ダイス${airRoll} → 今日は増強なし`);
     }
 
     // PAC3は事前準備Lvで初期配備済み（ダイス配備は廃止）。ここでは増減しない。
@@ -942,11 +961,12 @@ export function getDayCapacities(
   const shipRouteOk = (r: ShipRouteKey) => civShipOk && !transport.disabledShipRoutes[r];
   // マニュアル3.1: 平時は島外避難不可(全0)。存立危機は与那国・竹富のみ(石垣港入港はLv2以上)。有事は全可。
   // 石垣港が破壊されている場合は受け入れ不可。
-  const ishigakiPortOpen = state.infra.ishigakiPort && (isWartime || (isCrisis && prepLevel >= 2));
+  // 存立危機で竹富町各島・与那国→石垣港/新石垣空港 への避難が可能なのは Lv2以上(CRISIS_EVAC_MIN_LEVEL)。
+  const ishigakiPortOpen = state.infra.ishigakiPort && (isWartime || (isCrisis && prepLevel >= CRISIS_EVAC_MIN_LEVEL));
 
-  // 与那国空港→本土: 平時0 / 存立危機1便 / 有事は便数表
+  // 与那国空港→本土: 平時0 / 存立危機(Lv2+)1便 / 有事は便数表
   const yonaguniAirMax = airportAvail.yonaguni && airRouteOk('yonaguni')
-    ? (isWartime ? settings.airFlightsWartime.yonaguni : isCrisis ? 1 : 0)
+    ? (isWartime ? settings.airFlightsWartime.yonaguni : (isCrisis && prepLevel >= CRISIS_EVAC_MIN_LEVEL) ? 1 : 0)
     : 0;
 
   // 与那国→石垣フェリー(久部良港発): 石垣港が開いている時のみ(存立危機はLv2+、有事は常時)
@@ -954,6 +974,20 @@ export function getDayCapacities(
 
   // 竹富→石垣フェリー: 同上(存立危機Lv2+ / 有事)。路線名指し無しのため路線別停止は適用しない。
   const taketomiFerryMax = seaOk && ishigakiPortOpen ? TAKETOMI_TO_ISHIGAKI_FERRY_MAX : 0;
+
+  // 波照間空港→新石垣空港 民間航空便（仕様2026.7.6 Sec4）。Lv4以上で 0.5コマ/日。竹富エリアの避難補助。
+  // 条件: Lv別便数>0 かつ 波照間空港が利用可(infra.haterumaAirport & 天候OK) かつ 路線停止でない(disabledAirRoutes.hateruma)
+  //       かつ 民間航空全停止でない。空港破壊/強風/大雨/路線停止時は0。
+  // 島外避難の可否は本土便と同じゲート(有事は常時 / 存立危機はLv2以上)に整合させる。
+  //       着側(新石垣空港)も使用可でなければ着陸できないため airportAvail.shinIshigaki & airRouteOk('shinIshigaki') も条件に含める。
+  const haterumaLevelFlights = HATERUMA_AIR_FLIGHTS_BY_LEVEL[prepLevel] ?? 0;
+  const haterumaEvacAllowed = isWartime || (isCrisis && prepLevel >= CRISIS_EVAC_MIN_LEVEL);
+  const haterumaAirMax =
+    haterumaLevelFlights > 0 && haterumaEvacAllowed &&
+    airportAvail.hateruma && airRouteOk('hateruma') &&
+    airportAvail.shinIshigaki && airRouteOk('shinIshigaki')
+      ? haterumaLevelFlights
+      : 0;
 
   const ishigakiAirMax = isWartime && airportAvail.shinIshigaki && airRouteOk('shinIshigaki')
     ? settings.airFlightsWartime.shinIshigaki : 0;
@@ -1050,6 +1084,8 @@ export function getDayCapacities(
   return {
     yonaguniAirMax: r05(yonaguniAirMax * my), yonaguniSeaMax: r05(yonaguniSeaMax * my * sy),
     taketomiFerryMax: r05(taketomiFerryMax * mt * st),
+    // 波照間航空便は空路なので海路倍率(st)は掛けず、竹富エリアのイベント容量倍率(mt)のみ適用。
+    haterumaAirMax: r05(haterumaAirMax * mt),
     ishigakiAirMax: r05(ishigakiAirMax * mi), ishigakiJasdfMax: r05(ishigakiJasdfMax * mi),
     ishigakiCoastGuardMax: r05(ishigakiCoastGuardMax * mi * si), ishigakiJmsdfMax: r05(ishigakiJmsdfMax * mi * si),
     ishigakiFerryMax: r05(ishigakiFerryMax * mi * si),
@@ -1099,6 +1135,19 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
 
   // 5. 軍事配置 (4:00)
   const newMilitary = updateMilitary({ ...state, phase: newPhase }, log);
+
+  // 5b. 自衛隊輸送臨時増援交渉（仕様2026.7.6 Sec4: 実施可能なレベルは Lv3以上。Lv2以下では不可）
+  // 有事で本土避難が逼迫している時、Lv3以上ならシミュレーション中に1回だけ海保/海自/空自の輸送能力を一時的に増援する。
+  // 過剰にならないよう控えめな固定値: 海保便数+1/日、海自輸送艦+1、空自輸送機+1。
+  let reinforcementDone = state.reinforcementDone;
+  let reinCoastGuard = 0, reinJmsdf = 0, reinJasdf = 0;
+  if (!reinforcementDone && newPhase === 'wartime' && state.prepLevel >= REINFORCEMENT_MIN_LEVEL) {
+    reinCoastGuard = 1;
+    reinJmsdf = 1;
+    reinJasdf = 1;
+    reinforcementDone = true;
+    log.push(`自衛隊輸送臨時増援交渉(Lv${state.prepLevel}≥${REINFORCEMENT_MIN_LEVEL}): 交渉成立 → 海保便+1/日・海自輸送艦+1・空自輸送機+1`);
+  }
 
   // 6. 24時間イベント
   const eventResult = generateDailyEvents({ ...state, phase: newPhase, military: newMilitary });
@@ -1212,13 +1261,17 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
       disabledAirRoutes: { ...state.transport.disabledAirRoutes, ...eventResult.disabledAirRoutes },
       disabledShipRoutes: { ...state.transport.disabledShipRoutes, ...eventResult.disabledShipRoutes },
       // Section1: 海保輸送船 撃沈 → 1日便数-1（0未満にしない）。当日残・翌日リセット値の双方へ反映。
-      coastGuardMaxPerDay: Math.max(0, state.transport.coastGuardMaxPerDay + eventResult.coastGuardMaxDelta),
-      coastGuardToday: Math.max(0, state.transport.coastGuardToday + eventResult.coastGuardMaxDelta),
+      // 5b: 臨時増援交渉が成立した日は 海保便+1/日（当日残・翌日リセット値の双方）、海自艦・空自機の残回数+1。
+      coastGuardMaxPerDay: Math.max(0, state.transport.coastGuardMaxPerDay + eventResult.coastGuardMaxDelta + reinCoastGuard),
+      coastGuardToday: Math.max(0, state.transport.coastGuardToday + eventResult.coastGuardMaxDelta + reinCoastGuard),
+      jmsdfRemaining: state.transport.jmsdfRemaining + reinJmsdf,
+      jasdfRemaining: state.transport.jasdfRemaining + reinJasdf,
     },
     // DMAT残・一時疲労トラッカーを更新（冪等な戻し用に applied 量も保持）
     dmatRemaining,
     taramaTempFatigue, taramaTempApplied, taramaPowerBroken, taramaEvacDone,
     haterumaTempFatigue, haterumaTempApplied, haterumaPowerBroken, haterumaEvacDone,
+    reinforcementDone,
   };
 
   // B2修正: 輸送停止フラグ・インフラ被害を反映した後で容量を計算する
@@ -1459,7 +1512,9 @@ export function executeDayPhase2(
     phase: newPhase,
     weather: newWeather,
     areas,
-    military: newMilitary,
+    // stateAfterEvents.military は当日イベントの尖閣占領をOR済み。newMilitAryで上書きすると
+    // 当日発生の占領が翌日に引き継がれない（撃墜判定の閾値12/15に影響）ため占領を保持する。
+    military: { ...newMilitary, senkakuOccupied: newMilitary.senkakuOccupied || stateAfterEvents.military.senkakuOccupied },
     transport: newTransport,
     evacuated: newEvacuated,
     dead: newDead,
@@ -1573,12 +1628,29 @@ export function autoSelectOrders(phase1: DayPhase1Result): EvacuationOrder[] {
   }
 
   // 竹富 → 石垣(フェリー)
+  let taketomiFerryRes = 0;
+  let taketomiFerryTour = 0;
   if (capacities.taketomiFerryMax > 0) {
     const total = Math.min(capacities.taketomiFerryMax, areas.taketomi.residents + areas.taketomi.tourists);
     if (total > 0) {
       const res = Math.min(areas.taketomi.residents, total);
       const tour = Math.min(areas.taketomi.tourists, total - res);
+      taketomiFerryRes = res;
+      taketomiFerryTour = tour;
       orders.push({ from: 'taketomi', to: 'ishigaki', method: '竹富→石垣フェリー', residents: res, tourists: tour, vulnerable: 0 });
+    }
+  }
+
+  // 波照間空港 → 新石垣空港 民間航空便（Lv4+ 0.5コマ/日）。竹富エリアの避難補助。
+  // フェリーで運びきれなかった竹富住民・観光客を空輸する（海路停止時に特に有効。二重計上を避ける）。
+  if (capacities.haterumaAirMax > 0 && airportAvail.hateruma && airportAvail.shinIshigaki) {
+    const remainRes = Math.max(0, areas.taketomi.residents - taketomiFerryRes);
+    const remainTour = Math.max(0, areas.taketomi.tourists - taketomiFerryTour);
+    const total = Math.min(capacities.haterumaAirMax, remainRes + remainTour);
+    if (total > 0) {
+      const res = Math.min(remainRes, total);
+      const tour = Math.min(remainTour, total - res);
+      orders.push({ from: 'taketomi', to: 'ishigaki', method: '波照間空港(民間)', residents: res, tourists: tour, vulnerable: 0 });
     }
   }
 
