@@ -71,6 +71,8 @@ function analyzeStranded(
 ): { rows: CauseRow[]; total: number } {
   const rows: CauseRow[] = [];
   let total = 0;
+  const anyAir = Object.values(transport.disabledAirRoutes ?? {}).some(Boolean) || transport.civilianAirDisabled;
+  const anyShip = Object.values(transport.disabledShipRoutes ?? {}).some(Boolean) || transport.civilianShipDisabled;
   for (const [id, a] of Object.entries(areas)) {
     const rem = a.residents + a.tourists + a.vulnerable + a.stagingPort;
     if (rem <= 0) continue;
@@ -78,10 +80,9 @@ function analyzeStranded(
     let what = '輸送容量が人数に追いつかなかった';
     if (id === 'miyako' && (!infra.bridgeIkema || !infra.bridgeKurima || !infra.bridgeIrabu))
       what = '橋の崩落で離島住民が孤立（移動不可）';
-    else if (transport.civilianAirDisabled && transport.civilianShipDisabled)
-      what = '民間航空・船舶がともに使用不能';
-    else if (transport.civilianAirDisabled) what = '民間航空が使用不能で空路が激減';
-    else if (transport.civilianShipDisabled) what = '民間船舶が使用不能で海路が激減';
+    else if (anyAir && anyShip) what = '民間航空・船舶の路線がともに使用不能';
+    else if (anyAir) what = '民間航空の路線が使用不能で空路が激減';
+    else if (anyShip) what = '民間船舶の路線が使用不能で海路が激減';
     else if (handsByFatigue(id as AreaId, a.fatigue) <= 0) what = '疲労限界で避難行動が取れなかった';
     rows.push({ when: AREA_NAMES[id as AreaId], what, count: rem });
   }
@@ -132,8 +133,10 @@ export function ResultScreen({ state, onRestart }: Props) {
 
   // ボトルネック分析
   const bottlenecks: string[] = [];
-  if (state.transport.civilianAirDisabled) bottlenecks.push('民間航空路が攻撃により使用不能になった');
-  if (state.transport.civilianShipDisabled) bottlenecks.push('民間船舶が攻撃により使用不能になった');
+  if (Object.values(state.transport.disabledAirRoutes ?? {}).some(Boolean) || state.transport.civilianAirDisabled)
+    bottlenecks.push('民間航空路が攻撃/運航拒否により一部路線で使用不能になった');
+  if (Object.values(state.transport.disabledShipRoutes ?? {}).some(Boolean) || state.transport.civilianShipDisabled)
+    bottlenecks.push('民間船舶が攻撃/運航拒否により一部路線で使用不能になった');
   if (Object.values(areas).some(a => handsByFatigue(a.id, a.fatigue) <= 0)) bottlenecks.push('住民疲労が限界に達し避難不能エリアが発生した');
   if (state.military.chineseSea >= 5 || state.military.chineseAir >= 5) bottlenecks.push('中国軍兵力が非常に強力になった');
   if (!state.military.pac3Ishigaki || !state.military.pac3Miyako) bottlenecks.push('PAC3が一部エリアに未配備だった');

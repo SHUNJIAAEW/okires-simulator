@@ -56,14 +56,25 @@ export interface MilitaryState {
   senkakuOccupied: boolean;
 }
 
+// 路線キー（Section1 改定案: 撃墜/撃沈/運航拒否は路線別に停止する）
+// 空路: shinIshigaki / miyako / shimoji / yonaguni / hateruma
+// 海路: ishigakiPort / hiraraPort(平良) / kubura(久部良)
+export type AirRouteKey = 'shinIshigaki' | 'miyako' | 'shimoji' | 'yonaguni' | 'hateruma';
+export type ShipRouteKey = 'ishigakiPort' | 'hiraraPort' | 'kubura';
+
 export interface TransportState {
   coastGuardToday: number;
   coastGuardMaxPerDay: number;
   jmsdfRemaining: number;
   jasdfRemaining: number;
   jgsdfRemaining: number;
+  // 後方互換（旧・全便停止フラグ）。現在は路線別停止(disabledAirRoutes/disabledShipRoutes)を正とし、
+  // これらは常に false のまま保持する（互換のため残置）。
   civilianAirDisabled: boolean;
   civilianShipDisabled: boolean;
+  // 路線別の恒久停止（撃墜/撃沈/運航拒否/施設破壊で当該路線のみ以後使用不可）
+  disabledAirRoutes: Partial<Record<AirRouteKey, boolean>>;
+  disabledShipRoutes: Partial<Record<ShipRouteKey, boolean>>;
 }
 
 export interface ActiveEvent {

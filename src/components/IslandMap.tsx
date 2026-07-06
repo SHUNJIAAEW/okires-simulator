@@ -295,21 +295,23 @@ export function IslandMap({ state }: Props) {
           <text x="60" y="264" textAnchor="middle" fill="#991b1b" fontSize="10" fontWeight="bold">💀 死亡コマ</text>
           <text x="60" y="282" textAnchor="middle" fill="#dc2626" fontSize="13" fontWeight="bold">{dead}コマ</text>
 
-          {/* 民間輸送禁止マーカー */}
-          {transport.civilianAirDisabled && (
-            <>
-              <rect x="290" y="250" width="130" height="40" fill="#fef2f2" stroke="#dc2626" strokeWidth="2" rx="6" />
-              <text x="355" y="265" textAnchor="middle" fill="#991b1b" fontSize="10" fontWeight="bold">⚠️ 民間航空</text>
-              <text x="355" y="280" textAnchor="middle" fill="#dc2626" fontSize="10">使用不能</text>
-            </>
-          )}
-          {transport.civilianShipDisabled && (
-            <>
-              <rect x="440" y="250" width="120" height="40" fill="#fef2f2" stroke="#dc2626" strokeWidth="2" rx="6" />
-              <text x="500" y="265" textAnchor="middle" fill="#991b1b" fontSize="10" fontWeight="bold">⚠️ 民間船舶</text>
-              <text x="500" y="280" textAnchor="middle" fill="#dc2626" fontSize="10">使用不能</text>
-            </>
-          )}
+          {/* 路線別 運航停止マーカー（撃墜/撃沈/運航拒否/施設破壊で恒久停止） */}
+          {(() => {
+            const airJp: Record<string, string> = { shinIshigaki: '新石垣', miyako: '宮古', shimoji: '下地島', yonaguni: '与那国', hateruma: '波照間' };
+            const shipJp: Record<string, string> = { ishigakiPort: '石垣港', hiraraPort: '平良港', kubura: '久部良港' };
+            const disAir = Object.entries(transport.disabledAirRoutes ?? {}).filter(([, v]) => v).map(([k]) => airJp[k] ?? k);
+            const disShip = Object.entries(transport.disabledShipRoutes ?? {}).filter(([, v]) => v).map(([k]) => shipJp[k] ?? k);
+            if (disAir.length === 0 && disShip.length === 0) return null;
+            return (
+              <>
+                <rect x="290" y="250" width="270" height="40" fill="#fef2f2" stroke="#dc2626" strokeWidth="2" rx="6" />
+                <text x="425" y="265" textAnchor="middle" fill="#991b1b" fontSize="10" fontWeight="bold">⚠️ 運航停止路線</text>
+                <text x="425" y="280" textAnchor="middle" fill="#dc2626" fontSize="9">
+                  {[disAir.length ? `空:${disAir.join('/')}` : '', disShip.length ? `海:${disShip.join('/')}` : ''].filter(Boolean).join('  ')}
+                </text>
+              </>
+            );
+          })()}
         </svg>
       </div>
 

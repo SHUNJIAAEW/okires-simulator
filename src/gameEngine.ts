@@ -5,6 +5,7 @@ import type {
   WeatherState, MilitaryState, TransportState, InfraState,
   ActiveEvent, DayLog, EvacuationRecord, Phase,
   HourlyRoll, EvacuationOrder, DayCapacities, DayPhase1Result,
+  AirRouteKey, ShipRouteKey,
 } from './types';
 import {
   getWeatherTrack, getInitialWeatherIndex, getInitialWindSpeedIndex,
@@ -135,6 +136,7 @@ export function createInitialState(config: SetupConfig): GameState {
       jasdfRemaining: settings.jasdfTotal,
       jgsdfRemaining: settings.jgsdfTotal,
       civilianAirDisabled: false, civilianShipDisabled: false,
+      disabledAirRoutes: {}, disabledShipRoutes: {},
     },
     evacuated: 0, dead: 0, dayLogs: [], activeEvents: [],
     earthquakeDay: null, earthquakeLevel: null, isComplete: false,
@@ -327,6 +329,11 @@ export interface EventResult {
   // 多良間/波照間の電力設備が当日破壊されたか（一時疲労の発火用）
   taramaPowerBrokenToday: boolean;
   haterumaPowerBrokenToday: boolean;
+  // Section1: 撃墜/撃沈/運航拒否/施設破壊で「以後恒久停止」になる路線（prepareDayPhase1でstate.transportへ反映）
+  disabledAirRoutes: Partial<Record<AirRouteKey, boolean>>;
+  disabledShipRoutes: Partial<Record<ShipRouteKey, boolean>>;
+  // 海保輸送船 撃沈による 1日便数-1（負値。coastGuardMaxPerDayへ加算し0未満にしない）
+  coastGuardMaxDelta: number;
 }
 
 export function generateDailyEvents(state: GameState): EventResult {
@@ -345,6 +352,9 @@ export function generateDailyEvents(state: GameState): EventResult {
     dmatDeathAreas: [],
     taramaPowerBrokenToday: false,
     haterumaPowerBrokenToday: false,
+    disabledAirRoutes: {},
+    disabledShipRoutes: {},
+    coastGuardMaxDelta: 0,
   };
 
   const { prepLevel, military, day } = state;
@@ -396,6 +406,382 @@ export function generateDailyEvents(state: GameState): EventResult {
   return result;
 }
 
+// ===== Section1: 撃墜/撃沈/運航拒否 共通判定 =====
+// 計算値 = (3回ダイス合計) + (中国海軍+中国空軍) - (海自海空警護+空自空域警護)
+// 確定条件: 尖閣占領なら計算値≧12、非占領なら≧15
+function resolveInterdiction(military: MilitaryState): { calcValue: number; threshold: number; hit: boolean; diceSum: number } {
+  const diceSum = sumDice(3);
+  const chinaTotal = military.chineseSea + military.chineseAir;
+  const jsdfTotal = military.jsdfSea + military.jsdfAir;
+  const calcValue = diceSum + chinaTotal - jsdfTotal;
+  const threshold = military.senkakuOccupied ? 12 : 15;
+  return { calcValue, threshold, hit: calcValue >= threshold, diceSum };
+}
+
+// ===== Section1: 路線 ⇔ エリア / インフラキー 対応 =====
+const AIR_ROUTE_AREA: Record<AirRouteKey, AreaId> = {
+  shinIshigaki: 'ishigaki', miyako: 'miyako', shimoji: 'miyako', yonaguni: 'yonaguni', hateruma: 'taketomi',
+};
+const SHIP_ROUTE_AREA: Record<ShipRouteKey, AreaId> = {
+  ishigakiPort: 'ishigaki', hiraraPort: 'miyako', kubura: 'yonaguni',
+};
+// airportAvail のキー（=空路キー）を getDayCapacities が参照する。ドローン/不時着等の「当日閉鎖」に使う。
+const AIR_ROUTE_INFRA: Record<AirRouteKey, keyof InfraState> = {
+  shinIshigaki: 'shinIshigakiAirport', miyako: 'miyakoAirport', shimoji: 'shimojiAirport',
+  yonaguni: 'yonagunAirport', hateruma: 'haterumaAirport',
+};
+// 港インフラ（kubura=久部良港はInfraStateに無いため路線停止のみで表現）
+const SHIP_ROUTE_INFRA: Partial<Record<ShipRouteKey, keyof InfraState>> = {
+  ishigakiPort: 'ishigakiPort', hiraraPort: 'hiraraPort',
+};
+
+const AIR_ROUTE_JP: Record<AirRouteKey, string> = {
+  shinIshigaki: '新石垣空港', miyako: '宮古空港', shimoji: '下地島空港', yonaguni: '与那国空港', hateruma: '波照間空港',
+};
+const SHIP_ROUTE_JP: Record<ShipRouteKey, string> = {
+  ishigakiPort: '石垣港', hiraraPort: '平良港', kubura: '久部良港',
+};
+
+// ===== Section3: B/C イベントセル定義 =====
+type EventCell =
+  | { kind: 'none' }
+  // 当日その空港の民間航空便を使用不可（ドローン障害物散布 / 不時着による一時閉鎖）。label指定時はログに使用
+  | { kind: 'airClosedToday'; air: AirRouteKey; label?: string }
+  // 当日そのエリアの避難便を使用不可（空港の無い島での不時着＝竹富島台湾軍機不時着 等）
+  | { kind: 'areaClosedToday'; area: AreaId; label: string }
+  // 当日その港の船舶便を使用不可（海上民兵海域接近）
+  | { kind: 'shipClosedToday'; ship: ShipRouteKey }
+  // その港の海路コマを半減（機雷敷設）
+  | { kind: 'mine'; ship: ShipRouteKey }
+  // その港の船舶便を半減（海域船舶臨検 / 軍民船舶運航錯綜）
+  | { kind: 'shipHalf'; ship: ShipRouteKey }
+  // その空港航空便を半減（軍民航空機運航錯綜）
+  | { kind: 'airHalf'; air: AirRouteKey }
+  // 航空便ミサイル攻撃: 撃墜判定→確定でその路線を撃墜(死者+全4疲労)＋以後使用不可
+  | { kind: 'airMissileShootdown'; air: AirRouteKey }
+  // 船舶便ミサイル攻撃: 撃沈判定→確定でその路線を撃沈(死者+全4疲労)＋以後使用不可
+  | { kind: 'shipMissileSink'; air?: never; ship: ShipRouteKey }
+  // ミサイル攻撃(空港/港): 施設破壊判定(≧17系)→破壊でその施設の民間便停止
+  | { kind: 'airFacilityMissile'; air: AirRouteKey }
+  | { kind: 'shipFacilityMissile'; ship: ShipRouteKey }
+  // 電力設備ミサイル攻撃
+  | { kind: 'power'; power: 'ishigaki' | 'miyako' | 'yonaguni' | 'tarama' | 'hateruma'; jp: string }
+  // 橋ミサイル攻撃（避難不可化）
+  | { kind: 'bridge'; infra: 'bridgeIrabu' | 'bridgeIkema' | 'bridgeKurima'; jp: string }
+  // 運航拒否(空港便): 判定式≧15(尖閣≧12)→確定でその路線を今後使用不可
+  | { kind: 'airRefusal'; air: AirRouteKey }
+  // 運航拒否(船舶便)
+  | { kind: 'shipRefusal'; ship: ShipRouteKey }
+  // C行1-2: 輸送アセットへの攻撃（撃墜判定式）
+  | { kind: 'attackCoastGuard' }      // 海保輸送船: 便数-1（全4疲労+1）
+  | { kind: 'attackAsset'; jp: string }; // 海自輸送船/陸自ヘリ/空自輸送機: 死者+全4疲労+1
+
+// B表: 1投目=列(1..6), 2投目=行(1..5)。B[row][col]（row/col は1始まり）。
+const EVENT_B_TABLE: EventCell[][] = [
+  // 行1
+  [
+    { kind: 'airClosedToday', air: 'yonaguni' },
+    { kind: 'airClosedToday', air: 'shinIshigaki' },
+    { kind: 'airClosedToday', air: 'shimoji' },
+    { kind: 'airClosedToday', air: 'miyako' },
+    { kind: 'shipClosedToday', ship: 'kubura' },       // 久部良港 海上民兵海域接近
+    { kind: 'shipClosedToday', ship: 'ishigakiPort' }, // 石垣港 海上民兵海域接近
+  ],
+  // 行2
+  [
+    { kind: 'shipClosedToday', ship: 'hiraraPort' },   // 平良港 海上民兵海域接近
+    { kind: 'mine', ship: 'kubura' },                  // 久部良港 機雷敷設
+    { kind: 'mine', ship: 'ishigakiPort' },            // 石垣港 機雷敷設
+    { kind: 'mine', ship: 'hiraraPort' },              // 平良港 機雷敷設
+    { kind: 'shipHalf', ship: 'kubura' },              // 久部良港 海域船舶臨検
+    { kind: 'shipHalf', ship: 'ishigakiPort' },        // 石垣港 海域船舶臨検
+  ],
+  // 行3
+  [
+    { kind: 'shipHalf', ship: 'hiraraPort' },          // 平良港 海域船舶臨検
+    { kind: 'airHalf', air: 'yonaguni' },              // 与那国空港 軍民航空機運航錯綜
+    { kind: 'airHalf', air: 'shinIshigaki' },
+    { kind: 'airHalf', air: 'shimoji' },
+    { kind: 'airHalf', air: 'miyako' },
+    { kind: 'shipHalf', ship: 'kubura' },              // 久部良港 軍民船舶運航錯綜
+  ],
+  // 行4
+  [
+    { kind: 'shipHalf', ship: 'ishigakiPort' },        // 石垣港 軍民船舶運航錯綜
+    { kind: 'shipHalf', ship: 'hiraraPort' },          // 平良港 軍民船舶運航錯綜
+    { kind: 'airMissileShootdown', air: 'yonaguni' },  // 与那国空港 航空便ミサイル攻撃
+    { kind: 'airMissileShootdown', air: 'shimoji' },   // 下地島空港 航空便ミサイル攻撃
+    { kind: 'airFacilityMissile', air: 'miyako' },     // 宮古空港ミサイル攻撃(施設)
+    { kind: 'shipFacilityMissile', ship: 'kubura' },   // 久部良港ミサイル攻撃(施設)
+  ],
+  // 行5
+  [
+    { kind: 'power', power: 'yonaguni', jp: '那覇国島(与那国)' }, // 那覇国島電力設備ミサイル攻撃
+    { kind: 'airClosedToday', air: 'yonaguni' },       // 与那国空港 台湾封鎖不時着(当日閉鎖)
+    { kind: 'airClosedToday', air: 'yonaguni' },       // 与那国空港 中国軍機不時着(当日閉鎖)
+    { kind: 'airRefusal', air: 'yonaguni' },           // 与那国空港 航空便運航拒否
+    { kind: 'shipRefusal', ship: 'kubura' },           // 久部良港 船舶便運航拒否
+    { kind: 'none' },                                  // 空欄
+  ],
+];
+
+// C表: 1投目=列(1..6), 2投目=行(1..6)。
+const EVENT_C_TABLE: EventCell[][] = [
+  // 行1
+  [
+    { kind: 'airMissileShootdown', air: 'shinIshigaki' }, // 新石垣空港 航空便に攻撃
+    { kind: 'airMissileShootdown', air: 'shimoji' },      // 下地島空港 航空便に攻撃
+    { kind: 'airMissileShootdown', air: 'miyako' },       // 宮古空港 航空便に攻撃
+    { kind: 'shipMissileSink', ship: 'ishigakiPort' },    // 石垣港 船舶便に攻撃
+    { kind: 'shipMissileSink', ship: 'hiraraPort' },      // 平良港 船舶便に攻撃
+    { kind: 'attackCoastGuard' },                         // 海保輸送船に攻撃
+  ],
+  // 行2
+  [
+    { kind: 'attackAsset', jp: '空自輸送機' },
+    { kind: 'attackAsset', jp: '海自輸送船' },
+    { kind: 'attackAsset', jp: '陸自ヘリ' },
+    { kind: 'airFacilityMissile', air: 'shinIshigaki' },  // 新石垣空港ミサイル攻撃(施設)
+    { kind: 'airFacilityMissile', air: 'shimoji' },       // 下地島空港ミサイル攻撃(施設)
+    { kind: 'airFacilityMissile', air: 'miyako' },        // 宮古空港ミサイル攻撃(施設)
+  ],
+  // 行3
+  [
+    { kind: 'shipFacilityMissile', ship: 'ishigakiPort' }, // 石垣港ミサイル攻撃(施設)
+    { kind: 'shipFacilityMissile', ship: 'hiraraPort' },   // 平良港ミサイル攻撃(施設)
+    { kind: 'power', power: 'miyako', jp: '宮古島' },
+    { kind: 'power', power: 'hateruma', jp: '竹富島各島(波照間)' },
+    { kind: 'power', power: 'miyako', jp: '宮古島' },
+    { kind: 'power', power: 'miyako', jp: '宮古島' },
+  ],
+  // 行4
+  [
+    { kind: 'bridge', infra: 'bridgeIrabu', jp: '伊良部大橋' },
+    { kind: 'bridge', infra: 'bridgeIkema', jp: '池間大橋' },
+    { kind: 'bridge', infra: 'bridgeKurima', jp: '来間大橋' },
+    { kind: 'areaClosedToday', area: 'taketomi', label: '竹富島 台湾軍機不時着' }, // 竹富島は空港なし→竹富の当日避難便停止
+    { kind: 'airClosedToday', air: 'miyako', label: '宮古島 台湾軍機不時着(宮古空港 当日使用不可)' },
+    { kind: 'airClosedToday', air: 'miyako', label: '宮古島 台湾軍機不時着(宮古空港 当日使用不可)' },
+  ],
+  // 行5
+  [
+    { kind: 'airClosedToday', air: 'shinIshigaki' }, // 新石垣空港 中国軍機不時着
+    { kind: 'airClosedToday', air: 'shimoji' },       // 下地島空港 中国軍機不時着
+    { kind: 'airClosedToday', air: 'miyako' },        // 宮古空港 不時着
+    { kind: 'airRefusal', air: 'shinIshigaki' },      // 新石垣空港 航空便運航拒否
+    { kind: 'airRefusal', air: 'shimoji' },           // 下地島空港 航空便運航拒否
+    { kind: 'airRefusal', air: 'miyako' },            // 宮古空港 航空便運航拒否
+  ],
+  // 行6
+  [
+    { kind: 'shipRefusal', ship: 'ishigakiPort' },    // 石垣港 船舶便運航拒否
+    { kind: 'shipRefusal', ship: 'hiraraPort' },      // 平良港 船舶便運航拒否
+    { kind: 'none' }, { kind: 'none' }, { kind: 'none' }, { kind: 'none' },
+  ],
+];
+
+// B/C 施設破壊判定（既存の施設破壊閾値17系: 4ダイス + 中 - (自+PAC3)）。
+function resolveFacilityMissile(military: MilitaryState): { calcValue: number; threshold: number; hit: boolean } {
+  const diceSum = sumDice(4);
+  const chinaTotal = military.chineseSea + military.chineseAir;
+  const jsdfTotal = military.jsdfSea + military.jsdfAir;
+  const pac3 = military.pac3Ishigaki + military.pac3Miyako;
+  const senkakuBonus = military.senkakuOccupied ? 3 : 0;
+  const calcValue = diceSum + chinaTotal - (jsdfTotal + pac3) + senkakuBonus;
+  return { calcValue, threshold: 17, hit: calcValue >= 17 };
+}
+
+// B/C セル1つを処理する（2ダイス表引きの結果）。
+function processEventCell(
+  cell: EventCell,
+  tag: 'B' | 'C',
+  colRow: string,
+  result: EventResult,
+  military: MilitaryState
+): string {
+  const areas = ['yonaguni', 'taketomi', 'ishigaki', 'miyako'] as AreaId[];
+  const allAreasFatigue = (n: number) => areas.forEach(a => { result.fatigueIncrease[a] += n; });
+
+  switch (cell.kind) {
+    case 'none':
+      return `[イベント${tag}|${colRow}] イベントなし`;
+
+    case 'airClosedToday': {
+      const jp = AIR_ROUTE_JP[cell.air];
+      result.facilityClosedToday.push(cell.air);
+      const desc = cell.label ?? `${jp} 民間航空便 当日使用不可`;
+      result.log.push(`[イベント${tag}|${colRow}] 【${desc}】(ドローン/不時着等)`);
+      return `【当日閉鎖】${cell.label ?? jp + ' 航空便'}`;
+    }
+    case 'areaClosedToday': {
+      // 空港の無い島での不時着: 当該エリアの当日避難便(空路/海路)を0化
+      result.capacityMultiplier[cell.area] *= 0;
+      result.log.push(`[イベント${tag}|${colRow}] 【${cell.label} → ${cell.area} の当日避難便 使用不可】`);
+      return `【当日停止】${cell.label}`;
+    }
+    case 'shipClosedToday': {
+      const jp = SHIP_ROUTE_JP[cell.ship];
+      const area = SHIP_ROUTE_AREA[cell.ship];
+      result.seaCapacityMultiplier[area] *= 0; // 当日その港の船舶便を0に
+      result.log.push(`[イベント${tag}|${colRow}] 【${jp} 海上民兵海域接近 → 当日の船舶便 使用不可】`);
+      return `【当日閉鎖】${jp} 船舶便`;
+    }
+    case 'mine': {
+      const jp = SHIP_ROUTE_JP[cell.ship];
+      const area = SHIP_ROUTE_AREA[cell.ship];
+      result.seaCapacityMultiplier[area] *= 0.5;
+      result.log.push(`[イベント${tag}|${colRow}] 【機雷敷設の疑い】${jp}の航路 → 当日の海路コマ半減（要掃海・空路は影響なし）`);
+      return `【機雷】${jp} 海路半減`;
+    }
+    case 'shipHalf': {
+      const jp = SHIP_ROUTE_JP[cell.ship];
+      const area = SHIP_ROUTE_AREA[cell.ship];
+      result.seaCapacityMultiplier[area] *= 0.5;
+      result.log.push(`[イベント${tag}|${colRow}] 【${jp} 船舶便 半減】(海域船舶臨検/軍民船舶運航錯綜)`);
+      return `【半減】${jp} 船舶便`;
+    }
+    case 'airHalf': {
+      const jp = AIR_ROUTE_JP[cell.air];
+      const area = AIR_ROUTE_AREA[cell.air];
+      result.capacityMultiplier[area] *= 0.5;
+      result.log.push(`[イベント${tag}|${colRow}] 【${jp} 軍民航空機運航錯綜 → 航空便 半減】`);
+      return `【半減】${jp} 航空便`;
+    }
+    case 'airMissileShootdown': {
+      const jp = AIR_ROUTE_JP[cell.air];
+      const r = resolveInterdiction(military);
+      result.log.push(`[イベント${tag}|${colRow}] 【${jp} 航空便ミサイル攻撃(撃墜判定)】計${r.calcValue} / 閾値${r.threshold}`);
+      if (r.hit) {
+        result.disabledAirRoutes[cell.air] = true;
+        result.newDead += 1;
+        allAreasFatigue(1);
+        result.log.push(`  ⚠️ 撃墜成立! ${jp}の航空便を以後使用不可・死者1コマ・全4エリア疲労+1`);
+        return `【撃墜】${jp} 航空便 計${r.calcValue}≥${r.threshold}`;
+      }
+      return `【航空便攻撃】${jp} 計${r.calcValue}<${r.threshold} 回避`;
+    }
+    case 'shipMissileSink': {
+      const jp = SHIP_ROUTE_JP[cell.ship];
+      const r = resolveInterdiction(military);
+      result.log.push(`[イベント${tag}|${colRow}] 【${jp} 船舶便ミサイル攻撃(撃沈判定)】計${r.calcValue} / 閾値${r.threshold}`);
+      if (r.hit) {
+        result.disabledShipRoutes[cell.ship] = true;
+        result.newDead += 1;
+        allAreasFatigue(1);
+        result.log.push(`  ⚠️ 撃沈成立! ${jp}の船舶便を以後使用不可・死者1コマ・全4エリア疲労+1`);
+        return `【撃沈】${jp} 船舶便 計${r.calcValue}≥${r.threshold}`;
+      }
+      return `【船舶便攻撃】${jp} 計${r.calcValue}<${r.threshold} 回避`;
+    }
+    case 'airFacilityMissile': {
+      const jp = AIR_ROUTE_JP[cell.air];
+      const r = resolveFacilityMissile(military);
+      result.log.push(`[イベント${tag}|${colRow}] 【${jp} ミサイル攻撃(施設破壊判定)】計${r.calcValue} / 閾値${r.threshold}`);
+      if (r.hit) {
+        result.infraPenalty[AIR_ROUTE_INFRA[cell.air]] = false;
+        result.log.push(`  ⚠️ 施設破壊! ${jp}の民間便を使用不可`);
+        return `【施設破壊】${jp} 計${r.calcValue}≥${r.threshold}`;
+      }
+      return `【ミサイル攻撃】${jp} 計${r.calcValue}<${r.threshold} 耐えた`;
+    }
+    case 'shipFacilityMissile': {
+      const jp = SHIP_ROUTE_JP[cell.ship];
+      const r = resolveFacilityMissile(military);
+      result.log.push(`[イベント${tag}|${colRow}] 【${jp} ミサイル攻撃(施設破壊判定)】計${r.calcValue} / 閾値${r.threshold}`);
+      if (r.hit) {
+        const infraKey = SHIP_ROUTE_INFRA[cell.ship];
+        if (infraKey) result.infraPenalty[infraKey] = false;
+        else result.disabledShipRoutes[cell.ship] = true; // 久部良港はInfra無 → 路線停止
+        result.log.push(`  ⚠️ 施設破壊! ${jp}の民間便を使用不可`);
+        return `【施設破壊】${jp} 計${r.calcValue}≥${r.threshold}`;
+      }
+      return `【ミサイル攻撃】${jp} 計${r.calcValue}<${r.threshold} 耐えた`;
+    }
+    case 'power': {
+      const r = resolveFacilityMissile(military);
+      result.log.push(`[イベント${tag}|${colRow}] 【${cell.jp} 電力設備ミサイル攻撃】計${r.calcValue} / 閾値${r.threshold}`);
+      if (!r.hit) return `【電力攻撃】${cell.jp} 計${r.calcValue}<${r.threshold} 防護成功`;
+      if (cell.power === 'tarama') {
+        result.infraPenalty.powerTarama = false;
+        result.taramaPowerBrokenToday = true;
+        result.log.push(`  ⚠️ 発電所破壊! 多良間島が停電 → 多良間島疲労度を宮古・多良間へ加算(即時+1・翌日+1・最大2)。避難完了で解除`);
+        return `【電力破壊】多良間島(一時疲労)`;
+      }
+      if (cell.power === 'hateruma') {
+        result.infraPenalty.powerHateruma = false;
+        result.haterumaPowerBrokenToday = true;
+        result.log.push(`  ⚠️ 発電所破壊! 波照間島が停電 → 波照間島疲労度を竹富町各島へ加算(即時+1・翌日+1・最大2)。避難完了で解除`);
+        return `【電力破壊】波照間島(一時疲労)`;
+      }
+      const powerInfra: Record<'ishigaki' | 'miyako' | 'yonaguni', keyof InfraState> = {
+        ishigaki: 'powerIshigaki', miyako: 'powerMiyako', yonaguni: 'powerYonaguni',
+      };
+      const areaMap: Record<'ishigaki' | 'miyako' | 'yonaguni', AreaId> = {
+        ishigaki: 'ishigaki', miyako: 'miyako', yonaguni: 'yonaguni',
+      };
+      result.infraPenalty[powerInfra[cell.power]] = false;
+      result.fatigueIncrease[areaMap[cell.power]] += 1; // 即時+1
+      result.log.push(`  ⚠️ 発電所破壊! ${cell.jp}が停電・断水 → 即時 疲労+1、以後毎日 疲労+1(夏季+2)`);
+      return `【電力破壊】${cell.jp} 停電`;
+    }
+    case 'bridge': {
+      const r = resolveFacilityMissile(military);
+      result.log.push(`[イベント${tag}|${colRow}] 【${cell.jp} ミサイル攻撃(施設破壊判定)】計${r.calcValue} / 閾値${r.threshold}`);
+      if (r.hit) {
+        result.infraPenalty[cell.infra] = false;
+        result.log.push(`  ⚠️ 橋破壊! ${cell.jp}が通行不能（避難不可化）`);
+        return `【橋破壊】${cell.jp} 計${r.calcValue}≥${r.threshold}`;
+      }
+      return `【橋攻撃】${cell.jp} 計${r.calcValue}<${r.threshold} 耐えた`;
+    }
+    case 'airRefusal': {
+      const jp = AIR_ROUTE_JP[cell.air];
+      const r = resolveInterdiction(military);
+      result.log.push(`[イベント${tag}|${colRow}] 【${jp} 航空便運航拒否(判定)】計${r.calcValue} / 閾値${r.threshold}`);
+      if (r.hit) {
+        result.disabledAirRoutes[cell.air] = true;
+        result.log.push(`  ⚠️ 運航拒否確定! ${jp}の航空便を以後使用不可`);
+        return `【運航拒否】${jp} 航空便 計${r.calcValue}≥${r.threshold}`;
+      }
+      return `【運航拒否判定】${jp} 航空便 計${r.calcValue}<${r.threshold} 継続`;
+    }
+    case 'shipRefusal': {
+      const jp = SHIP_ROUTE_JP[cell.ship];
+      const r = resolveInterdiction(military);
+      result.log.push(`[イベント${tag}|${colRow}] 【${jp} 船舶便運航拒否(判定)】計${r.calcValue} / 閾値${r.threshold}`);
+      if (r.hit) {
+        result.disabledShipRoutes[cell.ship] = true;
+        result.log.push(`  ⚠️ 運航拒否確定! ${jp}の船舶便を以後使用不可`);
+        return `【運航拒否】${jp} 船舶便 計${r.calcValue}≥${r.threshold}`;
+      }
+      return `【運航拒否判定】${jp} 船舶便 計${r.calcValue}<${r.threshold} 継続`;
+    }
+    case 'attackCoastGuard': {
+      const r = resolveInterdiction(military);
+      result.log.push(`[イベント${tag}|${colRow}] 【海保輸送船に攻撃(撃沈判定)】計${r.calcValue} / 閾値${r.threshold}`);
+      if (r.hit) {
+        result.coastGuardMaxDelta -= 1;
+        result.newDead += 1;
+        allAreasFatigue(1);
+        result.log.push(`  ⚠️ 撃沈成立! 海保輸送船の1日便数-1・死者1コマ・全4エリア疲労+1`);
+        return `【海保撃沈】便数-1 計${r.calcValue}≥${r.threshold}`;
+      }
+      return `【海保攻撃】計${r.calcValue}<${r.threshold} 回避`;
+    }
+    case 'attackAsset': {
+      const r = resolveInterdiction(military);
+      result.log.push(`[イベント${tag}|${colRow}] 【${cell.jp}に攻撃(撃墜判定)】計${r.calcValue} / 閾値${r.threshold}`);
+      if (r.hit) {
+        result.newDead += 1;
+        allAreasFatigue(1);
+        result.log.push(`  ⚠️ 撃墜成立! ${cell.jp}被害・死者1コマ・全4エリア疲労+1（次便から継続使用可）`);
+        return `【${cell.jp}被害】計${r.calcValue}≥${r.threshold}`;
+      }
+      return `【${cell.jp}攻撃】計${r.calcValue}<${r.threshold} 回避`;
+    }
+  }
+}
+
 function processEvent(
   eventType: 'A' | 'B' | 'C' | 'D',
   state: GameState,
@@ -404,6 +790,16 @@ function processEvent(
   military: MilitaryState,
   day: number
 ): string {
+  // B/C は Section3 の 2ダイス表駆動（1投目=列, 2投目=行）
+  if (eventType === 'B' || eventType === 'C') {
+    const table = eventType === 'B' ? EVENT_B_TABLE : EVENT_C_TABLE;
+    const col = rollDie(); // 1投目=列(1..6)
+    const row = rollDie(); // 2投目=行(1..6)
+    // B表は5行のみ（1投目6列×2投目5行）。行6はイベントなしとして扱う。C表は6行。
+    const cell: EventCell = (table[row - 1]?.[col - 1]) ?? { kind: 'none' };
+    return processEventCell(cell, eventType, `列${col}行${row}`, result, military);
+  }
+
   const subRoll = rollDie();
   const areas = ['yonaguni', 'taketomi', 'ishigaki', 'miyako'] as AreaId[];
   const targetArea = areas[Math.floor(Math.random() * 4)];
@@ -453,125 +849,6 @@ function processEvent(
       result.facilityClosedToday.push(apt);
       result.log.push(`[イベントA|出目${subRoll}] 【外国人観光客大乱闘】${aptJp}で騒動 → 本日24時まで使用不能（他空港は通常運用）`);
       return `【観光客大乱闘】${aptJp}停止`;
-    }
-  }
-
-  if (eventType === 'B') {
-    // イベントB: ハイブリッド脅威（6種類）
-    // 出目1-2: 滑走路障害 / 3-4: 海上民兵 / 5: 機雷敷設 / 6: 軍民混乱
-    if (subRoll <= 2) {
-      result.log.push(`[イベントB|出目${subRoll}] 【ドローン/障害物散布】空港滑走路に障害 啓開に手数消費 疲労+1`);
-      result.fatigueIncrease.ishigaki += 1;
-      return '【滑走路障害】石垣 疲労+1';
-    } else if (subRoll <= 4) {
-      result.log.push(`[イベントB|出目${subRoll}] 【海上民兵接近】漁船偽装の民兵が港湾周辺に — 石垣/宮古 疲労+0.5`);
-      result.fatigueIncrease.ishigaki += 0.5;
-      result.fatigueIncrease.miyako += 0.5;
-      return '【海上民兵】石垣/宮古 疲労+0.5';
-    } else if (subRoll === 5) {
-      // 機雷敷設: 発生した港(航路)を明記。その港のあるエリアの海上輸送が当日大きく低下(疲労ではない)
-      const mineSpots: { port: string; area: AreaId }[] = [
-        { port: '平良港(宮古)', area: 'miyako' },
-        { port: '石垣港(石垣)', area: 'ishigaki' },
-        { port: '久部良港(与那国)', area: 'yonaguni' },
-        { port: '大原港(竹富・西表)', area: 'taketomi' },
-      ];
-      const spot = mineSpots[Math.floor(Math.random() * mineSpots.length)];
-      result.seaCapacityMultiplier[spot.area] *= 0.5; // 海路のみ半減（空路は影響なし）
-      result.log.push(`[イベントB|出目${subRoll}] 【機雷敷設の疑い】${spot.port}の航路で機雷の脅威 → 当日の海上輸送のみ半減（空路は影響なし・要掃海）`);
-      return `【機雷】${spot.port} 海路半減`;
-    } else {
-      // 軍民運航錯綜: 空港・海港が半日間 使用不能になるだけ（疲労上昇なし）→ 石垣/宮古の輸送容量を半減
-      result.log.push(`[イベントB|出目${subRoll}] 【軍民運航錯綜】管制混乱で空港・海港が半日使用不能 — 石垣/宮古の本日の輸送量50%減`);
-      result.capacityMultiplier.ishigaki *= 0.5;
-      result.capacityMultiplier.miyako *= 0.5;
-      return '【軍民運航錯綜】石垣/宮古 半日使用不能';
-    }
-  }
-
-  if (eventType === 'C') {
-    // イベントC: 軍事的エスカレーション（ミサイル等）
-    // 計算式: サイコロ(3or4個)合計 + 中国軍計 - 自衛隊計 ± PAC3
-    const chinaTotal = military.chineseSea + military.chineseAir;
-    const jsdfTotal = military.jsdfSea + military.jsdfAir;
-    const pac3 = military.pac3Ishigaki + military.pac3Miyako;
-    const senkakuBonus = military.senkakuOccupied ? 3 : 0;
-
-    if (subRoll <= 2) {
-      // 輸送手段攻撃
-      const diceSum = sumDice(3);
-      const calcValue = diceSum + chinaTotal - jsdfTotal + senkakuBonus;
-      const threshold = 15;
-      result.log.push(`[イベントC|出目${subRoll}] 【輸送便攻撃】ダイス合計${diceSum}+中国軍${chinaTotal}-自衛隊${jsdfTotal}+尖閣${senkakuBonus}=計${calcValue} / 閾値${threshold}`);
-      if (calcValue >= threshold) {
-        result.log.push(`  ⚠️ 撃沈成立! 民間航空・船舶が使用不能化`);
-        result.transportPenalty.civilianAirDisabled = true;
-        result.transportPenalty.civilianShipDisabled = true;
-        result.newDead += 1;
-        areas.forEach(a => { result.fatigueIncrease[a] += 1; });
-        return `【輸送便撃沈】計${calcValue}≥${threshold} 民間輸送壊滅+死亡1コマ`;
-      }
-      return `【輸送便攻撃】計${calcValue}<${threshold} 撃沈免れる`;
-    } else if (subRoll <= 4) {
-      // 施設ミサイル攻撃 (4ダイス)
-      const diceSum = sumDice(4);
-      const calcValue = diceSum + chinaTotal - (jsdfTotal + pac3) + senkakuBonus;
-      const threshold = 17;
-      const targets = ['石垣港', '平良港', '新石垣空港', '宮古空港', '池間大橋', '来間大橋', '伊良部大橋'];
-      const target = targets[Math.floor(Math.random() * targets.length)];
-      result.log.push(`[イベントC|出目${subRoll}] 【施設ミサイル攻撃 → ${target}】ダイス${diceSum}+中${chinaTotal}-自${jsdfTotal+pac3}+尖${senkakuBonus}=計${calcValue} / 閾値${threshold}`);
-      if (calcValue >= threshold) {
-        result.log.push(`  ⚠️ 施設破壊! ${target}が使用不能`);
-        result.fatigueIncrease.ishigaki += 1.5;
-        result.fatigueIncrease.miyako += 1.5;
-        // 対象施設を実際に使用不能化（B1修正: ログと実挙動を一致させる）
-        const FACILITY_INFRA: Record<string, keyof InfraState> = {
-          '石垣港': 'ishigakiPort',
-          '平良港': 'hiraraPort',
-          '新石垣空港': 'shinIshigakiAirport',
-          '宮古空港': 'miyakoAirport',
-          '池間大橋': 'bridgeIkema',
-          '来間大橋': 'bridgeKurima',
-          '伊良部大橋': 'bridgeIrabu',
-        };
-        const infraKey = FACILITY_INFRA[target];
-        if (infraKey) result.infraPenalty[infraKey] = false;
-        return `【施設破壊】${target} 計${calcValue}≥${threshold}`;
-      }
-      return `【ミサイル攻撃】${target} 計${calcValue}<${threshold} 耐えた`;
-    } else {
-      // 電力設備攻撃 (4ダイス)
-      const diceSum = sumDice(4);
-      const calcValue = diceSum + chinaTotal - (jsdfTotal + pac3) + senkakuBonus;
-      const threshold = 17;
-      result.log.push(`[イベントC|出目${subRoll}] 【電力設備攻撃】ダイス${diceSum}+中${chinaTotal}-自${jsdfTotal+pac3}+尖${senkakuBonus}=計${calcValue} / 閾値${threshold}`);
-      if (calcValue >= threshold) {
-        // 発電所破壊→停電。発生エリアの発電所infraをfalse化。即時+1、以後毎日+1(夏季+2)はprepareDayPhase1で加算。
-        // 多良間/波照間は「一時疲労」ルール（避難完了で戻す）を使うため kind='temp' で別扱い。
-        const powerTargets: { key: keyof InfraState; area: AreaId | null; jp: string; kind: 'normal' | 'tarama' | 'hateruma' }[] = [
-          { key: 'powerIshigaki', area: 'ishigaki', jp: '石垣島', kind: 'normal' },
-          { key: 'powerMiyako', area: 'miyako', jp: '宮古島', kind: 'normal' },
-          { key: 'powerYonaguni', area: 'yonaguni', jp: '与那国島', kind: 'normal' },
-          { key: 'powerTarama', area: null, jp: '多良間島', kind: 'tarama' },
-          { key: 'powerHateruma', area: null, jp: '波照間島', kind: 'hateruma' },
-        ];
-        const pt = powerTargets[Math.floor(Math.random() * powerTargets.length)];
-        result.infraPenalty[pt.key] = false;
-        if (pt.kind === 'tarama') {
-          result.taramaPowerBrokenToday = true;
-          result.log.push(`  ⚠️ 発電所破壊! 多良間島が停電 → 多良間島疲労度を宮古・多良間へ加算(即時+1・翌日+1・最大2)。多良間→宮古 避難完了で解除`);
-          return `【電力破壊】多良間島 停電(一時疲労)`;
-        }
-        if (pt.kind === 'hateruma') {
-          result.haterumaPowerBrokenToday = true;
-          result.log.push(`  ⚠️ 発電所破壊! 波照間島が停電 → 波照間島疲労度を竹富町各島へ加算(即時+1・翌日+1・最大2)。波照間→石垣 避難完了で解除`);
-          return `【電力破壊】波照間島 停電(一時疲労)`;
-        }
-        result.fatigueIncrease[pt.area!] += 1; // 即時+1
-        result.log.push(`  ⚠️ 発電所破壊! ${pt.jp}が停電・断水 → 即時 疲労+1、以後毎日 疲労+1(夏季+2)`);
-        return `【電力破壊】${pt.jp} 停電(以後毎日疲労)`;
-      }
-      return `【電力攻撃】計${calcValue}<${threshold} 防護成功`;
     }
   }
 
@@ -656,24 +933,28 @@ export function getDayCapacities(
   const settings = PREP_LEVEL_SETTINGS[prepLevel as keyof typeof PREP_LEVEL_SETTINGS];
   const isWartime = phase === 'wartime';
   const isCrisis = phase === 'crisis';
+  // 後方互換フラグ。現在は路線別停止(disabledAirRoutes/disabledShipRoutes)を正とする。
   const civAirOk = !transport.civilianAirDisabled;
   const civShipOk = !transport.civilianShipDisabled;
+  // Section1: 路線別の恒久停止（撃墜/撃沈/運航拒否/施設破壊）。該当路線の便を0にする。
+  const airRouteOk = (r: AirRouteKey) => civAirOk && !transport.disabledAirRoutes[r];
+  const shipRouteOk = (r: ShipRouteKey) => civShipOk && !transport.disabledShipRoutes[r];
   // マニュアル3.1: 平時は島外避難不可(全0)。存立危機は与那国・竹富のみ(石垣港入港はLv2以上)。有事は全可。
   // 石垣港が破壊されている場合は受け入れ不可。
   const ishigakiPortOpen = state.infra.ishigakiPort && (isWartime || (isCrisis && prepLevel >= 2));
 
   // 与那国空港→本土: 平時0 / 存立危機1便 / 有事は便数表
-  const yonaguniAirMax = airportAvail.yonaguni && civAirOk
+  const yonaguniAirMax = airportAvail.yonaguni && airRouteOk('yonaguni')
     ? (isWartime ? settings.airFlightsWartime.yonaguni : isCrisis ? 1 : 0)
     : 0;
 
-  // 与那国→石垣フェリー: 石垣港が開いている時のみ(存立危機はLv2+、有事は常時)
-  const yonaguniSeaMax = seaOk && ishigakiPortOpen ? YONAGUNI_TO_ISHIGAKI_FERRY : 0;
+  // 与那国→石垣フェリー(久部良港発): 石垣港が開いている時のみ(存立危機はLv2+、有事は常時)
+  const yonaguniSeaMax = seaOk && ishigakiPortOpen && shipRouteOk('kubura') ? YONAGUNI_TO_ISHIGAKI_FERRY : 0;
 
-  // 竹富→石垣フェリー: 同上(存立危機Lv2+ / 有事)
+  // 竹富→石垣フェリー: 同上(存立危機Lv2+ / 有事)。路線名指し無しのため路線別停止は適用しない。
   const taketomiFerryMax = seaOk && ishigakiPortOpen ? TAKETOMI_TO_ISHIGAKI_FERRY_MAX : 0;
 
-  const ishigakiAirMax = isWartime && airportAvail.shinIshigaki && civAirOk
+  const ishigakiAirMax = isWartime && airportAvail.shinIshigaki && airRouteOk('shinIshigaki')
     ? settings.airFlightsWartime.shinIshigaki : 0;
 
   const ishigakiJasdfMax = isWartime && airportAvail.shinIshigaki ? transport.jasdfRemaining : 0;
@@ -681,16 +962,16 @@ export function getDayCapacities(
   // 海保と海自は石垣/宮古で分け合う → 全体で使える分を表示
   const ishigakiCoastGuardMax = isWartime && seaOk ? Math.ceil(transport.coastGuardToday / 2) : 0;
   const ishigakiJmsdfMax = isWartime && seaOk && transport.jmsdfRemaining > 0 ? 1 : 0;
-  const ishigakiFerryMax = isWartime && seaOk && civShipOk && state.infra.ishigakiPort
+  const ishigakiFerryMax = isWartime && seaOk && shipRouteOk('ishigakiPort') && state.infra.ishigakiPort
     ? settings.mainPortCapacityPerTrip : 0;
 
-  const miyakoAirMax = isWartime && airportAvail.miyako && civAirOk
+  const miyakoAirMax = isWartime && airportAvail.miyako && airRouteOk('miyako')
     ? settings.airFlightsWartime.miyako : 0;
-  const shimojAirMax = isWartime && airportAvail.shimoji && civAirOk
+  const shimojAirMax = isWartime && airportAvail.shimoji && airRouteOk('shimoji')
     ? settings.airFlightsWartime.shimoji : 0;
   const miyakoCoastGuardMax = isWartime && seaOk ? Math.floor(transport.coastGuardToday / 2) : 0;
   const miyakoJmsdfMax = isWartime && seaOk && transport.jmsdfRemaining > 0 ? 1 : 0;
-  const miyakoFerryMax = isWartime && seaOk && civShipOk && state.infra.hiraraPort
+  const miyakoFerryMax = isWartime && seaOk && shipRouteOk('hiraraPort') && state.infra.hiraraPort
     ? settings.mainPortCapacityPerTrip : 0;
 
   // イベント由来の容量倍率（軍民運航錯綜=0.5 / 交通混乱=0.7 等）をエリア別に適用。
@@ -851,6 +1132,12 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
       ...state.transport,
       civilianAirDisabled: state.transport.civilianAirDisabled || (eventResult.transportPenalty.civilianAirDisabled ?? false),
       civilianShipDisabled: state.transport.civilianShipDisabled || (eventResult.transportPenalty.civilianShipDisabled ?? false),
+      // Section1: 路線別の恒久停止をマージ（撃墜/撃沈/運航拒否）
+      disabledAirRoutes: { ...state.transport.disabledAirRoutes, ...eventResult.disabledAirRoutes },
+      disabledShipRoutes: { ...state.transport.disabledShipRoutes, ...eventResult.disabledShipRoutes },
+      // Section1: 海保輸送船 撃沈 → 1日便数-1（0未満にしない）。当日残・翌日リセット値の双方へ反映。
+      coastGuardMaxPerDay: Math.max(0, state.transport.coastGuardMaxPerDay + eventResult.coastGuardMaxDelta),
+      coastGuardToday: Math.max(0, state.transport.coastGuardToday + eventResult.coastGuardMaxDelta),
     },
     // DMAT残・一時疲労トラッカーを更新（冪等な戻し用に applied 量も保持）
     dmatRemaining,
@@ -1034,10 +1321,10 @@ export function executeDayPhase2(
     }
   }
 
-  // 輸送アセットリセット（翌日分）
+  // 輸送アセットリセット（翌日分）。海保便数はイベント後の(減便済み)coastGuardMaxPerDayでリセットする。
   const newTransport: TransportState = {
     ...transport,
-    coastGuardToday: originalState.transport.coastGuardMaxPerDay,
+    coastGuardToday: transport.coastGuardMaxPerDay,
   };
 
   // 当日死者 = 疲労限界死 + X+3期限死 + DMAT未派遣の追加死 + イベント攻撃死(市街/撃沈/上陸)
