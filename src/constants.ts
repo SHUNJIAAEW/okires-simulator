@@ -158,6 +158,8 @@ export const AIR_GUARD_MAX_BY_LEVEL: Record<number, number> = { 1: 1, 2: 2, 3: 3
 // ===== 存立危機で竹富町各島・与那国→石垣避難 / 2島間往復 / 臨時増援交渉 の可否レベル（仕様2026.7.6 Sec4）=====
 export const CRISIS_EVAC_MIN_LEVEL = 2;      // 存立危機で竹富町各島・与那国→石垣港/新石垣空港 避難可: Lv2以上
 export const SHUTTLE_MIN_LEVEL = 2;          // 石垣島⇔宮古島 2島間往復輸送 可: Lv2以上
+// 近距離ピストンの容量倍率: 海保/海自/空自/民間航空は 1便3コマ(=通常の3倍)。陸自ヘリは通常通り1倍。
+export const SHUTTLE_MULTIPLIER = 3;
 export const REINFORCEMENT_MIN_LEVEL = 3;    // 自衛隊輸送臨時増援交渉 可: Lv3以上
 
 // ===== 疲労度→手数テーブル（島別・非線形。仕様2026.7.6 Sec5）=====

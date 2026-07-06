@@ -13,6 +13,7 @@ import {
   PREP_LEVEL_SETTINGS, TAKETOMI_TO_ISHIGAKI_FERRY_MAX, YONAGUNI_TO_ISHIGAKI_FERRY,
   handsByFatigue, TOURIST_MAX_BY_AREA, VULNERABLE_TOTAL_MAX,
   TOURIST_BY_MONTH, RESIDENT_TOTAL_BY_AREA, PAC3_BY_LEVEL,
+  SHUTTLE_MIN_LEVEL, SHUTTLE_MULTIPLIER,
 } from './constants';
 
 // ===== サイコロ =====
@@ -974,12 +975,78 @@ export function getDayCapacities(
   const miyakoFerryMax = isWartime && seaOk && shipRouteOk('hiraraPort') && state.infra.hiraraPort
     ? settings.mainPortCapacityPerTrip : 0;
 
+  // ===== Section2: 石垣島⇔宮古島 2島間往復(ピストン)輸送 の容量算定 =====
+  // 発火: 有事 かつ Lv>=SHUTTLE_MIN_LEVEL かつ 片方ハブの本土向け民間空路が破壊/運航拒否で出せない。
+  // 破壊された側ハブ(shuttleFrom)の住民を、機能している側ハブ(shuttleTo)へ集約 → 集約先の当日残本土便容量があれば当日、無ければ翌以降に本土へ。
+  // ハブ空路が「本土便を出せない」= 空港破壊(airportAvail=false) or 路線停止(disabledAirRoutes)。
+  const ishigakiHubDown = !(airportAvail.shinIshigaki && airRouteOk('shinIshigaki'));
+  // 宮古ハブは宮古空港・下地島空港の2空港。両方とも本土便が出せない時に「ハブ機能喪失」とみなす。
+  const miyakoHubDown =
+    !(airportAvail.miyako && airRouteOk('miyako')) &&
+    !(airportAvail.shimoji && airRouteOk('shimoji'));
+  let shuttleActive = false;
+  let shuttleFrom: AreaId | null = null;
+  let shuttleTo: AreaId | null = null;
+  // 両ハブ同時ダウンは中継先が無いので不可。片方だけダウン時に発火。
+  if (isWartime && prepLevel >= SHUTTLE_MIN_LEVEL && ishigakiHubDown !== miyakoHubDown) {
+    if (ishigakiHubDown) { shuttleFrom = 'ishigaki'; shuttleTo = 'miyako'; }
+    else { shuttleFrom = 'miyako'; shuttleTo = 'ishigaki'; }
+    shuttleActive = true;
+  }
+  // 港が使えるか（石垣港/平良港が破壊 or 船舶運航拒否なら 船舶手段は往復適用外）。送出側・集約先の両端で判定する。
+  const portOk = (id: AreaId | null): boolean => {
+    if (id === 'ishigaki') return state.infra.ishigakiPort && shipRouteOk('ishigakiPort');
+    if (id === 'miyako') return state.infra.hiraraPort && shipRouteOk('hiraraPort');
+    return false;
+  };
+  // ハブの民間空港が民間便を出せるか（空港infra破壊 or 路線運航拒否(disabledAirRoutes)なら不可）。
+  // 空港施設が無事でも路線が運航拒否されていれば民間航空は使えない（仕様「空港破壊/運航拒否時は民間航空×」）。
+  const civAirHubOk = (id: AreaId | null): boolean => {
+    if (id === 'ishigaki') return airportAvail.shinIshigaki && airRouteOk('shinIshigaki');
+    if (id === 'miyako')
+      return (airportAvail.miyako && airRouteOk('miyako')) || (airportAvail.shimoji && airRouteOk('shimoji'));
+    return false;
+  };
+  // 送出側ハブの空港施設が使えるか（空自輸送機=応急修理後の空港前提。軍用機は路線運航拒否の影響を受けない）。
+  const fromAirfieldOk = (id: AreaId | null): boolean => {
+    if (id === 'ishigaki') return airportAvail.shinIshigaki;
+    if (id === 'miyako') return airportAvail.miyako || airportAvail.shimoji;
+    return false;
+  };
+  // 送出側ハブが民間便で出せる基準便数（宮古発は宮古+（無事かつ路線可なら）下地島を加算）。
+  const fromCivAirFlights = (id: AreaId | null): number => {
+    if (id === 'ishigaki') return airportAvail.shinIshigaki && airRouteOk('shinIshigaki') ? settings.airFlightsWartime.shinIshigaki : 0;
+    if (id === 'miyako') {
+      let f = 0;
+      if (airportAvail.miyako && airRouteOk('miyako')) f += settings.airFlightsWartime.miyako;
+      if (airportAvail.shimoji && airRouteOk('shimoji')) f += settings.airFlightsWartime.shimoji;
+      return f;
+    }
+    return 0;
+  };
+  const M = SHUTTLE_MULTIPLIER;
+  // 海保/海自は船舶。仕様: 送出側・集約先の両端の港が使えることが条件（どちらか一方でも破壊/運航拒否なら往復適用外）。
+  const shipUsable = shuttleActive && seaOk && portOk(shuttleFrom) && portOk(shuttleTo);
+  const shuttleCoastGuardMax = shipUsable ? transport.coastGuardToday * M : 0;
+  const shuttleJmsdfMax = shipUsable && transport.jmsdfRemaining > 0 ? 1 * M : 0;
+  const shuttleJasdfMax = shuttleActive && fromAirfieldOk(shuttleFrom) ? transport.jasdfRemaining * M : 0;
+  const shuttleJgsdfMax = shuttleActive ? transport.jgsdfRemaining * 1 : 0; // 陸自ヘリ 1便1コマ
+  // 民間航空3倍: 集約先ハブと送出側ハブの双方が民間便を出せる（空港無事かつ路線運航拒否でない）時のみ。
+  // 基準便数は「送出側ハブが出せる方向便数」を使う（宮古発なら宮古(+下地島)、石垣発なら新石垣）。
+  const shuttleCivAirMax =
+    shuttleActive && civAirOk && civAirHubOk(shuttleTo) && civAirHubOk(shuttleFrom)
+      ? fromCivAirFlights(shuttleFrom) * M
+      : 0;
+
   // イベント由来の容量倍率（軍民運航錯綜=0.5 / 交通混乱=0.7 等）をエリア別に適用。
   // 任意小数を避けるため 0.5 コマ単位へ丸める（通常日=倍率1では整数/0.5のまま無変化）。
   const r05 = (x: number) => Math.round(x * 2) / 2;
   const my = capMul.yonaguni, mt = capMul.taketomi, mi = capMul.ishigaki, mm = capMul.miyako;
   // 海路専用倍率(機雷など)。海路フィールドにのみ追加で掛ける。空路には掛けない。
   const sy = seaMul.yonaguni, st = seaMul.taketomi, si = seaMul.ishigaki, sm = seaMul.miyako;
+  // ピストン輸送は送出側ハブ(shuttleFrom)のイベント倍率を適用する。
+  const cmSF = shuttleFrom ? capMul[shuttleFrom] : 1;
+  const smSF = shuttleFrom ? seaMul[shuttleFrom] : 1;
   return {
     yonaguniAirMax: r05(yonaguniAirMax * my), yonaguniSeaMax: r05(yonaguniSeaMax * my * sy),
     taketomiFerryMax: r05(taketomiFerryMax * mt * st),
@@ -993,6 +1060,15 @@ export function getDayCapacities(
     phase,
     prepLevel,
     jgsdfRemaining: transport.jgsdfRemaining,
+    jmsdfRemaining: transport.jmsdfRemaining,
+    shuttleActive, shuttleFrom, shuttleTo,
+    // イベント由来の容量倍率(軍民運航錯綜=0.5/交通混乱等)を送出側ハブ(shuttleFrom)にも適用する。
+    // 海路系(海保/海自)は海路倍率も併せて掛ける。0.5コマ丸めで小数の暴走を防ぐ。
+    shuttleCoastGuardMax: r05(shuttleCoastGuardMax * cmSF * smSF),
+    shuttleJmsdfMax: r05(shuttleJmsdfMax * cmSF * smSF),
+    shuttleJasdfMax: r05(shuttleJasdfMax * cmSF),
+    shuttleJgsdfMax: r05(shuttleJgsdfMax * cmSF),
+    shuttleCivAirMax: r05(shuttleCivAirMax * cmSF),
   };
 }
 
@@ -1201,16 +1277,20 @@ export function executeDayPhase2(
     area.residents -= cappedRes;
     area.tourists -= cappedTour;
 
-    const destLabel = order.to === 'mainland' ? '本土' : '石垣島';
+    const destLabel = order.to === 'mainland' ? '本土' : order.to === 'ishigaki' ? '石垣島' : '宮古島';
     if (order.to === 'ishigaki') {
+      // 中継ハブ集約（西側フェリー流入 or 宮古→石垣ピストン）→ 石垣で待機し、当日残の本土便容量があれば当日、無ければ翌以降に本土へ。
       areas.ishigaki.stagingPort += cappedTotal;
+    } else if (order.to === 'miyako') {
+      // 石垣→宮古ピストン（新石垣空港破壊時）→ 宮古で待機し、当日残の本土便容量があれば当日、無ければ翌以降に本土へ。
+      areas.miyako.stagingPort += cappedTotal;
     } else {
       evacuatedCount += cappedTotal;
     }
 
     evacuations.push({
       from: order.from,
-      to: order.to === 'mainland' ? '本土' : '石垣島',
+      to: destLabel,
       count: cappedTotal,
       method: order.method,
       isVulnerable: cappedVuln > 0,
@@ -1218,13 +1298,25 @@ export function executeDayPhase2(
     evacLog.push(`${order.method}: ${order.from === 'yonaguni' ? '与那国' : order.from === 'taketomi' ? '竹富町' : order.from === 'ishigaki' ? '石垣' : '宮古'} ${cappedTotal}コマ → ${destLabel}`);
 
     // 輸送アセット消費
+    const M = SHUTTLE_MULTIPLIER;
     if (order.method === '海保輸送船') {
       transport.coastGuardToday = Math.max(0, transport.coastGuardToday - Math.ceil(cappedTotal));
     } else if (order.method === '海自輸送艦') {
       transport.jmsdfRemaining = Math.max(0, transport.jmsdfRemaining - 1);
     } else if (order.method === '空自輸送機') {
       transport.jasdfRemaining = Math.max(0, transport.jasdfRemaining - Math.ceil(cappedTotal));
+    } else if (order.method === 'ピストン海保輸送船') {
+      // 近距離3倍: 1便=3コマ。運んだコマ数を便数(=/3切上げ)に換算して消費。
+      transport.coastGuardToday = Math.max(0, transport.coastGuardToday - Math.ceil(cappedTotal / M));
+    } else if (order.method === 'ピストン海自輸送艦') {
+      transport.jmsdfRemaining = Math.max(0, transport.jmsdfRemaining - Math.ceil(cappedTotal / M));
+    } else if (order.method === 'ピストン空自輸送機') {
+      transport.jasdfRemaining = Math.max(0, transport.jasdfRemaining - Math.ceil(cappedTotal / M));
+    } else if (order.method === 'ピストン陸自ヘリ') {
+      // 陸自ヘリ 1便1コマ（通常）。運んだコマ数=便数を消費。
+      transport.jgsdfRemaining = Math.max(0, transport.jgsdfRemaining - Math.ceil(cappedTotal));
     }
+    // ピストン民間航空 は民間便のため自衛隊アセットを消費しない。
   }
 
   // 石垣待機コマ → 本土 (石垣の民間空路 / 海路で自動輸送)
@@ -1399,6 +1491,65 @@ export function autoSelectOrders(phase1: DayPhase1Result): EvacuationOrder[] {
   // 宮古の「避難可能な住民数」（孤立分を差し引く）
   const mRes = Math.max(0, areas.miyako.residents - lockedMiyako);
 
+  const M = SHUTTLE_MULTIPLIER;
+  // 海保/海自/空自は「石垣・宮古の本土便」と「ピストン便」で同一の実アセット(便)を共有する。
+  // ピストンで消費した「便数」分を本土便プール(本土便は1便1コマ)から差し引き、二重使用・過剰削減の両方を防ぐ。
+  let cgMainland = capacities.ishigakiCoastGuardMax + capacities.miyakoCoastGuardMax; // 海保 合計本土容量
+  // 海自は石垣/宮古それぞれ1コマ表示になり得るが、実残隻数(jmsdfRemaining)を超えて同時に使えない。
+  // 表示容量合算(=最大2)を実残隻数でクランプし、1隻を2コマに二重計上して過剰輸送するのを防ぐ。
+  let jmsdfMainland = Math.min(capacities.ishigakiJmsdfMax + capacities.miyakoJmsdfMax, capacities.jmsdfRemaining);
+  let jasdfMainland = capacities.ishigakiJasdfMax;                                      // 空自 (石垣のみ)
+
+  // ===== Section2: 石垣島⇔宮古島 2島間往復(ピストン)輸送 =====
+  // 片方ハブの本土空路が破壊/運航拒否の時、破壊された側ハブの住民を機能している側ハブへ集約する。
+  // 本土避難ロジックより前に発火し、破壊された側ハブの人口を先に中継便へ積む（手分けは下流の本土便が担う）。
+  if (capacities.shuttleActive && capacities.shuttleFrom && capacities.shuttleTo) {
+    const fromId = capacities.shuttleFrom;
+    // 中継先ハブは石垣/宮古のみ（getDayCapacities が保証）。EvacuationOrder.to へ渡すため型を絞る。
+    const toDest = capacities.shuttleTo as 'ishigaki' | 'miyako';
+    const fromArea = areas[fromId];
+    // 送出可能な人数（宮古発は橋孤立分を差し引く）。要援護者は船舶手段を優先的に割り当てる。
+    const availRes = fromId === 'miyako' ? mRes : fromArea.residents;
+    let remainingVuln = fromArea.vulnerable;
+    let remainingRes = availRes;
+    let remainingTour = fromArea.tourists;
+    // (method, 容量, 要援護者可否). 船舶(海保/海自)・空自輸送機は要援護者可。民間航空/陸自ヘリは住民・観光客。
+    const legs: Array<{ method: string; cap: number; vulnOk: boolean }> = [
+      { method: 'ピストン海保輸送船', cap: capacities.shuttleCoastGuardMax, vulnOk: true },
+      { method: 'ピストン海自輸送艦', cap: capacities.shuttleJmsdfMax, vulnOk: true },
+      { method: 'ピストン空自輸送機', cap: capacities.shuttleJasdfMax, vulnOk: true },
+      { method: 'ピストン民間航空', cap: capacities.shuttleCivAirMax, vulnOk: false },
+      { method: 'ピストン陸自ヘリ', cap: capacities.shuttleJgsdfMax, vulnOk: false },
+    ];
+    for (const leg of legs) {
+      if (leg.cap <= 0) continue;
+      let budget = leg.cap;
+      const vuln = leg.vulnOk ? Math.min(remainingVuln, budget) : 0;
+      budget -= vuln;
+      const res = Math.min(remainingRes, budget);
+      budget -= res;
+      const tour = Math.min(remainingTour, budget);
+      if (vuln + res + tour <= 0) continue;
+      const moved = vuln + res + tour;
+      remainingVuln -= vuln; remainingRes -= res; remainingTour -= tour;
+      // ピストンで消費した「便数」を本土便プールから差し引く。3倍手段は moved コマで ceil(moved/M) 便を消費し、
+      // その各便は本土便なら1便1コマなので、本土プールからは ceil(moved/M) コマ分を減らす（二重使用・過剰削減の防止）。
+      if (leg.method === 'ピストン海保輸送船') cgMainland = Math.max(0, cgMainland - Math.ceil(moved / M));
+      else if (leg.method === 'ピストン海自輸送艦') jmsdfMainland = Math.max(0, jmsdfMainland - Math.ceil(moved / M));
+      else if (leg.method === 'ピストン空自輸送機') jasdfMainland = Math.max(0, jasdfMainland - Math.ceil(moved / M));
+      // 陸自ヘリ(1倍: moved=便数)は本土プールを消費しない別枠。民間航空も本土海保/海自/空自プールを消費しない。
+      orders.push({ from: fromId, to: toDest, method: leg.method, residents: res, tourists: tour, vulnerable: vuln });
+    }
+  }
+
+  // ピストン消費後の本土便プールを、石垣/宮古の本土海保・海自・空自容量へ再配分する。
+  // 元の分割比(石垣ceil/宮古floor)を保ったまま、共有プールの残量にクランプする。
+  const cgIshigakiCap = Math.min(capacities.ishigakiCoastGuardMax, cgMainland);
+  const cgMiyakoCap = Math.min(capacities.miyakoCoastGuardMax, Math.max(0, cgMainland - cgIshigakiCap));
+  const jmsdfIshigakiCap = Math.min(capacities.ishigakiJmsdfMax, jmsdfMainland);
+  const jmsdfMiyakoCap = Math.min(capacities.miyakoJmsdfMax, Math.max(0, jmsdfMainland - jmsdfIshigakiCap));
+  const jasdfIshigakiCap = Math.min(capacities.ishigakiJasdfMax, jasdfMainland);
+
   // 与那国 → 本土(空路) ※存立危機・有事では直行便が使えるので住民・観光客を最優先で直送
   let yonaAirRes = 0;
   if (capacities.yonaguniAirMax > 0) {
@@ -1443,10 +1594,10 @@ export function autoSelectOrders(phase1: DayPhase1Result): EvacuationOrder[] {
     }
   }
 
-  // 石垣 → 本土(海保)
-  if (capacities.ishigakiCoastGuardMax > 0) {
-    const vuln = Math.min(areas.ishigaki.vulnerable, capacities.ishigakiCoastGuardMax);
-    const rest = capacities.ishigakiCoastGuardMax - vuln;
+  // 石垣 → 本土(海保) ※ピストン消費後の残プールを反映
+  if (cgIshigakiCap > 0) {
+    const vuln = Math.min(areas.ishigaki.vulnerable, cgIshigakiCap);
+    const rest = cgIshigakiCap - vuln;
     const res = Math.min(areas.ishigaki.residents, rest);
     if (vuln + res > 0) {
       orders.push({ from: 'ishigaki', to: 'mainland', method: '海保輸送船', residents: res, tourists: 0, vulnerable: vuln });
@@ -1454,8 +1605,8 @@ export function autoSelectOrders(phase1: DayPhase1Result): EvacuationOrder[] {
   }
 
   // 石垣 → 本土(空自輸送機) ※積極使用。要援護者(空路だが軍用機で搬送可)＋住民・観光客
-  if (capacities.ishigakiJasdfMax > 0 && airportAvail.shinIshigaki) {
-    const cap = capacities.ishigakiJasdfMax;
+  if (jasdfIshigakiCap > 0 && airportAvail.shinIshigaki) {
+    const cap = jasdfIshigakiCap;
     const vuln = Math.min(areas.ishigaki.vulnerable, cap);
     const rest = cap - vuln;
     const res = Math.min(areas.ishigaki.residents, rest);
@@ -1465,9 +1616,9 @@ export function autoSelectOrders(phase1: DayPhase1Result): EvacuationOrder[] {
     }
   }
 
-  // 石垣 → 本土(海自) ※容量倍率を反映（固定1ではなく容量上限を使用）
-  if (capacities.ishigakiJmsdfMax > 0) {
-    const cap = capacities.ishigakiJmsdfMax;
+  // 石垣 → 本土(海自) ※ピストン消費後の残プールを反映
+  if (jmsdfIshigakiCap > 0) {
+    const cap = jmsdfIshigakiCap;
     const vuln = Math.min(areas.ishigaki.vulnerable, cap);
     const res = Math.min(areas.ishigaki.residents, cap - vuln);
     if (vuln + res > 0) {
@@ -1505,18 +1656,18 @@ export function autoSelectOrders(phase1: DayPhase1Result): EvacuationOrder[] {
     }
   }
 
-  // 宮古 → 本土(海保)
-  if (capacities.miyakoCoastGuardMax > 0) {
-    const vuln = Math.min(areas.miyako.vulnerable, capacities.miyakoCoastGuardMax);
-    const res = Math.min(mRes, capacities.miyakoCoastGuardMax - vuln);
+  // 宮古 → 本土(海保) ※ピストン消費後の残プールを反映
+  if (cgMiyakoCap > 0) {
+    const vuln = Math.min(areas.miyako.vulnerable, cgMiyakoCap);
+    const res = Math.min(mRes, cgMiyakoCap - vuln);
     if (vuln + res > 0) {
       orders.push({ from: 'miyako', to: 'mainland', method: '海保輸送船', residents: res, tourists: 0, vulnerable: vuln });
     }
   }
 
-  // 宮古 → 本土(海自) ※容量倍率を反映（固定1ではなく容量上限を使用）
-  if (capacities.miyakoJmsdfMax > 0) {
-    const cap = capacities.miyakoJmsdfMax;
+  // 宮古 → 本土(海自) ※ピストン消費後の残プールを反映
+  if (jmsdfMiyakoCap > 0) {
+    const cap = jmsdfMiyakoCap;
     const vuln = Math.min(areas.miyako.vulnerable, cap);
     const res = Math.min(mRes, cap - vuln);
     if (vuln + res > 0) {

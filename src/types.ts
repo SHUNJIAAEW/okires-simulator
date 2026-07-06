@@ -107,7 +107,9 @@ export interface HourlyRoll {
 // プレイヤーが指定する避難指示
 export interface EvacuationOrder {
   from: AreaId;
-  to: 'mainland' | 'ishigaki'; // 避難先
+  // 避難先。'mainland'=本土脱出、'ishigaki'/'miyako'=2島間往復(ピストン)の中継ハブへ集約。
+  // 破壊された側ハブの住民を機能している側ハブの stagingPort へ積み、当日残の本土便容量があれば当日、無ければ翌以降に本土へ出す。
+  to: 'mainland' | 'ishigaki' | 'miyako';
   method: string;      // 'civilian_air' | 'jmsdf_air' | 'coast_guard' | 'jmsdf_ship' | 'ferry'
   residents: number;
   tourists: number;
@@ -141,6 +143,18 @@ export interface DayCapacities {
   phase: Phase;
   prepLevel: number;
   jgsdfRemaining: number;
+  jmsdfRemaining: number; // 海自輸送艦の実残隻数（石垣/宮古で1隻を2コマに二重計上しないための上限）
+  // ===== Section2: 石垣島⇔宮古島 2島間往復(ピストン)輸送 =====
+  // 発火可否(Lv>=SHUTTLE_MIN_LEVEL かつ 有事、片方ハブの本土空路が破壊/運航拒否)と輸送元/先。
+  shuttleActive: boolean;
+  shuttleFrom: AreaId | null;   // 破壊された側ハブ（住民を送り出す島）
+  shuttleTo: AreaId | null;     // 機能している側ハブ（集約先。ここから当日または翌以降 本土へ）
+  // 近距離ピストン容量（3倍=海保/海自/空自、1倍=陸自ヘリ、無事なら民間航空3倍）。中継便で使う合計コマ。
+  shuttleCoastGuardMax: number; // 海保輸送船 1便3コマ
+  shuttleJmsdfMax: number;      // 海自輸送艦 1便3コマ
+  shuttleJasdfMax: number;      // 空自輸送機 1便3コマ（空港破壊時は応急修理後＝ハブ空港利用可なら）
+  shuttleJgsdfMax: number;      // 陸自ヘリ 1便1コマ（通常）
+  shuttleCivAirMax: number;     // 民間航空（往復先/送出側の空港が無事なら 1便3コマ）
 }
 
 export interface DayLog {
