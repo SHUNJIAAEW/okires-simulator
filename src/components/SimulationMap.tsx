@@ -2,7 +2,7 @@
 // 与那国 → 竹富町 → 石垣島(ハブ) → 宮古島・多良間 の配置を再現
 
 import type { AreaId, AreaState, InfraState } from '../types';
-import { getEffectiveActions } from '../constants';
+import { handsByFatigue } from '../constants';
 import { useWindowWidth } from '../hooks/useWindowWidth';
 
 // ─────────────────────────────────────────────────
@@ -315,10 +315,11 @@ function PieceLegend({ compact = false }: { compact?: boolean }) {
 //  疲労バー — military health bar
 // ─────────────────────────────────────────────────
 function FatigueBar({ area, compact = false }: { area: AreaState; color?: string; compact?: boolean }) {
-  const eff = getEffectiveActions(area.baseActions, area.fatigue);
-  const fatigueVal = Math.max(0, area.fatigue);
-  const pct = area.baseActions > 0 ? Math.min(100, (fatigueVal / area.baseActions) * 100) : 0;
-  const barColor = pct > 75 ? C.red : pct > 40 ? C.amber : C.green;
+  const eff = handsByFatigue(area.id, area.fatigue);
+  // バーは島別手数テーブル基準（手数が減るほど疲労度=充填率が上がる）。ACT表示と一致させる。
+  const lostRatio = area.baseActions > 0 ? Math.max(0, Math.min(1, 1 - eff / area.baseActions)) : 0;
+  const pct = lostRatio * 100;
+  const barColor = eff <= 0 ? C.red : pct > 50 ? C.amber : C.green;
 
   return (
     <div style={{

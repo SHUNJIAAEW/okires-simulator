@@ -5,6 +5,7 @@ import { useWindowWidth } from '../hooks/useWindowWidth';
 import { DayLogPanel } from './DayLogPanel';
 import { exportDailyReportPdf } from '../dailyReport';
 import { C, FONT } from '../theme';
+import { handsByFatigue } from '../constants';
 
 // ── 結果の内訳分析（いつ・なぜ・どのように・どうすべきか）を dayLogs から導出 ──
 interface CauseRow { when: string; what: string; count: number; }
@@ -81,7 +82,7 @@ function analyzeStranded(
       what = '民間航空・船舶がともに使用不能';
     else if (transport.civilianAirDisabled) what = '民間航空が使用不能で空路が激減';
     else if (transport.civilianShipDisabled) what = '民間船舶が使用不能で海路が激減';
-    else if (a.fatigue >= a.baseActions) what = '疲労限界で避難行動が取れなかった';
+    else if (handsByFatigue(id as AreaId, a.fatigue) <= 0) what = '疲労限界で避難行動が取れなかった';
     rows.push({ when: AREA_NAMES[id as AreaId], what, count: rem });
   }
   return { rows, total };
@@ -133,7 +134,7 @@ export function ResultScreen({ state, onRestart }: Props) {
   const bottlenecks: string[] = [];
   if (state.transport.civilianAirDisabled) bottlenecks.push('民間航空路が攻撃により使用不能になった');
   if (state.transport.civilianShipDisabled) bottlenecks.push('民間船舶が攻撃により使用不能になった');
-  if (Object.values(areas).some(a => a.fatigue >= a.baseActions)) bottlenecks.push('住民疲労が限界に達し避難不能エリアが発生した');
+  if (Object.values(areas).some(a => handsByFatigue(a.id, a.fatigue) <= 0)) bottlenecks.push('住民疲労が限界に達し避難不能エリアが発生した');
   if (state.military.chineseSea >= 5 || state.military.chineseAir >= 5) bottlenecks.push('中国軍兵力が非常に強力になった');
   if (!state.military.pac3Ishigaki || !state.military.pac3Miyako) bottlenecks.push('PAC3が一部エリアに未配備だった');
   if (prepLevel <= 2) bottlenecks.push(`事前準備Lv.${prepLevel}が低すぎ、モード移行・輸送能力が著しく制限された`);

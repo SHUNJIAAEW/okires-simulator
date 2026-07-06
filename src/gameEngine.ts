@@ -10,7 +10,7 @@ import {
   getWeatherTrack, getInitialWeatherIndex, getInitialWindSpeedIndex,
   getInitialWindDirectionIndex, isStrongWind, AIRPORT_ALLOWED_WIND_DIRECTIONS,
   PREP_LEVEL_SETTINGS, TAKETOMI_TO_ISHIGAKI_FERRY_MAX, YONAGUNI_TO_ISHIGAKI_FERRY,
-  getEffectiveActions, TOURIST_MAX_BY_AREA, VULNERABLE_TOTAL_MAX,
+  handsByFatigue, TOURIST_MAX_BY_AREA, VULNERABLE_TOTAL_MAX,
   TOURIST_BY_MONTH, RESIDENT_TOTAL_BY_AREA, PAC3_BY_LEVEL,
 } from './constants';
 
@@ -138,6 +138,11 @@ export function createInitialState(config: SetupConfig): GameState {
     },
     evacuated: 0, dead: 0, dayLogs: [], activeEvents: [],
     earthquakeDay: null, earthquakeLevel: null, isComplete: false,
+    // DMAT派遣トータル回数（事前準備Lv別 1/2/3/4/4/4）
+    dmatRemaining: settings.dmat,
+    // 一時疲労トラッカー（多良間・波照間）
+    taramaTempFatigue: 0, taramaTempApplied: 0, taramaPowerBroken: false, taramaEvacDone: false,
+    haterumaTempFatigue: 0, haterumaTempApplied: 0, haterumaPowerBroken: false, haterumaEvacDone: false,
   };
 }
 
@@ -316,6 +321,12 @@ export interface EventResult {
   newDead: number;
   hourlyRolls: HourlyRoll[];
   senkakuOccupied: boolean;
+  // DMAT連動: 空港/海港/市街地集落攻撃による「そのエリアの死者発生」を、発生エリアごとに記録。
+  // prepareDayPhase1 でDMAT残と突き合わせ、当該エリア疲労+1／(DMAT未派遣なら)追加死者+疲労+1を確定する。
+  dmatDeathAreas: AreaId[];
+  // 多良間/波照間の電力設備が当日破壊されたか（一時疲労の発火用）
+  taramaPowerBrokenToday: boolean;
+  haterumaPowerBrokenToday: boolean;
 }
 
 export function generateDailyEvents(state: GameState): EventResult {
@@ -331,6 +342,9 @@ export function generateDailyEvents(state: GameState): EventResult {
     newDead: 0,
     hourlyRolls: [],
     senkakuOccupied: false,
+    dmatDeathAreas: [],
+    taramaPowerBrokenToday: false,
+    haterumaPowerBrokenToday: false,
   };
 
   const { prepLevel, military, day } = state;
@@ -533,14 +547,27 @@ function processEvent(
       result.log.push(`[イベントC|出目${subRoll}] 【電力設備攻撃】ダイス${diceSum}+中${chinaTotal}-自${jsdfTotal+pac3}+尖${senkakuBonus}=計${calcValue} / 閾値${threshold}`);
       if (calcValue >= threshold) {
         // 発電所破壊→停電。発生エリアの発電所infraをfalse化。即時+1、以後毎日+1(夏季+2)はprepareDayPhase1で加算。
-        const powerTargets: { key: keyof InfraState; area: AreaId; jp: string }[] = [
-          { key: 'powerIshigaki', area: 'ishigaki', jp: '石垣島' },
-          { key: 'powerMiyako', area: 'miyako', jp: '宮古島' },
-          { key: 'powerYonaguni', area: 'yonaguni', jp: '与那国島' },
+        // 多良間/波照間は「一時疲労」ルール（避難完了で戻す）を使うため kind='temp' で別扱い。
+        const powerTargets: { key: keyof InfraState; area: AreaId | null; jp: string; kind: 'normal' | 'tarama' | 'hateruma' }[] = [
+          { key: 'powerIshigaki', area: 'ishigaki', jp: '石垣島', kind: 'normal' },
+          { key: 'powerMiyako', area: 'miyako', jp: '宮古島', kind: 'normal' },
+          { key: 'powerYonaguni', area: 'yonaguni', jp: '与那国島', kind: 'normal' },
+          { key: 'powerTarama', area: null, jp: '多良間島', kind: 'tarama' },
+          { key: 'powerHateruma', area: null, jp: '波照間島', kind: 'hateruma' },
         ];
         const pt = powerTargets[Math.floor(Math.random() * powerTargets.length)];
         result.infraPenalty[pt.key] = false;
-        result.fatigueIncrease[pt.area] += 1; // 即時+1
+        if (pt.kind === 'tarama') {
+          result.taramaPowerBrokenToday = true;
+          result.log.push(`  ⚠️ 発電所破壊! 多良間島が停電 → 多良間島疲労度を宮古・多良間へ加算(即時+1・翌日+1・最大2)。多良間→宮古 避難完了で解除`);
+          return `【電力破壊】多良間島 停電(一時疲労)`;
+        }
+        if (pt.kind === 'hateruma') {
+          result.haterumaPowerBrokenToday = true;
+          result.log.push(`  ⚠️ 発電所破壊! 波照間島が停電 → 波照間島疲労度を竹富町各島へ加算(即時+1・翌日+1・最大2)。波照間→石垣 避難完了で解除`);
+          return `【電力破壊】波照間島 停電(一時疲労)`;
+        }
+        result.fatigueIncrease[pt.area!] += 1; // 即時+1
         result.log.push(`  ⚠️ 発電所破壊! ${pt.jp}が停電・断水 → 即時 疲労+1、以後毎日 疲労+1(夏季+2)`);
         return `【電力破壊】${pt.jp} 停電(以後毎日疲労)`;
       }
@@ -563,13 +590,13 @@ function processEvent(
       if (calcValue >= 11) {
         result.log.push('  ⚠️ 重大被害! 0.5コマ死亡');
         result.newDead += 0.5;
-        result.fatigueIncrease.ishigaki += 1;
-        result.fatigueIncrease.miyako += 1;
+        // DMAT連動: 市街地集落攻撃の死者発生を当該エリアに記録（当該エリア疲労+1／DMAT未派遣なら追加死者+疲労）。
+        // 仕様2026.7.6 Sec5: 疲労は「攻撃を受けた当該エリア」に付く（石垣/宮古への固定加算はしない）。
+        result.dmatDeathAreas.push(targetArea);
         return `【市街攻撃・重大被害】計${calcValue}≥11 0.5コマ死亡`;
       } else if (calcValue >= 1) {
-        result.fatigueIncrease.ishigaki += 0.5;
-        result.fatigueIncrease.miyako += 0.5;
-        return `【市街攻撃・軽微被害】計${calcValue} 疲労+0.5`;
+        result.fatigueIncrease[targetArea] += 0.5;
+        return `【市街攻撃・軽微被害】計${calcValue} ${targetArea} 疲労+0.5`;
       }
       return `【市街攻撃】計${calcValue}≤0 被害なし`;
     } else if (subRoll <= 4) {
@@ -724,13 +751,14 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
   const areasAfterEvents = JSON.parse(JSON.stringify(state.areas)) as Record<AreaId, AreaState>;
   // フェーズ(F)が1上昇する日(X=F2, X+3=F3, X+6=F4)は全エリア+1
   const fRose = eventPhase(day) > eventPhase(day - 1);
-  // 発電所破壊で停電中のエリアは毎日1:00に+1(6〜10月の夏季は+2)。波照間→竹富、多良間→宮古に加算。
+  // 発電所破壊で停電中のエリアは毎日1:00に+1(6〜10月の夏季は+2)。
+  // 多良間(→宮古)・波照間(→竹富)は別途「一時疲労」ルールで扱うため、この持続停電加算からは除外する。
   const outageInc = (month >= 6 && month <= 10) ? 2 : 1;
   const powerOutage: Record<AreaId, boolean> = {
     yonaguni: !state.infra.powerYonaguni,
-    taketomi: !state.infra.powerHateruma,
+    taketomi: false,
     ishigaki: !state.infra.powerIshigaki,
-    miyako: !state.infra.powerMiyako || !state.infra.powerTarama,
+    miyako: !state.infra.powerMiyako,
   };
   for (const id of Object.keys(areasAfterEvents) as AreaId[]) {
     areasAfterEvents[id].fatigue += eventResult.fatigueIncrease[id];
@@ -738,6 +766,68 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
     if (powerOutage[id]) areasAfterEvents[id].fatigue += outageInc;
   }
   if (fRose) log.push(`フェーズF${eventPhase(day)}に上昇 → 全エリア疲労+1`);
+
+  // 7b. DMAT連動: 空港/海港/市街地集落攻撃による当該エリアの死者発生ごとに疲労+1。
+  //     DMAT残>0なら1消費して追加死者を防ぐ。残0なら追加死者1コマ＋当該エリア疲労+1。
+  let dmatRemaining = state.dmatRemaining;
+  let dmatExtraDead = 0;
+  for (const area of eventResult.dmatDeathAreas) {
+    areasAfterEvents[area].fatigue += 1; // 死者発生 → 当該エリア疲労+1
+    if (dmatRemaining > 0) {
+      dmatRemaining -= 1;
+      log.push(`DMAT派遣: ${state.areas[area].name}の死者に対応（残り${dmatRemaining}回）→ 追加被害を防止`);
+    } else {
+      dmatExtraDead += 1;
+      areasAfterEvents[area].fatigue += 1; // 追加死者 → 当該エリア疲労+1
+      log.push(`⚠️ DMAT未派遣: ${state.areas[area].name}で追加死者1コマ・疲労+1`);
+    }
+  }
+
+  // 7c. 多良間島 一時疲労（電力破壊で宮古・多良間=miyakoエリアへ加算。即時+1・翌日1:00に+1・最大2。避難完了で戻す）
+  let taramaPowerBroken = state.taramaPowerBroken || eventResult.taramaPowerBrokenToday;
+  const taramaEvacDone = state.taramaEvacDone;
+  let taramaTempFatigue = state.taramaTempFatigue;
+  let taramaTempApplied = state.taramaTempApplied;
+  if (taramaEvacDone) {
+    taramaTempFatigue = 0; // 避難完了 → 目標0（適用分を戻す）
+  } else if (eventResult.taramaPowerBrokenToday) {
+    taramaTempFatigue = Math.min(2, taramaTempFatigue + 1); // 破壊当日: 即時+1
+  } else if (taramaPowerBroken) {
+    taramaTempFatigue = Math.min(2, taramaTempFatigue + 1); // 以後 毎日1:00に+1（最大2）
+  }
+  {
+    const delta = taramaTempFatigue - taramaTempApplied; // 冪等: 適用済み量との差分だけを宮古へ反映
+    if (delta !== 0) {
+      areasAfterEvents.miyako.fatigue += delta;
+      taramaTempApplied = taramaTempFatigue;
+      if (delta > 0) log.push(`多良間島疲労度 +${delta} → 宮古島・多良間 疲労に加算（一時・計+${taramaTempApplied}）`);
+      else log.push(`多良間→宮古 避難完了 → 一時疲労を解除（宮古島・多良間 疲労${delta}）`);
+    }
+  }
+  if (taramaEvacDone) taramaPowerBroken = false;
+
+  // 7d. 波照間島 一時疲労（電力破壊で竹富町各島=taketomiエリアへ加算。即時+1・翌日+1・最大2。避難完了で戻す）
+  let haterumaPowerBroken = state.haterumaPowerBroken || eventResult.haterumaPowerBrokenToday;
+  const haterumaEvacDone = state.haterumaEvacDone;
+  let haterumaTempFatigue = state.haterumaTempFatigue;
+  let haterumaTempApplied = state.haterumaTempApplied;
+  if (haterumaEvacDone) {
+    haterumaTempFatigue = 0;
+  } else if (eventResult.haterumaPowerBrokenToday) {
+    haterumaTempFatigue = Math.min(2, haterumaTempFatigue + 1);
+  } else if (haterumaPowerBroken) {
+    haterumaTempFatigue = Math.min(2, haterumaTempFatigue + 1);
+  }
+  {
+    const delta = haterumaTempFatigue - haterumaTempApplied;
+    if (delta !== 0) {
+      areasAfterEvents.taketomi.fatigue += delta;
+      haterumaTempApplied = haterumaTempFatigue;
+      if (delta > 0) log.push(`波照間島疲労度 +${delta} → 竹富町各島 疲労に加算（一時・計+${haterumaTempApplied}）`);
+      else log.push(`波照間→石垣 避難完了 → 一時疲労を解除（竹富町各島 疲労${delta}）`);
+    }
+  }
+  if (haterumaEvacDone) haterumaPowerBroken = false;
 
   // 施設破壊などインフラ被害を反映（B1修正）し、被害後の空港利用可否を再計算
   const damagedInfra: InfraState = { ...state.infra, ...eventResult.infraPenalty };
@@ -762,6 +852,10 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
       civilianAirDisabled: state.transport.civilianAirDisabled || (eventResult.transportPenalty.civilianAirDisabled ?? false),
       civilianShipDisabled: state.transport.civilianShipDisabled || (eventResult.transportPenalty.civilianShipDisabled ?? false),
     },
+    // DMAT残・一時疲労トラッカーを更新（冪等な戻し用に applied 量も保持）
+    dmatRemaining,
+    taramaTempFatigue, taramaTempApplied, taramaPowerBroken, taramaEvacDone,
+    haterumaTempFatigue, haterumaTempApplied, haterumaPowerBroken, haterumaEvacDone,
   };
 
   // B2修正: 輸送停止フラグ・インフラ被害を反映した後で容量を計算する
@@ -775,6 +869,8 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
     hourlyRolls: eventResult.hourlyRolls,
     eventLog: log,
     weatherSummary, phaseChanged,
+    dmatExtraDead,
+    eventDead: eventResult.newDead, // 攻撃(市街0.5/撃沈1/上陸1)による死者。当日死者に加算する
   } as DayPhase1Result;
 }
 
@@ -879,10 +975,34 @@ export function executeDayPhase2(
 
   fixNegatives(areas);
 
+  // --- 一時疲労の解除（避難完了）を「その日のうちに」反映 ---
+  // 多良間→宮古(=miyakoエリア)・波照間→石垣(竹富町各島=taketomiエリア)が無人になったら避難完了とみなし、
+  // 加算済みの一時疲労(*Applied)を当該エリアから差し引く（冪等・疲労死判定より前に戻す）。
+  const miyakoEmpty = areas.miyako.residents + areas.miyako.tourists + areas.miyako.vulnerable === 0;
+  const taketomiEmpty = areas.taketomi.residents + areas.taketomi.tourists + areas.taketomi.vulnerable === 0;
+  const taramaEvacDone = stateAfterEvents.taramaEvacDone || (stateAfterEvents.taramaPowerBroken && miyakoEmpty);
+  const haterumaEvacDone = stateAfterEvents.haterumaEvacDone || (stateAfterEvents.haterumaPowerBroken && taketomiEmpty);
+  let taramaTempApplied = stateAfterEvents.taramaTempApplied;
+  let taramaTempFatigue = stateAfterEvents.taramaTempFatigue;
+  let haterumaTempApplied = stateAfterEvents.haterumaTempApplied;
+  let haterumaTempFatigue = stateAfterEvents.haterumaTempFatigue;
+  if (taramaEvacDone && taramaTempApplied > 0) {
+    areas.miyako.fatigue -= taramaTempApplied;
+    evacLog.push(`多良間→宮古 避難完了 → 一時疲労 -${taramaTempApplied}(宮古島・多良間)`);
+    taramaTempApplied = 0; taramaTempFatigue = 0;
+  }
+  if (haterumaEvacDone && haterumaTempApplied > 0) {
+    areas.taketomi.fatigue -= haterumaTempApplied;
+    evacLog.push(`波照間→石垣 避難完了 → 一時疲労 -${haterumaTempApplied}(竹富町各島)`);
+    haterumaTempApplied = 0; haterumaTempFatigue = 0;
+  }
+  fixNegatives(areas);
+
   // --- 疲労死亡 ---
   let fatigueDead = 0;
   for (const area of Object.values(areas)) {
-    const effAct = getEffectiveActions(area.baseActions, area.fatigue);
+    // 島別テーブル handsByFatigue が正。手数=0＝避難行動不可＝疲労限界(死亡)。
+    const effAct = handsByFatigue(area.id, area.fatigue);
     if (effAct <= 0 && (area.residents + area.tourists + area.vulnerable) > 0) {
       fatigueDead += 0.5;
     }
@@ -920,7 +1040,8 @@ export function executeDayPhase2(
     coastGuardToday: originalState.transport.coastGuardMaxPerDay,
   };
 
-  const totalNewDead = fatigueDead + deadlineDeaths;
+  // 当日死者 = 疲労限界死 + X+3期限死 + DMAT未派遣の追加死 + イベント攻撃死(市街/撃沈/上陸)
+  const totalNewDead = fatigueDead + deadlineDeaths + phase1.dmatExtraDead + phase1.eventDead;
   const newEvacuated = originalState.evacuated + evacuatedCount;
   const newDead = originalState.dead + totalNewDead;
   const newDay = day + 1;
@@ -944,8 +1065,8 @@ export function executeDayPhase2(
     weatherSummary,
     events: eventLog,
     evacuations,
-    fatigueSummary: Object.entries(areas).map(([, a]) =>
-      `${a.name}: 疲労${a.fatigue >= 0 ? '+' : ''}${a.fatigue.toFixed(1)} (手数${getEffectiveActions(a.baseActions, a.fatigue)})`
+    fatigueSummary: Object.values(areas).map((a) =>
+      `${a.name}: 疲労${a.fatigue >= 0 ? '+' : ''}${a.fatigue.toFixed(1)} (手数${handsByFatigue(a.id, a.fatigue)})`
     ).join(' | '),
     totalEvacuatedSoFar: newEvacuated,
     totalDeadSoFar: newDead,
@@ -967,6 +1088,10 @@ export function executeDayPhase2(
     isComplete,
     earthquakeDay: originalState.earthquakeDay,
     earthquakeLevel: originalState.earthquakeLevel,
+    // 避難完了フラグと、解除後の一時疲労トラッカーを引き継ぐ（翌日 prepareDayPhase1 は冪等な no-op になる）
+    taramaEvacDone, haterumaEvacDone,
+    taramaTempApplied, taramaTempFatigue,
+    haterumaTempApplied, haterumaTempFatigue,
   };
 
   return { newState, log: dLog };
@@ -1143,7 +1268,8 @@ export function updateFatigue(state: GameState, fatigueIncrease: Record<AreaId, 
 export function checkFatigueDeath(areas: Record<AreaId, AreaState>): number {
   let dead = 0;
   for (const area of Object.values(areas)) {
-    const effectiveActions = getEffectiveActions(area.baseActions, area.fatigue);
+    // 島別テーブル handsByFatigue が正。手数=0＝疲労限界(死亡)。
+    const effectiveActions = handsByFatigue(area.id, area.fatigue);
     if (effectiveActions <= 0 && (area.residents + area.tourists + area.vulnerable) > 0) {
       dead += 0.5;
     }

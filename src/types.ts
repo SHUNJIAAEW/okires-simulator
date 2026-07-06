@@ -171,6 +171,21 @@ export interface GameState {
   earthquakeDay: number | null;
   earthquakeLevel: number | null;
   isComplete: boolean;
+  // DMAT派遣の残回数（宮古/下地/石垣トータル）。空港/海港/市街地集落攻撃の死者発生時に1消費で追加死者+疲労を防ぐ。
+  dmatRemaining: number;
+  // 多良間島 一時疲労（0..2）。多良間電力破壊で宮古・多良間へ加算、多良間→宮古 避難完了で戻す。
+  taramaTempFatigue: number;
+  // 多良間の一時疲労を「現在areasに加算済みの量」（冪等な戻し用トラッカー）。宮古・多良間 各エリアに同量加算されている。
+  taramaTempApplied: number;
+  // 多良間電力が破壊されたか（一時疲労の発火・翌日+1判定用）
+  taramaPowerBroken: boolean;
+  // 多良間→宮古 住民避難が完了したか（完了で一時疲労を戻す）
+  taramaEvacDone: boolean;
+  // 波照間島 一時疲労（0..2）。波照間電力破壊で竹富町各島へ加算、波照間→石垣 避難完了で戻す。
+  haterumaTempFatigue: number;
+  haterumaTempApplied: number;
+  haterumaPowerBroken: boolean;
+  haterumaEvacDone: boolean;
 }
 
 export interface SetupConfig {
@@ -194,4 +209,8 @@ export interface DayPhase1Result {
   eventLog: string[];
   weatherSummary: string;
   phaseChanged: boolean;
+  // DMAT未派遣で確定した追加死者コマ数（当日の死者総数に加算する）
+  dmatExtraDead: number;
+  // イベント攻撃(市街0.5/撃沈1/上陸1)による死者コマ数（当日の死者総数に加算する）
+  eventDead: number;
 }

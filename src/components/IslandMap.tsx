@@ -1,6 +1,6 @@
 import React from 'react';
 import type { GameState, AreaId } from '../types';
-import { getEffectiveActions } from '../constants';
+import { handsByFatigue } from '../constants';
 
 interface Props {
   state: GameState;
@@ -52,10 +52,10 @@ function AreaPanel({ areaId, state }: { areaId: AreaId; state: GameState }) {
   const area = state.areas[areaId];
   const total = area.residents + area.tourists + area.vulnerable;
   const staging = area.stagingPort + area.stagingAirport;
-  const effActions = getEffectiveActions(area.baseActions, area.fatigue);
+  const effActions = handsByFatigue(areaId, area.fatigue);
   const color = AREA_COLORS[areaId];
   const bgColor = AREA_LIGHT_COLORS[areaId];
-  const isCritical = area.fatigue >= area.baseActions;
+  const isCritical = effActions <= 0; // 島別テーブルで手数0＝疲労限界
 
   return (
     <div style={{

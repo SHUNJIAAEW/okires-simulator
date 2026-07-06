@@ -165,7 +165,9 @@ export const REINFORCEMENT_MIN_LEVEL = 3;    // 自衛隊輸送臨時増援交�
 // 石垣: ≤2→4, 3→3, 4→3, 5→2, 6→2, 7→1, 8→1, ≥9→0
 // 宮古多良間: ≤3→3, 4→2, 5→2, 6→2, 7→1, 8→1, ≥9→0
 export function handsByFatigue(area: AreaId, fatigue: number): number {
-  const f = Math.round(fatigue);
+  // 疲労は小数(+0.3/+0.5/+1.5等)で蓄積しうるが、表は整数疲労前提。
+  // 切り捨て(floor)で境界を判定し、端数だけで手数0(=疲労死)へ落ちる抜け/過剰死亡を防ぐ。
+  const f = Math.floor(fatigue);
   switch (area) {
     case 'yonaguni':
       if (f <= 1) return 2;
