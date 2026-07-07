@@ -261,6 +261,50 @@ export default function App() {
               <span style={styles.infoValue}>{gameState.month}月</span>
             </div>
           </div>
+
+          {/* 作戦現況カード: 路線別運航停止・波照間便・臨時増援交渉（仕様2026.7.6） */}
+          {(() => {
+            const AIR_JP: Record<string, string> = { shinIshigaki: '新石垣空港', miyako: '宮古空港', shimoji: '下地島空港', yonaguni: '与那国空港', hateruma: '波照間空港' };
+            const SHIP_JP: Record<string, string> = { ishigakiPort: '石垣港', hiraraPort: '平良港', kubura: '久部良港' };
+            const dAir = Object.entries(gameState.transport.disabledAirRoutes ?? {}).filter(([, v]) => v).map(([k]) => AIR_JP[k] ?? k);
+            const dShip = Object.entries(gameState.transport.disabledShipRoutes ?? {}).filter(([, v]) => v).map(([k]) => SHIP_JP[k] ?? k);
+            const closed = [...dAir, ...dShip];
+            // 波照間便の状態表示（制度・路線・モード・着側新石垣で判定。天候は当日変動のため日次ログ参照）
+            const dAir2 = gameState.transport.disabledAirRoutes ?? {};
+            const haterumaEligible = gameState.prepLevel >= 4;
+            const haterumaRouteAlive = gameState.infra.haterumaAirport && !dAir2.hateruma;
+            const haterumaDestAlive = gameState.infra.shinIshigakiAirport && !dAir2.shinIshigaki;
+            const haterumaModeOk = gameState.phase === 'wartime' || (gameState.phase === 'crisis' && gameState.prepLevel >= 2);
+            const haterumaStatus = !haterumaEligible
+              ? { t: 'Lv4以上で運航', c: C.dim }
+              : (!haterumaRouteAlive || !haterumaDestAlive)
+                ? { t: '停止中(施設/路線)', c: C.red }
+                : !haterumaModeOk
+                  ? { t: '有事/存立危機で運航', c: C.dim }
+                  : { t: '運航可 0.5コマ/日', c: C.green };
+            return (
+              <div style={styles.statusCard}>
+                <div style={styles.statusRow}>
+                  <span style={styles.statusLabel}>🚫 運航停止路線</span>
+                  <span style={{ ...styles.statusValue, color: closed.length ? C.red : C.green }}>
+                    {closed.length ? closed.join('・') : 'なし'}
+                  </span>
+                </div>
+                <div style={styles.statusRow}>
+                  <span style={styles.statusLabel}>✈ 波照間便→新石垣</span>
+                  <span style={{ ...styles.statusValue, color: haterumaStatus.c }}>
+                    {haterumaStatus.t}
+                  </span>
+                </div>
+                <div style={styles.statusRow}>
+                  <span style={styles.statusLabel}>🪖 臨時増援交渉</span>
+                  <span style={{ ...styles.statusValue, color: gameState.reinforcementDone ? C.amber : C.dim }}>
+                    {gameState.prepLevel >= 3 ? (gameState.reinforcementDone ? '発動済 海保/海自/空自+1' : '待機(有事Lv3+で発動)') : 'Lv3以上で可能'}
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* 右：説明 */}
@@ -339,4 +383,12 @@ const styles: Record<string, React.CSSProperties> = {
   infoPanelRow: { display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, gap: 2 },
   infoLabel: { fontSize: 10, color: C.dim, fontFamily: FONT.mono, letterSpacing: 1 },
   infoValue: { fontSize: 16, fontWeight: 800, color: C.bright, fontFamily: FONT.mono },
+  statusCard: {
+    marginTop: 8, background: `linear-gradient(180deg, ${C.bgPanel}, ${C.bgDeep})`, borderRadius: 4,
+    padding: '10px 16px', display: 'flex', flexDirection: 'column', gap: 6,
+    boxShadow: '0 4px 16px rgba(0,0,0,0.35)', border: `1px solid ${C.border}`,
+  },
+  statusRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
+  statusLabel: { fontSize: 11, color: C.dim, fontFamily: FONT.jp, whiteSpace: 'nowrap' },
+  statusValue: { fontSize: 12, fontWeight: 700, color: C.bright, fontFamily: FONT.jp, textAlign: 'right' },
 };
