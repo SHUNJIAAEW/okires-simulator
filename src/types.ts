@@ -79,6 +79,16 @@ export interface TransportState {
   disabledShipRoutes: Partial<Record<ShipRouteKey, boolean>>;
 }
 
+// 臨時増援交渉の対象手段（海保は対象外）
+export type ReinforcementMeans = 'jgsdf' | 'jmsdf' | 'jasdf';
+
+// 手数ペナルティ: 不時着（ver4.0 6.3.6）は軍機の国（同国は何機でも−1、異国で−2）、
+// 'negotiation' は臨時増援交渉（4.9）で消費した1手（1件=−1）。untilDay=その日の24時まで有効。
+export interface HandPenalty {
+  country: 'china' | 'taiwan' | 'negotiation';
+  untilDay: number;
+}
+
 export interface ActiveEvent {
   id: string;
   type: string;
@@ -215,8 +225,11 @@ export interface GameState {
   haterumaTempApplied: number;
   haterumaPowerBroken: boolean;
   haterumaEvacDone: boolean;
-  // 自衛隊輸送臨時増援交渉（Lv3以上・有事で1回のみ発動）。発動済みか。
-  reinforcementDone: boolean;
+  // ver4.0 4.9: 自衛隊輸送臨時増援交渉。手段(陸自ヘリ/海自輸送艦/空自輸送機)ごとの直近の交渉記録
+  // （残回数0で1日1回交渉。ダイス1〜Lv(Lv6は5)で成功→その手段+1回）。null=未交渉。
+  reinforcement: Record<ReinforcementMeans, { day: number; roll: number; success: boolean } | null>;
+  // ver4.0 6.3.6: 中国/台湾軍機 不時着による一時手数ペナルティ（当日と翌日24時まで有効。国別に最大1、合計最大2）
+  handPenalty: Record<AreaId, HandPenalty[]>;
   // ver4.0 6.4.2/3: 上陸・ヘリボーン成立で当該エリアは「占領」状態（残存コマ全滅・以後の攻撃/避難注文は無効）
   occupied: Record<AreaId, boolean>;
   // ver4.0 4.12: PAC3 撤収・再配備（片方ハブの避難完了後、もう一方へ全数移動）。一度だけ。
@@ -247,6 +260,8 @@ export interface DayPhase1Result {
   phaseChanged: boolean;
   // DMAT未派遣で確定した追加死者コマ数（当日の死者総数に加算する）
   dmatExtraDead: number;
-  // イベント攻撃(市街0.5/撃沈1/上陸=エリア全滅/施設破壊死傷0.5)による死者コマ数（当日の死者総数に加算する）
+  // イベント攻撃(市街0.5/撃沈1/上陸=エリア全滅/施設破壊死傷0.5)＋地震死者による死者コマ数（当日の死者総数に加算する）
   eventDead: number;
+  // ver4.0 6.1 A表「住民の避難拒否」: 当日そのエリア発の避難注文を無効にする（他エリアの通過＝ハブ待機コマの搬出は可）
+  evacRefusedToday: AreaId[];
 }

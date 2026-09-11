@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import type { GameState, SetupConfig } from './types';
-import { createInitialState, prepareDayPhase1, executeDayPhase2, autoSelectOrders } from './gameEngine';
+import type { GameState, SetupConfig, AreaId } from './types';
+import { createInitialState, prepareDayPhase1, executeDayPhase2, autoSelectOrders, activeHandPenalty } from './gameEngine';
 import { SetupScreen } from './components/SetupScreen';
 import { DayLogPanel } from './components/DayLogPanel';
 import { ResultScreen } from './components/ResultScreen';
@@ -60,7 +60,7 @@ export default function App() {
         const { newState } = executeDayPhase2(state, phase1, orders);
         state = newState;
         const remaining = Object.values(state.areas).reduce(
-          (s, a) => s + a.residents + a.tourists + a.vulnerable + a.stagingPort, 0
+          (s, a) => s + a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0), 0
         );
         if (state.day > 8 || remaining === 0) break;
       }
@@ -82,7 +82,7 @@ export default function App() {
         const { newState } = executeDayPhase2(gameState, phase1, orders);
         setGameState(newState);
         const totalRemaining = Object.values(newState.areas).reduce(
-          (s, a) => s + a.residents + a.tourists + a.vulnerable + a.stagingPort, 0
+          (s, a) => s + a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0), 0
         );
         const done = newState.day > 8 || totalRemaining === 0;
         if (done) {
@@ -121,7 +121,7 @@ export default function App() {
   if (!gameState) return null;
 
   const totalRemaining = Object.values(gameState.areas).reduce(
-    (s, a) => s + a.residents + a.tourists + a.vulnerable + a.stagingPort, 0
+    (s, a) => s + a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0), 0
   );
   const totalInitial = gameState.evacuated + gameState.dead + totalRemaining;
   const evacuationRate = totalInitial > 0 ? (gameState.evacuated / totalInitial * 100) : 0;
@@ -282,6 +282,24 @@ export default function App() {
                 : !haterumaModeOk
                   ? { t: '有事/存立危機で運航', c: C.dim }
                   : { t: '運航可 0.5コマ/日', c: C.green };
+            // 臨時増援交渉（ver4.0 4.9）: 手段別に「本日交渉: 陸自○/海自×/空自−」を表示（○=成功 ×=失敗 −=未交渉）
+            const lastDay = gameState.day - 1; // 直近に処理した日（prepareDayPhase1 は day を進める前に交渉する）
+            const rein = gameState.reinforcement ?? { jgsdf: null, jmsdf: null, jasdf: null };
+            const mark = (r: { day: number; success: boolean } | null) => (r && r.day === lastDay ? (r.success ? '○' : '×') : '−');
+            const anyToday = (['jgsdf', 'jmsdf', 'jasdf'] as const).some(m => rein[m]?.day === lastDay);
+            const reinforcementStatus = gameState.prepLevel < 3
+              ? { t: 'Lv3以上で可能', c: C.dim }
+              : anyToday
+                ? { t: `本日交渉: 陸自${mark(rein.jgsdf)}/海自${mark(rein.jmsdf)}/空自${mark(rein.jasdf)}`, c: C.amber }
+                : { t: '待機(残0の手段で1日1回交渉)', c: C.dim };
+            // 不時着ペナルティ（当日有効分）
+            const AREA_JP: Record<string, string> = { yonaguni: '与那国', taketomi: '竹富', ishigaki: '石垣', miyako: '宮古' };
+            const landingPenalties = (Object.keys(gameState.handPenalty ?? {}) as AreaId[])
+              .map(id => {
+                const n = activeHandPenalty(gameState, id);
+                return n > 0 ? `${AREA_JP[id] ?? id}−${n}` : null;
+              })
+              .filter((x): x is string => x !== null);
             return (
               <div style={styles.statusCard}>
                 <div style={styles.statusRow}>
@@ -298,10 +316,16 @@ export default function App() {
                 </div>
                 <div style={styles.statusRow}>
                   <span style={styles.statusLabel}>🪖 臨時増援交渉</span>
-                  <span style={{ ...styles.statusValue, color: gameState.reinforcementDone ? C.amber : C.dim }}>
-                    {gameState.prepLevel >= 3 ? (gameState.reinforcementDone ? '発動済 海保/海自/空自+1' : '待機(有事Lv3+で発動)') : 'Lv3以上で可能'}
+                  <span style={{ ...styles.statusValue, color: reinforcementStatus.c }}>
+                    {reinforcementStatus.t}
                   </span>
                 </div>
+                {landingPenalties.length > 0 && (
+                  <div style={styles.statusRow}>
+                    <span style={styles.statusLabel}>🛬 手数ペナルティ(不時着/交渉)</span>
+                    <span style={{ ...styles.statusValue, color: C.amber }}>{landingPenalties.join('・')}</span>
+                  </div>
+                )}
               </div>
             );
           })()}
