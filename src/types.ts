@@ -22,7 +22,8 @@ export interface AreaState {
   fatigue: number;
   baseActions: number;
   stagingAirport: number;
-  stagingPort: number;
+  stagingPort: number;         // ハブ(石垣/宮古)で本土便待ちの白コマ（住民・観光客）
+  stagingVulnerable: number;   // ハブで本土便待ちの要援護者（海路でのみ搬出可。航空機不可）
   inTransitToHub: number;
 }
 
@@ -35,6 +36,7 @@ export interface InfraState {
   taramaAirport: boolean;
   ishigakiPort: boolean;
   hiraraPort: boolean;
+  kuburaPort: boolean;   // 久部良港（与那国）施設。破壊は路線停止(disabledShipRoutes.kubura)と区別して持つ
   seaAllAvailable: boolean;
   powerYonaguni: boolean;
   powerHateruma: boolean;
@@ -215,6 +217,10 @@ export interface GameState {
   haterumaEvacDone: boolean;
   // 自衛隊輸送臨時増援交渉（Lv3以上・有事で1回のみ発動）。発動済みか。
   reinforcementDone: boolean;
+  // ver4.0 6.4.2/3: 上陸・ヘリボーン成立で当該エリアは「占領」状態（残存コマ全滅・以後の攻撃/避難注文は無効）
+  occupied: Record<AreaId, boolean>;
+  // ver4.0 4.12: PAC3 撤収・再配備（片方ハブの避難完了後、もう一方へ全数移動）。一度だけ。
+  pac3Relocated: boolean;
 }
 
 export interface SetupConfig {
@@ -241,6 +247,6 @@ export interface DayPhase1Result {
   phaseChanged: boolean;
   // DMAT未派遣で確定した追加死者コマ数（当日の死者総数に加算する）
   dmatExtraDead: number;
-  // イベント攻撃(市街0.5/撃沈1/上陸1)による死者コマ数（当日の死者総数に加算する）
+  // イベント攻撃(市街0.5/撃沈1/上陸=エリア全滅/施設破壊死傷0.5)による死者コマ数（当日の死者総数に加算する）
   eventDead: number;
 }

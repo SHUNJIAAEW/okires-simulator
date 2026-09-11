@@ -51,7 +51,7 @@ function PieceDisplay({ count, color, label, size = 'normal' }: { count: number;
 function AreaPanel({ areaId, state }: { areaId: AreaId; state: GameState }) {
   const area = state.areas[areaId];
   const total = area.residents + area.tourists + area.vulnerable;
-  const staging = area.stagingPort + area.stagingAirport;
+  const staging = area.stagingPort + (area.stagingVulnerable ?? 0) + area.stagingAirport;
   const effActions = handsByFatigue(areaId, area.fatigue);
   const color = AREA_COLORS[areaId];
   const bgColor = AREA_LIGHT_COLORS[areaId];
@@ -232,9 +232,9 @@ export function IslandMap({ state }: Props) {
             <text x="65" y="50" textAnchor="middle" fill="#3b82f6" fontSize="13" fontWeight="bold">
               {areas.ishigaki.residents + areas.ishigaki.tourists + areas.ishigaki.vulnerable}コマ
             </text>
-            {areas.ishigaki.stagingPort > 0 && (
+            {areas.ishigaki.stagingPort + (areas.ishigaki.stagingVulnerable ?? 0) > 0 && (
               <text x="65" y="68" textAnchor="middle" fill="#1d4ed8" fontSize="9">
-                (港待機:{areas.ishigaki.stagingPort}コマ)
+                (港待機:{areas.ishigaki.stagingPort + (areas.ishigaki.stagingVulnerable ?? 0)}コマ)
               </text>
             )}
             {/* 要援護者 */}
@@ -263,9 +263,9 @@ export function IslandMap({ state }: Props) {
             <text x="80" y="50" textAnchor="middle" fill="#22c55e" fontSize="13" fontWeight="bold">
               {areas.miyako.residents + areas.miyako.tourists + areas.miyako.vulnerable}コマ
             </text>
-            {areas.miyako.stagingPort > 0 && (
+            {areas.miyako.stagingPort + (areas.miyako.stagingVulnerable ?? 0) > 0 && (
               <text x="80" y="68" textAnchor="middle" fill="#15803d" fontSize="9">
-                (港待機:{areas.miyako.stagingPort}コマ)
+                (港待機:{areas.miyako.stagingPort + (areas.miyako.stagingVulnerable ?? 0)}コマ)
               </text>
             )}
             {areas.miyako.vulnerable > 0 && (

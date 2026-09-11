@@ -74,7 +74,7 @@ function analyzeStranded(
   const anyAir = Object.values(transport.disabledAirRoutes ?? {}).some(Boolean) || transport.civilianAirDisabled;
   const anyShip = Object.values(transport.disabledShipRoutes ?? {}).some(Boolean) || transport.civilianShipDisabled;
   for (const [id, a] of Object.entries(areas)) {
-    const rem = a.residents + a.tourists + a.vulnerable + a.stagingPort;
+    const rem = a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0);
     if (rem <= 0) continue;
     total += rem;
     let what = '輸送容量が人数に追いつかなかった';
@@ -116,7 +116,7 @@ export function ResultScreen({ state, onRestart }: Props) {
   const isMobile = useWindowWidth() < 768;
 
   const totalRemaining = Object.values(areas).reduce((sum, a) =>
-    sum + a.residents + a.tourists + a.vulnerable + a.stagingPort, 0
+    sum + a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0), 0
   );
   const maxEvacuated = evacuated + dead + totalRemaining;
   const evacuationRate = maxEvacuated > 0 ? (evacuated / maxEvacuated * 100) : 0;
@@ -377,7 +377,7 @@ export function ResultScreen({ state, onRestart }: Props) {
         <Card title="エリア別残員状況" en="SECTOR STATUS" accent={C.blue}>
           <div style={{ ...styles.areaGrid, gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)' }}>
             {Object.entries(areas).map(([id, area]) => {
-              const remaining = area.residents + area.tourists + area.vulnerable + area.stagingPort;
+              const remaining = area.residents + area.tourists + area.vulnerable + area.stagingPort + (area.stagingVulnerable ?? 0);
               const done = remaining === 0;
               return (
                 <div key={id} style={{ ...styles.areaCard, borderColor: done ? C.green : C.amber, background: done ? 'rgba(0,255,136,0.06)' : 'rgba(255,179,0,0.06)' }}>
@@ -418,7 +418,7 @@ export function ResultScreen({ state, onRestart }: Props) {
 
           {regionalInsights.map((region) => {
             const area = areas[region.id];
-            const remaining = area.residents + area.tourists + area.vulnerable + area.stagingPort;
+            const remaining = area.residents + area.tourists + area.vulnerable + area.stagingPort + (area.stagingVulnerable ?? 0);
             return (
               <div key={region.id} style={{ ...styles.regionBlock, borderLeft: `3px solid ${region.color}` }}>
                 <div style={styles.regionHeader}>

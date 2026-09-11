@@ -192,7 +192,7 @@ function buildCells(area: AreaState, blob: { cx: number; cy: number; rx: number;
     ...Array(ci(area.residents)).fill('r'),
     ...Array(ci(area.tourists)).fill('t'),
     ...Array(ci(area.vulnerable)).fill('v'),
-    ...Array(ci(area.stagingPort)).fill('s'),
+    ...Array(ci(area.stagingPort + (area.stagingVulnerable ?? 0))).fill('s'),
   ];
   const n = kinds.length;
   if (n === 0) return [];
@@ -222,7 +222,7 @@ function buildCells(area: AreaState, blob: { cx: number; cy: number; rx: number;
 }
 
 function totalKoma(a: AreaState): number {
-  return a.residents + a.tourists + a.vulnerable + a.stagingPort;
+  return a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0);
 }
 
 export function IllustratedMap({ areas, infra, evacuated = 0, dead = 0, dayLogs }: Props) {
@@ -277,7 +277,7 @@ export function IllustratedMap({ areas, infra, evacuated = 0, dead = 0, dayLogs 
       const res = apportion(ci(a.residents), w);
       const tou = apportion(ci(a.tourists), tw.some(x => x > 0) ? tw : w);
       const vul = apportion(ci(a.vulnerable), w);
-      const stg = apportion(ci(a.stagingPort), w);
+      const stg = apportion(ci(a.stagingPort + (a.stagingVulnerable ?? 0)), w);
       // 描画された各島が空にならないよう、weight>0 の島へ最低1コマを保証する
       // （住民を最多の島から1つ移して総数は保持。住民が足りる時のみ実施）
       const totalOf = (i: number) => res[i] + tou[i] + vul[i] + stg[i];
@@ -292,7 +292,7 @@ export function IllustratedMap({ areas, infra, evacuated = 0, dead = 0, dayLogs 
       });
       subs.forEach((s, si) => {
         const subArea: AreaState = {
-          ...a, residents: res[si], tourists: tou[si], vulnerable: vul[si], stagingPort: stg[si],
+          ...a, residents: res[si], tourists: tou[si], vulnerable: vul[si], stagingPort: stg[si], stagingVulnerable: 0,
         };
         out.push({ id: `${id}-${si}`, cells: buildCells(subArea, s.blob) });
       });

@@ -636,7 +636,7 @@ export function SimulationMap({ areas, infra }: Props) {
           <IslandCard
             area={areas.ishigaki}
             title="石垣島（ハブ）"
-            subtitle={`住${areas.ishigaki.residents} 観${areas.ishigaki.tourists} 要${areas.ishigaki.vulnerable} 待${areas.ishigaki.stagingPort}`}
+            subtitle={`住${areas.ishigaki.residents} 観${areas.ishigaki.tourists} 要${areas.ishigaki.vulnerable} 待${areas.ishigaki.stagingPort + (areas.ishigaki.stagingVulnerable ?? 0)}`}
             color={ishiColor} bgLight={C.bgPanel} bgDark={C.bgCard}
             rows={ishiRows} cellSize={cellSize} compact={isSmall}
           />
@@ -646,7 +646,7 @@ export function SimulationMap({ areas, infra }: Props) {
           <IslandCard
             area={areas.miyako}
             title="宮古島・多良間"
-            subtitle={`住${areas.miyako.residents} 観${areas.miyako.tourists} 要${areas.miyako.vulnerable} 待${areas.miyako.stagingPort}`}
+            subtitle={`住${areas.miyako.residents} 観${areas.miyako.tourists} 要${areas.miyako.vulnerable} 待${areas.miyako.stagingPort + (areas.miyako.stagingVulnerable ?? 0)}`}
             color={miyaColor} bgLight={C.bgPanel} bgDark={C.bgCard}
             rows={miyaRows} cellSize={cellSize} compact={isSmall}
           />
@@ -681,7 +681,7 @@ export function SimulationMap({ areas, infra }: Props) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
             <IslandGrid
               title="石垣島（ハブ）"
-              subtitle={`住${areas.ishigaki.residents} 観${areas.ishigaki.tourists} 要${areas.ishigaki.vulnerable} 待${areas.ishigaki.stagingPort}`}
+              subtitle={`住${areas.ishigaki.residents} 観${areas.ishigaki.tourists} 要${areas.ishigaki.vulnerable} 待${areas.ishigaki.stagingPort + (areas.ishigaki.stagingVulnerable ?? 0)}`}
               color={ishiColor} bgLight={C.bgPanel} bgDark={C.bgCard}
               rows={ishiRows} cellSize={cellSize}
             />
@@ -693,7 +693,7 @@ export function SimulationMap({ areas, infra }: Props) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
             <IslandGrid
               title="宮古島・多良間"
-              subtitle={`住${areas.miyako.residents} 観${areas.miyako.tourists} 要${areas.miyako.vulnerable} 待${areas.miyako.stagingPort}`}
+              subtitle={`住${areas.miyako.residents} 観${areas.miyako.tourists} 要${areas.miyako.vulnerable} 待${areas.miyako.stagingPort + (areas.miyako.stagingVulnerable ?? 0)}`}
               color={miyaColor} bgLight={C.bgPanel} bgDark={C.bgCard}
               rows={miyaRows} cellSize={cellSize}
             />

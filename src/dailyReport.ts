@@ -57,7 +57,7 @@ export function exportDailyReportPdf(state: GameState): void {
     alert('まだ行動記録がありません。シミュレーションを進めてから保存してください。');
     return;
   }
-  const totalRemaining = Object.values(state.areas).reduce((s, a) => s + a.residents + a.tourists + a.vulnerable + a.stagingPort, 0);
+  const totalRemaining = Object.values(state.areas).reduce((s, a) => s + a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0), 0);
   const maxK = evacuated + dead + totalRemaining;
   const rate = maxK > 0 ? (evacuated / maxK * 100).toFixed(1) : '0';
 
