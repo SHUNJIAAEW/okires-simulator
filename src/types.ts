@@ -163,6 +163,7 @@ export interface DayLog {
   dayLabel: string;
   phase: Phase;
   weatherSummary: string;
+  windSummary: string;  // 午前(1時)/午後(13時)の風速・風向（例: 午前 微風(北東) ／ 午後 強風(南東)）
   events: string[];
   evacuations: EvacuationRecord[];
   fatigueSummary: string;
@@ -236,6 +237,7 @@ export interface DayPhase1Result {
   hourlyRolls: HourlyRoll[];
   eventLog: string[];
   weatherSummary: string;
+  windSummary: string;   // 午前/午後の風速・風向
   phaseChanged: boolean;
   // DMAT未派遣で確定した追加死者コマ数（当日の死者総数に加算する）
   dmatExtraDead: number;

@@ -1122,16 +1122,17 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
   // 2. 地震
   checkEarthquake(state, log); // ログのみ、結果は phase2 で使う
 
-  // 3. 天候更新 (1:00 & 13:00)
-  let newWeather = updateWeather(state.weather, month, log, '1時');
-  newWeather = updateWeather(newWeather, month, log, '13時');
+  // 3. 天候更新 (1:00 & 13:00)。午前(1時)と午後(13時)の風速・風向は日別ログに併記する
+  const amWeather = updateWeather(state.weather, month, log, '1時');
+  const newWeather = updateWeather(amWeather, month, log, '13時');
+  const windSummary = `午前 ${windLabelOf(amWeather, month)} ／ 午後 ${windLabelOf(newWeather, month)}`;
 
   // 4. 空港・港の利用可否（大雨＝海路全停止+空港閉鎖 / 強風＝海路停止+風向次第で欠航。両者は独立）
   const airportAvail = checkAirportAvailability(newWeather, month, state.infra);
   const seaOk = isSeaAvailable(newWeather, month);
 
   const weatherSummary = buildWeatherSummary(newWeather, month, airportAvail, seaOk);
-  log.push(`天候: ${weatherSummary}`);
+  log.push(`天候: ${weatherSummary} ／ 風: ${windSummary}`);
 
   // 5. 軍事配置 (4:00)
   const newMilitary = updateMilitary({ ...state, phase: newPhase }, log);
@@ -1284,7 +1285,7 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
     capacityMultiplier: eventResult.capacityMultiplier,
     hourlyRolls: eventResult.hourlyRolls,
     eventLog: log,
-    weatherSummary, phaseChanged,
+    weatherSummary, windSummary, phaseChanged,
     dmatExtraDead,
     eventDead: eventResult.newDead, // 攻撃(市街0.5/撃沈1/上陸1)による死者。当日死者に加算する
   } as DayPhase1Result;
@@ -1296,7 +1297,7 @@ export function executeDayPhase2(
   phase1: DayPhase1Result,
   orders: EvacuationOrder[]
 ): { newState: GameState; log: DayLog } {
-  const { stateAfterEvents, newPhase, newWeather, newMilitary, airportAvail, hourlyRolls, eventLog, weatherSummary, capacities } = phase1;
+  const { stateAfterEvents, newPhase, newWeather, newMilitary, airportAvail, hourlyRolls, eventLog, weatherSummary, windSummary, capacities } = phase1;
   const { day } = stateAfterEvents;
   const dayLabel = day === 0 ? 'X日' : day > 0 ? `X+${day}日` : `X${day}日`;
 
@@ -1495,6 +1496,7 @@ export function executeDayPhase2(
     dayLabel,
     phase: newPhase,
     weatherSummary,
+    windSummary,
     events: eventLog,
     evacuations,
     fatigueSummary: Object.values(areas).map((a) =>
@@ -1796,6 +1798,13 @@ function fixNegatives(areas: Record<AreaId, AreaState>): void {
     areas[key].stagingPort = Math.max(0, areas[key].stagingPort);
     areas[key].stagingAirport = Math.max(0, areas[key].stagingAirport);
   }
+}
+
+// 風速・風向ラベル（例: 微風(北東)）。午前/午後の併記に使う
+function windLabelOf(weather: WeatherState, month: number): string {
+  const dir = ['西', '北西', '北東', '東', '南東', '南西'][weather.windDirectionIndex - 1];
+  const spd = isStrongWind(weather.windSpeedIndex, month) ? '強風' : '微風';
+  return `${spd}(${dir})`;
 }
 
 function buildWeatherSummary(

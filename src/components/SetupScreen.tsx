@@ -184,7 +184,7 @@ export function SetupScreen({ onStart }: Props) {
             <div style={styles.randNote}>
               <div style={styles.randRow}>
                 <span style={{ ...styles.vulnDot, background: C.amber, boxShadow: `0 0 6px ${C.amber}` }} />
-                <span><strong>観光客</strong>：合計最大 {touristMax} コマ ／ 島別上限 与那国{TOURIST_MAX_BY_AREA.yonaguni}・竹富{TOURIST_MAX_BY_AREA.taketomi}・石垣{TOURIST_MAX_BY_AREA.ishigaki}・宮古{TOURIST_MAX_BY_AREA.miyako}</span>
+                <span><strong>観光客</strong>：月別に変動（ver4.0: 1月5・2月5・3月9・4月7・5月8・6月7・7月10・8月12・9月8・10月7・11月6・12月5）／ 配置先は 西表1・竹富1・石垣{TOURIST_MAX_BY_AREA.ishigaki}・宮古{TOURIST_MAX_BY_AREA.miyako} のみ（与那国・波照間には配置なし、合計最大 {touristMax}）</span>
               </div>
               <div style={styles.randRow}>
                 <span style={{ ...styles.vulnDot, background: '#ff6b6b', boxShadow: '0 0 6px #ff6b6b' }} />
@@ -199,8 +199,8 @@ export function SetupScreen({ onStart }: Props) {
               <span style={styles.readoutTitle}>INITIAL DEPLOYMENT // 初期配置概要（住民は固定・観光/要援護はランダム）</span>
             </div>
             <div style={{ ...styles.readoutGrid, gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr' }}>
-              <ReadoutRow dot="#ff5a5a" label="与那国島" detail={`住民${RESIDENT_TOTAL_BY_AREA.yonaguni}（要援護含む）＋ 観光(ランダム)`} />
-              <ReadoutRow dot="#ff9e3d" label="竹富町全島" detail={`住民${RESIDENT_TOTAL_BY_AREA.taketomi}（要援護含む）＋ 観光最大${TOURIST_MAX_BY_AREA.taketomi}`} />
+              <ReadoutRow dot="#ff5a5a" label="与那国島" detail={`住民${RESIDENT_TOTAL_BY_AREA.yonaguni}（要援護含む）＋ 観光なし`} />
+              <ReadoutRow dot="#ff9e3d" label="竹富町全島" detail={`住民${RESIDENT_TOTAL_BY_AREA.taketomi}（要援護含む）＋ 観光最大${TOURIST_MAX_BY_AREA.taketomi}（西表1・竹富1、波照間なし）`} />
               <ReadoutRow dot="#38bdf8" label="石垣島" detail={`住民${RESIDENT_TOTAL_BY_AREA.ishigaki}（要援護含む）＋ 観光最大${TOURIST_MAX_BY_AREA.ishigaki}`} />
               <ReadoutRow dot="#00ff88" label="宮古島・多良間" detail={`住民${RESIDENT_TOTAL_BY_AREA.miyako}（要援護含む）＋ 観光最大${TOURIST_MAX_BY_AREA.miyako}`} />
             </div>

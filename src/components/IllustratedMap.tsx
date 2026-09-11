@@ -117,23 +117,24 @@ const TCOLOR = { r: '#2f80ed', v: '#eb5757' } as const;
 // 比率は SimulationMap のボード盤（以前共有した公式マップ）由来:
 //  竹富町＝西表6/竹富2/波照間3/黒島2/小浜2(計15)、宮古は人口比で多良間・伊良部等にも配置
 type SubBlob = { cx: number; cy: number; rx: number; ry: number };
-const SUB_ISLANDS: Record<AreaId, { blob: SubBlob; weight: number }[]> = {
+// tourist: 観光客の配置ウェイト（ver4.0: 西表1・竹富1・石垣5・宮古島5 のみ。波照間・与那国・その他小島には置かない）
+const SUB_ISLANDS: Record<AreaId, { blob: SubBlob; weight: number; tourist?: number }[]> = {
   yonaguni: [
-    { blob: { cx: 36, cy: 104, rx: 14, ry: 8 }, weight: 1 }, // 与那国島（ラベル上・港左を避け島中央下に）
+    { blob: { cx: 36, cy: 104, rx: 14, ry: 8 }, weight: 1 }, // 与那国島（ラベル上・港左を避け島中央下に）観光客なし
   ],
   taketomi: [
-    { blob: { cx: 86, cy: 131, rx: 18, ry: 10 }, weight: 6 }, // 西表島
-    { blob: { cx: 124, cy: 124, rx: 4, ry: 3 }, weight: 2 },  // 竹富島
+    { blob: { cx: 86, cy: 131, rx: 18, ry: 10 }, weight: 6, tourist: 1 }, // 西表島（観光最大1）
+    { blob: { cx: 124, cy: 124, rx: 4, ry: 3 }, weight: 2, tourist: 1 },  // 竹富島（観光最大1）
     { blob: { cx: 100, cy: 159, rx: 5, ry: 4 }, weight: 3 },  // 波照間島
     { blob: { cx: 134, cy: 144, rx: 5, ry: 4 }, weight: 2 },  // 黒島
     { blob: { cx: 114, cy: 106, rx: 4, ry: 3 }, weight: 2 },  // 小浜島
     { blob: { cx: 79, cy: 102, rx: 4, ry: 3 }, weight: 1 },   // 鳩間島
   ],
   ishigaki: [
-    { blob: { cx: 154, cy: 92, rx: 23, ry: 14 }, weight: 1 }, // 石垣島（港・空港アイコンを縁に残すため内側に）
+    { blob: { cx: 154, cy: 92, rx: 23, ry: 14 }, weight: 1, tourist: 1 }, // 石垣島（観光最大5。港・空港アイコンを縁に残すため内側に）
   ],
   miyako: [
-    { blob: { cx: 246, cy: 95, rx: 18, ry: 11 }, weight: 85 }, // 宮古島（同上）
+    { blob: { cx: 246, cy: 95, rx: 18, ry: 11 }, weight: 85, tourist: 1 }, // 宮古島（観光最大5。同上）
     { blob: { cx: 216, cy: 94, rx: 6, ry: 4 }, weight: 6 },    // 伊良部島
     { blob: { cx: 203, cy: 96, rx: 4, ry: 3 }, weight: 1 },    // 下地島
     { blob: { cx: 200, cy: 151, rx: 7, ry: 4 }, weight: 3 },   // 多良間島
@@ -225,7 +226,9 @@ function totalKoma(a: AreaState): number {
 }
 
 export function IllustratedMap({ areas, infra, evacuated = 0, dead = 0, dayLogs }: Props) {
-  // 全日程の避難実績からトークンを生成（蓄積＝消えない）。最新日のみアニメ、過去日は到達点で静止。
+  // 全日程の避難実績からトークンを生成。本土到着分は蓄積（消えない）。最新日のみアニメ、過去日は到達点で静止。
+  // 中継ハブ（石垣/宮古）到着は「その日だけ」表示する：到着後は島上の緑（待機）コマとして既に描画されるため、
+  // 蓄積させると避難完了後も青●赤●がハブに残って見える二重表示になる。
   const tokens = useMemo<Tok[]>(() => {
     const out: Tok[] = [];
     if (!dayLogs || dayLogs.length === 0) return out;
@@ -235,8 +238,11 @@ export function IllustratedMap({ areas, infra, evacuated = 0, dead = 0, dayLogs 
       log.evacuations.forEach((mv, i) => {
         const from = ISLAND_CENTER[mv.from];
         if (!from) return;
-        const destBase = mv.to === '石垣島' ? HUB : MAINLAND_DEST[mv.from];
-        const destKey = mv.to === '石垣島' ? 'hub' : (MAINLAND_DEST[mv.from] === MAINLAND_DEST.miyako ? 'kg' : 'main') + mv.from;
+        const isHub = mv.to === '石垣島' || mv.to === '宮古島';
+        if (isHub && log.day !== lastDay) return; // ハブ到着は当日のみ（蓄積しない）
+        const hubPos = mv.to === '宮古島' ? ISLAND_CENTER.miyako : HUB;
+        const destBase = isHub ? hubPos : MAINLAND_DEST[mv.from];
+        const destKey = isHub ? `hub-${mv.to}` : (MAINLAND_DEST[mv.from] === MAINLAND_DEST.miyako ? 'kg' : 'main') + mv.from;
         const n = Math.max(1, Math.min(mv.count, 6));
         for (let k = 0; k < n; k++) {
           const c = (pileCount[destKey] = (pileCount[destKey] ?? 0) + 1);
@@ -266,8 +272,10 @@ export function IllustratedMap({ areas, infra, evacuated = 0, dead = 0, dayLogs 
       const a = areas[id];
       const subs = SUB_ISLANDS[id];
       const w = subs.map(s => s.weight);
+      // 観光客は tourist ウェイトのある島（西表/竹富/石垣/宮古島）にのみ配置（ver4.0。波照間等には置かない）
+      const tw = subs.map(s => s.tourist ?? 0);
       const res = apportion(ci(a.residents), w);
-      const tou = apportion(ci(a.tourists), w);
+      const tou = apportion(ci(a.tourists), tw.some(x => x > 0) ? tw : w);
       const vul = apportion(ci(a.vulnerable), w);
       const stg = apportion(ci(a.stagingPort), w);
       // 描画された各島が空にならないよう、weight>0 の島へ最低1コマを保証する

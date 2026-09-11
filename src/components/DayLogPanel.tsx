@@ -45,6 +45,7 @@ export function DayLogPanel({ logs }: Props) {
                 {PHASE_LABELS[log.phase]}
               </span>
               <span style={styles.weatherBadge}>{log.weatherSummary.split('/')[0].trim()}</span>
+              {log.windSummary && <span style={styles.windBadge}>🌬 {log.windSummary}</span>}
             </div>
             <div style={styles.headerRight}>
               <span style={styles.evacuatedCount}>✈ {log.evacuations.reduce((s, e) => s + e.count, 0)}コマ避難</span>
@@ -238,6 +239,7 @@ const styles: Record<string, React.CSSProperties> = {
   dayBadge: { background: C.green, color: '#00150d', padding: '3px 10px', borderRadius: 3, fontSize: 12, fontWeight: 800, fontFamily: FONT.mono },
   phaseBadge: { color: '#06121f', padding: '2px 8px', borderRadius: 3, fontSize: 11, fontWeight: 700, fontFamily: FONT.mono },
   weatherBadge: { color: C.dim, fontSize: 12 },
+  windBadge: { color: C.dim, fontSize: 11, fontFamily: FONT.mono, whiteSpace: 'nowrap' },
   evacuatedCount: { color: C.green, fontWeight: 700, fontSize: 13, fontFamily: FONT.mono },
   totalEvac: { color: C.blue, fontSize: 12, fontFamily: FONT.mono },
   chevron: { color: C.dim, fontSize: 12 },
