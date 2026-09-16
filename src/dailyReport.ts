@@ -4,7 +4,7 @@ import type { GameState, AreaId, DayLog } from './types';
 const AREA_JP: Record<AreaId, string> = {
   yonaguni: '与那国島', taketomi: '竹富町全島', ishigaki: '石垣島', miyako: '宮古島・多良間',
 };
-const PHASE_JP: Record<string, string> = { peacetime: '平時(F1)', crisis: '存立危機(F2)', wartime: '有事(F3/4)' };
+const PHASE_JP: Record<string, string> = { peacetime: '平時', crisis: '存立危機事態', wartime: '有事' };
 
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -40,7 +40,7 @@ function dayBlock(log: DayLog, prevEvac: number, prevDead: number): string {
 
   return `
   <section class="day">
-    <h2>${esc(log.dayLabel)} <span class="ph">${PHASE_JP[log.phase] ?? log.phase}</span>
+    <h2>${esc(log.dayLabel)} <span class="ph">${PHASE_JP[log.phase] ?? log.phase} ／ フェーズ${log.eventPhase ?? '-'}</span>
       <span class="kpi">本日 避難+${evacToday} / 死亡+${deadToday} ／ 累計 避難${log.totalEvacuatedSoFar}・死亡${log.totalDeadSoFar}</span></h2>
     <div class="row"><b>天候・状況</b><div>${esc(log.weatherSummary)}</div></div>
     <div class="row"><b>イベント・軍事</b><div>${events}</div></div>

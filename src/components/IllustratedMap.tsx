@@ -2,12 +2,14 @@
 // 各島・港・空港の名前入り。自動再生中はコマが島→ハブ→本土へ移動し、本土に蓄積して消えない。
 
 import React, { useMemo } from 'react';
-import type { AreaId, AreaState, InfraState, DayLog } from '../types';
+import type { AreaId, AreaState, InfraState, DayLog, TransportState } from '../types';
 import { FONT } from '../theme';
 
 interface Props {
   areas: Record<AreaId, AreaState>;
   infra?: InfraState;
+  transport?: TransportState;   // 路線別の恒久停止（💥表示）
+  closedToday?: string[];       // 当日限りの使用不能施設（🚫表示）
   evacuated?: number;
   dead?: number;
   dayLogs?: DayLog[];
@@ -62,22 +64,22 @@ const ISLAND_LABELS: { x: number; y: number; name: string; big?: boolean }[] = [
 ];
 
 // ── 施設（空港🟡 / 海港🔵）＋名前 ──
-type Fac = { x: number; y: number; kind: 'air' | 'sea'; name: string };
+type Fac = { x: number; y: number; kind: 'air' | 'sea'; name: string; air?: string; ship?: string; infra?: keyof InfraState };
 // 施設はコマ配置領域(SUB_ISLANDS blob)に名前が被らないよう、島の縁〜海側に配置する
 const FACILITIES: Fac[] = [
-  { x: 48, y: 89, kind: 'air', name: '与那国空港' },
-  { x: 20, y: 114, kind: 'sea', name: '久部良港' },
+  { x: 48, y: 89, kind: 'air', name: '与那国空港', air: 'yonaguni', infra: 'yonagunAirport' },
+  { x: 20, y: 114, kind: 'sea', name: '久部良港', ship: 'kubura', infra: 'kuburaPort' },
   { x: 70, y: 119, kind: 'sea', name: '上原港' },
   { x: 99, y: 138, kind: 'sea', name: '大原港' },
-  { x: 108, y: 165, kind: 'air', name: '波照間空港' },
+  { x: 108, y: 165, kind: 'air', name: '波照間空港', air: 'hateruma', infra: 'haterumaAirport' },
   { x: 86, y: 156, kind: 'sea', name: '波照間港' },
   { x: 117, y: 111, kind: 'sea', name: '小浜港' },
-  { x: 183, y: 73, kind: 'air', name: '新石垣空港' },
-  { x: 132, y: 111, kind: 'sea', name: '石垣港' },
-  { x: 269, y: 93, kind: 'air', name: '宮古空港' },
-  { x: 223, y: 110, kind: 'sea', name: '平良港' },
-  { x: 191, y: 87, kind: 'air', name: '下地島空港' },
-  { x: 211, y: 144, kind: 'air', name: '多良間空港' },
+  { x: 183, y: 73, kind: 'air', name: '新石垣空港', air: 'shinIshigaki', infra: 'shinIshigakiAirport' },
+  { x: 132, y: 111, kind: 'sea', name: '石垣港', ship: 'ishigakiPort', infra: 'ishigakiPort' },
+  { x: 269, y: 93, kind: 'air', name: '宮古空港', air: 'miyako', infra: 'miyakoAirport' },
+  { x: 223, y: 110, kind: 'sea', name: '平良港', ship: 'hiraraPort', infra: 'hiraraPort' },
+  { x: 191, y: 87, kind: 'air', name: '下地島空港', air: 'shimoji', infra: 'shimojiAirport' },
+  { x: 211, y: 144, kind: 'air', name: '多良間空港', infra: 'taramaAirport' },
   { x: 191, y: 155, kind: 'sea', name: '多良間港' },
 ];
 
@@ -225,7 +227,16 @@ function totalKoma(a: AreaState): number {
   return a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0);
 }
 
-export function IllustratedMap({ areas, infra, evacuated = 0, dead = 0, dayLogs }: Props) {
+export function IllustratedMap({ areas, infra, transport, closedToday = [], evacuated = 0, dead = 0, dayLogs }: Props) {
+  // 施設の使用可否マーク: 💥=恒久使用不能（破壊/撃墜・撃沈/運航拒否） / 🚫=当日限り使用不能（乱闘/サイバー/障害物散布/海上民兵等）
+  const facilityMark = (f: Fac): '💥' | '🚫' | null => {
+    const destroyed = !!(f.infra && infra && infra[f.infra] === false);
+    const routeDown = !!((f.air && transport?.disabledAirRoutes?.[f.air as keyof TransportState['disabledAirRoutes']])
+      || (f.ship && transport?.disabledShipRoutes?.[f.ship as keyof TransportState['disabledShipRoutes']]));
+    if (destroyed || routeDown) return '💥';
+    if ((f.air && closedToday.includes(f.air)) || (f.ship && closedToday.includes(`ship:${f.ship}`))) return '🚫';
+    return null;
+  };
   // 全日程の避難実績からトークンを生成。本土到着分は蓄積（消えない）。最新日のみアニメ、過去日は到達点で静止。
   // 中継ハブ（石垣/宮古）到着は「その日だけ」表示する：到着後は島上の緑（待機）コマとして既に描画されるため、
   // 蓄積させると避難完了後も青●赤●がハブに残って見える二重表示になる。
@@ -419,7 +430,10 @@ export function IllustratedMap({ areas, infra, evacuated = 0, dead = 0, dayLogs 
           {/* 施設アイコン＋名前（コマより前面に出して常に視認可能に） */}
           {FACILITIES.map(f => (
             <div key={f.name} style={{ position: 'absolute', left: px(f.x), top: py(f.y), transform: 'translate(-50%,-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 7 }}>
-              <span style={f.kind === 'air' ? styles.airDot : styles.seaDot}>{f.kind === 'air' ? '✈' : '⚓'}</span>
+              <span style={{ position: 'relative', display: 'inline-flex' }}>
+                <span style={f.kind === 'air' ? styles.airDot : styles.seaDot}>{f.kind === 'air' ? '✈' : '⚓'}</span>
+                {facilityMark(f) && <span style={styles.facMark} title={facilityMark(f) === '💥' ? '使用不能（破壊/撃墜・撃沈/運航拒否）' : '当日使用不能'}>{facilityMark(f)}</span>}
+              </span>
               <span style={styles.facLabel}>{f.name}</span>
             </div>
           ))}
@@ -480,7 +494,7 @@ export function IllustratedMap({ areas, infra, evacuated = 0, dead = 0, dayLogs 
 
       <div style={styles.caption}>
         コマ：<b style={{ color: '#2f80ed' }}>●青＝住民</b> ／ <b style={{ color: '#c98f00' }}>●黄＝観光客</b> ／ <b style={{ color: '#eb5757' }}>●赤＝要援護者</b> ／ <b style={{ color: '#1b8a4b' }}>●緑＝待機（石垣ハブ等に集結し避難手段を待つ避難民）</b>。
-        施設：🟡空港 ／ 🔵海港 ／ 🌉橋（崩落で🚧＝該当島は避難不可）。自動再生中、避難したコマは本土へ移動して積み上がり、死亡は右下の枠に入ります。
+        施設：🟡空港 ／ 🔵海港 ／ 🌉橋（崩落で🚧＝該当島は避難不可） ／ 🚫＝当日使用不能（乱闘・サイバー・障害物散布・海上民兵・ボイコット等） ／ 💥＝使用不能（破壊・撃墜/撃沈・運航拒否）。自動再生中、避難したコマは本土へ移動して積み上がり、死亡は右下の枠に入ります。
       </div>
     </div>
   );
@@ -499,6 +513,7 @@ const styles: Record<string, React.CSSProperties> = {
 
   airDot: { width: 15, height: 15, borderRadius: '50%', background: '#ffd633', border: '2px solid #8f6a00', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, boxShadow: '0 0 5px rgba(255,214,51,0.9)' },
   seaDot: { width: 15, height: 15, borderRadius: '50%', background: '#3b9eff', border: '2px solid #0f4f8f', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, boxShadow: '0 0 5px rgba(59,158,255,0.9)' },
+  facMark: { position: 'absolute', left: '50%', top: -9, transform: 'translateX(-50%)', fontSize: 14, lineHeight: 1, zIndex: 9, filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.5))', pointerEvents: 'none' },
   facLabel: { fontFamily: FH, fontSize: 8, color: '#173a17', fontWeight: 700, marginTop: 1, whiteSpace: 'nowrap', textShadow: HALO },
 
   islandLabel: { fontFamily: FH, fontWeight: 700, color: '#0e2f47', whiteSpace: 'nowrap', textShadow: HALO },

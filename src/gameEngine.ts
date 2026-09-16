@@ -5,8 +5,7 @@ import type {
   WeatherState, MilitaryState, TransportState, InfraState,
   ActiveEvent, DayLog, EvacuationRecord, Phase,
   HourlyRoll, EvacuationOrder, DayCapacities, DayPhase1Result,
-  AirRouteKey, ShipRouteKey, HandPenalty, ReinforcementMeans,
-} from './types';
+  AirRouteKey, ShipRouteKey, HandPenalty, ReinforcementMeans, WeatherCondition } from './types';
 import {
   getWeatherTrack, getInitialWeatherIndex, getInitialWindSpeedIndex,
   getInitialWindDirectionIndex, isStrongWind, AIRPORT_ALLOWED_WIND_DIRECTIONS,
@@ -156,6 +155,7 @@ export function createInitialState(config: SetupConfig): GameState {
     occupied: { yonaguni: false, taketomi: false, ishigaki: false, miyako: false },
     // PAC3 再配備（一度だけ）
     pac3Relocated: false,
+    closedFacilitiesToday: [],
   };
 }
 
@@ -271,6 +271,12 @@ export function updateWeather(weather: WeatherState, month: number, log: string[
   const track = getWeatherTrack(month);
   const maxIdx = track.length;
   let { conditionIndex, windSpeedIndex, windDirectionIndex } = weather;
+  const DIRS = ['西', '北西', '北東', '東', '南東', '南西'];
+  const condJp = (c: WeatherCondition) => c === 'sunny' ? '晴' : c === 'cloudy' ? '曇' : c === 'rain' ? '雨' : '大雨';
+  // 変化前のラベル（検証用ログ: 天候ダイス5 : 曇8⇒雨9 形式）
+  const beforeCond = `${condJp(track[conditionIndex - 1])}${conditionIndex}`;
+  const beforeSpeed = `${isStrongWind(windSpeedIndex, month) ? '強風' : '微風'}${windSpeedIndex}`;
+  const beforeDir = `${DIRS[windDirectionIndex - 1]}${windDirectionIndex}`;
 
   const wRoll = rollDie();
   if (wRoll >= 5) {
@@ -291,11 +297,14 @@ export function updateWeather(weather: WeatherState, month: number, log: string[
   }
 
   const condition = track[conditionIndex - 1];
-  const windLabel = ['西', '北西', '北東', '東', '南東', '南西'][windDirectionIndex - 1];
+  const windLabel = DIRS[windDirectionIndex - 1];
   const speedLabel = strong ? '強風' : '微風';
-  const condLabel = condition === 'sunny' ? '晴' : condition === 'cloudy' ? '曇' : condition === 'rain' ? '雨' : '大雨';
-  const prefix = timeLabel ? `${timeLabel} ` : '';
-  log.push(`${prefix}天候変化ダイス: 天候${wRoll}→${condLabel} / 風速${wsRoll}→${speedLabel}(${windLabel}) / 風向${wdRoll}`);
+  const condLabel = condJp(condition);
+  const prefix = timeLabel ? `${timeLabel}：` : '';
+  const pad = timeLabel ? '　　　' : '';
+  log.push(`${prefix}天候ダイス${wRoll} : ${beforeCond}⇒${condLabel}${conditionIndex}`);
+  log.push(`${pad}風速ダイス${wsRoll} : ${beforeSpeed}⇒${speedLabel}${windSpeedIndex}`);
+  log.push(`${pad}風向ダイス${wdRoll} : ${beforeDir}⇒${windLabel}${windDirectionIndex}`);
 
   return { condition, conditionIndex, windSpeedIndex, windDirectionIndex };
 }
@@ -358,7 +367,7 @@ export function checkPhaseTransition(state: GameState, log: string[]): Phase {
 
 // フェーズ(F1-F4)＝日付固定（事態モードとは無関係）。発生し得るイベント種別を決める。
 //   F1: X-3〜X-1(A) / F2: X〜X+2(A,B) / F3: X+3〜X+5(A,B,C) / F4: X+6〜X+8(A,B,C,D)
-function eventPhase(day: number): number {
+export function eventPhase(day: number): number {
   if (day <= -1) return 1;
   if (day <= 2) return 2;
   if (day <= 5) return 3;
@@ -536,6 +545,8 @@ export interface EventResult {
   seaCapacityMultiplier: Record<AreaId, number>;
   // その日だけ使用不能になる空港(airportAvailのキー)。乗員ボイコット等で1空港のみ閉鎖(全空港停止ではない)
   facilityClosedToday: string[];
+  // その日だけ船舶便が使用不能になる港（海上民兵海域接近）。マップの🚫表示用
+  portClosedToday: ShipRouteKey[];
   newDead: number;
   hourlyRolls: HourlyRoll[];
   senkakuOccupied: boolean;
@@ -580,6 +591,7 @@ export function generateDailyEvents(
     capacityMultiplier: { yonaguni: 1, taketomi: 1, ishigaki: 1, miyako: 1 },
     seaCapacityMultiplier: { yonaguni: 1, taketomi: 1, ishigaki: 1, miyako: 1 },
     facilityClosedToday: [],
+    portClosedToday: [],
     newDead: 0,
     hourlyRolls: [],
     senkakuOccupied: false,
@@ -1001,7 +1013,7 @@ function processEventCell(
   // 施設を当日閉鎖（空港=airportAvailを当日false / 港=海路倍率×0）
   const closeFacilityToday = (air?: AirRouteKey, ship?: ShipRouteKey): string => {
     if (air) { result.facilityClosedToday.push(air); return AIR_ROUTE_JP[air]; }
-    if (ship) { applyPortSeaMul(ship, 0); return SHIP_ROUTE_JP[ship]; }
+    if (ship) { applyPortSeaMul(ship, 0); result.portClosedToday.push(ship); return SHIP_ROUTE_JP[ship]; }
     return '';
   };
 
@@ -1116,6 +1128,7 @@ function processEventCell(
       result.log.push(`${head} 【${jp} 海上民兵海域接近】`);
       if (!rollOccurrence(prepLevel, result.log, '海上民兵')) return `【海上民兵未遂】${jp}`;
       applyPortSeaMul(cell.ship, 0); // 当日その港の船舶便を0に（石垣港なら着港する竹富/与那国フェリーも）
+      result.portClosedToday.push(cell.ship);
       result.log.push(`  ⚠️ ${jp} の当日の船舶便 使用不可`);
       return `【当日閉鎖】${jp} 船舶便`;
     }
@@ -1804,7 +1817,7 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
     if (fRose) areasAfterEvents[id].fatigue += 1;
     if (powerOutage[id]) areasAfterEvents[id].fatigue += outageInc;
   }
-  if (fRose) log.push(`フェーズF${eventPhase(day)}に上昇 → 全エリア疲労+1`);
+  if (fRose) log.push(`フェーズ${eventPhase(day)}に上昇 → 全エリア疲労+1`);
 
   // 7a. 占領状態の引き継ぎ（当日占領分の全滅処理は DMAT処理後の 7b' で確定する）
   const occupied: Record<AreaId, boolean> = {
@@ -1956,7 +1969,13 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
   const damagedInfra: InfraState = { ...infraAfterEq, ...eventResult.infraPenalty };
   const airportAvailFinal = checkAirportAvailability(newWeather, month, damagedInfra);
   // ピストン輸送の発火判定（ハブ機能喪失=破壊/運航拒否）には当日限りの一時閉鎖を含めない（コピーを保持）
-  const airportAvailForHub = { ...airportAvailFinal };
+  // ハブ機能喪失の判定は施設破壊・路線停止のみ（天候・一時閉鎖は含めない）。ver4.0 4.8: 破壊/運航拒否/撃墜が発火条件
+  const airportAvailForHub: Record<string, boolean> = {
+    ...airportAvailFinal,
+    shinIshigaki: damagedInfra.shinIshigakiAirport,
+    miyako: damagedInfra.miyakoAirport,
+    shimoji: damagedInfra.shimojiAirport,
+  };
   // ドローン・サイバー攻撃・乗員ボイコット・観光客大乱闘で当日のみ閉鎖される空港を反映（その空港だけ／同日24時まで）
   for (const apt of eventResult.facilityClosedToday) {
     if (apt in airportAvailFinal) airportAvailFinal[apt] = false;
@@ -1984,6 +2003,8 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
     weather: newWeather,
     areas: areasAfterEvents,
     infra: damagedInfra,
+    // マップ表示用: 当日限りの使用不能施設（空港=空路キー / 港='ship:'+海路キー）。毎日上書き
+    closedFacilitiesToday: [...eventResult.facilityClosedToday, ...eventResult.portClosedToday.map(p => `ship:${p}`)],
     // 4:00配備(newMilitary) → 当日イベント（自衛隊喪失-1・尖閣占領）を反映した eventResult.military を正とする。
     military: {
       ...eventResult.military,
@@ -2308,6 +2329,8 @@ export function executeDayPhase2(
     day,
     dayLabel,
     phase: newPhase,
+    eventPhase: eventPhase(day),
+    closedFacilities: stateAfterEvents.closedFacilitiesToday ?? [],
     weatherSummary,
     windSummary,
     // 避難実行後のログ（注文無効・避難後の増援交渉・一時疲労解除・疲労限界・X+3期限）も日次ログに含める
@@ -2327,6 +2350,7 @@ export function executeDayPhase2(
 
   const newState: GameState = {
     ...stateAfterEvents,
+    closedFacilitiesToday: [], // 当日限りの閉鎖マークは翌日へ持ち越さない（翌日の prepareDayPhase1 で再設定）
     day: newDay,
     phase: newPhase,
     weather: newWeather,

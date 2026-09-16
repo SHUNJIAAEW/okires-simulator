@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import type { GameState, SetupConfig, AreaId } from './types';
-import { createInitialState, prepareDayPhase1, executeDayPhase2, autoSelectOrders, activeHandPenalty } from './gameEngine';
+import { createInitialState, prepareDayPhase1, executeDayPhase2, autoSelectOrders, activeHandPenalty, eventPhase } from './gameEngine';
 import { SetupScreen } from './components/SetupScreen';
 import { DayLogPanel } from './components/DayLogPanel';
 import { ResultScreen } from './components/ResultScreen';
@@ -146,6 +146,7 @@ export default function App() {
           <div style={{ ...styles.phaseBadge, background: phaseColor, fontSize: isMobile ? 11 : 13, padding: isMobile ? '3px 10px' : '4px 14px' }}>
             {gameState.phase === 'wartime' && <span style={styles.pulseRing} />}
             {phaseLabel}
+            <span style={{ marginLeft: 8, opacity: 0.9, fontFamily: FONT.mono }}>フェーズ{eventPhase(gameState.day)}</span>
           </div>
           <div style={{ ...styles.dayBadge, padding: isMobile ? '3px 8px' : '4px 12px' }}>
             <span style={styles.dayLabel}>現在</span>
@@ -202,6 +203,8 @@ export default function App() {
           <IllustratedMap
             areas={gameState.areas}
             infra={gameState.infra}
+            transport={gameState.transport}
+            closedToday={gameState.dayLogs[gameState.dayLogs.length - 1]?.closedFacilities ?? []}
             evacuated={gameState.evacuated}
             dead={gameState.dead}
             dayLogs={gameState.dayLogs}

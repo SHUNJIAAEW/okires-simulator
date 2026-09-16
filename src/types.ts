@@ -174,6 +174,8 @@ export interface DayLog {
   day: number;
   dayLabel: string;
   phase: Phase;
+  closedFacilities: string[]; // その日に当日限りで使用不能だった施設（空港=空路キー / 港='ship:'+海路キー）。マップの🚫表示用
+  eventPhase: number;   // フェーズ1〜4（日付固定: X-3〜X-1=1 / X〜X+2=2 / X+3〜X+5=3 / X+6〜X+8=4）
   weatherSummary: string;
   windSummary: string;  // 午前(1時)/午後(13時)の風速・風向（例: 午前 微風(北東) ／ 午後 強風(南東)）
   events: string[];
@@ -234,6 +236,8 @@ export interface GameState {
   occupied: Record<AreaId, boolean>;
   // ver4.0 4.12: PAC3 撤収・再配備（片方ハブの避難完了後、もう一方へ全数移動）。一度だけ。
   pac3Relocated: boolean;
+  // マップ表示用: 当日限りの使用不能施設（空港=空路キー / 港='ship:'+海路キー）
+  closedFacilitiesToday: string[];
 }
 
 export interface SetupConfig {
