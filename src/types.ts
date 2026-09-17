@@ -170,6 +170,9 @@ export interface DayCapacities {
   shuttleCivAirMax: number;     // 民間航空（往復先/送出側の空港が無事なら 1便3コマ）
 }
 
+// 半日（午前=1時 / 午後=13時）の天候・風・閉鎖の要約と、その時刻の天候ダイス
+export interface HalfDayWeather { summary: string; dice: string[] }
+
 export interface DayLog {
   day: number;
   dayLabel: string;
@@ -178,6 +181,7 @@ export interface DayLog {
   eventPhase: number;   // フェーズ1〜4（日付固定: X-3〜X-1=1 / X〜X+2=2 / X+3〜X+5=3 / X+6〜X+8=4）
   weatherSummary: string;
   windSummary: string;  // 午前(1時)/午後(13時)の風速・風向（例: 午前 微風(北東) ／ 午後 強風(南東)）
+  halfDay: { am: HalfDayWeather; pm: HalfDayWeather };
   events: string[];
   evacuations: EvacuationRecord[];
   fatigueSummary: string;
@@ -261,6 +265,7 @@ export interface DayPhase1Result {
   eventLog: string[];
   weatherSummary: string;
   windSummary: string;   // 午前/午後の風速・風向
+  halfDay: { am: HalfDayWeather; pm: HalfDayWeather };
   phaseChanged: boolean;
   // DMAT未派遣で確定した追加死者コマ数（当日の死者総数に加算する）
   dmatExtraDead: number;

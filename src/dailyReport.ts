@@ -42,7 +42,9 @@ function dayBlock(log: DayLog, prevEvac: number, prevDead: number): string {
   <section class="day">
     <h2>${esc(log.dayLabel)} <span class="ph">${PHASE_JP[log.phase] ?? log.phase} ／ フェーズ${log.eventPhase ?? '-'}</span>
       <span class="kpi">本日 避難+${evacToday} / 死亡+${deadToday} ／ 累計 避難${log.totalEvacuatedSoFar}・死亡${log.totalDeadSoFar}</span></h2>
-    <div class="row"><b>天候・状況</b><div>${esc(log.weatherSummary)}</div></div>
+    <div class="row"><b>天候・状況</b><div>${log.halfDay
+      ? [log.halfDay.am, log.halfDay.pm].map(h => `<div class="hd"><div class="hs">${esc(h.summary)}</div>${h.dice.map(d => `<div class="dl">${esc(d)}</div>`).join('')}</div>`).join('')
+      : esc(log.weatherSummary)}</div></div>
     <div class="row"><b>イベント・軍事</b><div>${events}</div></div>
     <div class="row"><b>避難実績</b><div>${evacs}</div></div>
     ${dice ? `<div class="row"><b>24時間ダイス</b><div>${dice}</div></div>` : ''}
@@ -85,6 +87,10 @@ export function exportDailyReportPdf(state: GameState): void {
     .row { display:flex; gap:8px; padding:3px 0; border-bottom:1px dashed #eef2f6; }
     .row > b { flex:0 0 92px; color:#1b6fa3; font-size:10px; }
     .row > div { flex:1; }
+    .hd { margin:0 0 4px; }
+    .hd + .hd { padding-top:4px; border-top:1px dotted #d9e2ec; }
+    .hs { font-weight:700; white-space:pre-wrap; }
+    .dl { padding-left:2.2em; font-family:ui-monospace,Menlo,monospace; font-size:10px; color:#334; }
     .muted { color:#94a3b8; }
     ul.ev { margin:0; padding-left:16px; }
     table.t { border-collapse:collapse; width:100%; }

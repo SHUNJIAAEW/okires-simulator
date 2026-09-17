@@ -118,8 +118,10 @@ export function createInitialState(config: SetupConfig): GameState {
     areas,
     infra: {
       shinIshigakiAirport: true, miyakoAirport: true, shimojiAirport: true,
-      yonagunAirport: true, haterumaAirport: settings.haterumaAirport,
-      taramaAirport: settings.taramaAirport, ishigakiPort: true, hiraraPort: true, kuburaPort: true,
+      // 施設としては全Lvで健在。波照間空港の使用可否は Lv（HATERUMA_AIR_FLIGHTS_BY_LEVEL: Lv4以上）で制御し、
+      // 多良間空港はマニュアル4.6.1でレベル制限なし。infra=false は「破壊」を意味するため Lv 不足をここで表さない。
+      yonagunAirport: true, haterumaAirport: true,
+      taramaAirport: true, ishigakiPort: true, hiraraPort: true, kuburaPort: true,
       seaAllAvailable: true, powerYonaguni: true, powerHateruma: true,
       powerIshigaki: true, powerTarama: true, powerMiyako: true,
       bridgeIkema: true, bridgeIrabu: true, bridgeKurima: true,
@@ -1569,18 +1571,21 @@ export function getDayCapacities(
   // 破壊された側ハブ(shuttleFrom)の住民を、機能している側ハブ(shuttleTo)へ集約 → 集約先の当日残本土便容量があれば当日、無ければ翌以降に本土へ。
   // ハブ空路が「本土便を出せない」= 空港破壊(airportAvail=false) or 路線停止(disabledAirRoutes)。
   // 一時閉鎖（当日限り）ではハブ機能喪失とみなさない（hubAirportAvail）。
-  const ishigakiHubDown = !(hubAirportAvail.shinIshigaki && airRouteOk('shinIshigaki'));
-  // 宮古ハブは宮古空港・下地島空港の2空港。両方とも本土便が出せない時に「ハブ機能喪失」とみなす。
-  const miyakoHubDown =
-    !(hubAirportAvail.miyako && airRouteOk('miyako')) &&
-    !(hubAirportAvail.shimoji && airRouteOk('shimoji'));
+  // ver4.0 4.8: 新石垣空港・宮古空港・下地島空港の「いずれか」が破壊／運航拒否／撃墜されたら発動可能。
+  //   新石垣がダウン → 石垣→宮古（宮古・下地島のどちらかが使えること）
+  //   宮古または下地島がダウン → 宮古→石垣（新石垣が使えること）
+  const shinOk = hubAirportAvail.shinIshigaki && airRouteOk('shinIshigaki');
+  const miyakoAptOk = hubAirportAvail.miyako && airRouteOk('miyako');
+  const shimojiAptOk = hubAirportAvail.shimoji && airRouteOk('shimoji');
   let shuttleActive = false;
   let shuttleFrom: AreaId | null = null;
   let shuttleTo: AreaId | null = null;
-  // 両ハブ同時ダウンは中継先が無いので不可。片方だけダウン時に発火。
-  if (isWartime && prepLevel >= SHUTTLE_MIN_LEVEL && ishigakiHubDown !== miyakoHubDown) {
-    if (ishigakiHubDown) { shuttleFrom = 'ishigaki'; shuttleTo = 'miyako'; }
-    else { shuttleFrom = 'miyako'; shuttleTo = 'ishigaki'; }
+  const shuttleDir: [AreaId, AreaId] | null =
+    !shinOk && (miyakoAptOk || shimojiAptOk) ? ['ishigaki', 'miyako']
+    : shinOk && (!miyakoAptOk || !shimojiAptOk) ? ['miyako', 'ishigaki']
+    : null;
+  if (isWartime && prepLevel >= SHUTTLE_MIN_LEVEL && shuttleDir) {
+    [shuttleFrom, shuttleTo] = shuttleDir;
     // 占領済みハブへは集約不可／占領済みハブからは送出不可
     shuttleActive = !isOccupied(state, shuttleFrom) && !isOccupied(state, shuttleTo);
     if (!shuttleActive) { shuttleFrom = null; shuttleTo = null; }
@@ -1714,8 +1719,11 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
   const infraAfterEq: InfraState = { ...state.infra, ...(eq?.infra ?? {}) };
 
   // 3. 天候更新 (1:00 & 13:00)。午前(1時)と午後(13時)の風速・風向は日別ログに併記する
-  const amWeather = updateWeather(state.weather, month, log, '1時');
-  const newWeather = updateWeather(amWeather, month, log, '13時');
+  // 天候ダイスの行は日報の「午前」「午後」欄へ分けて載せる（イベントログには混ぜない）
+  const amDice: string[] = [];
+  const pmDice: string[] = [];
+  const amWeather = updateWeather(state.weather, month, amDice);
+  const newWeather = updateWeather(amWeather, month, pmDice);
   const windSummary = `午前 ${windLabelOf(amWeather, month)} ／ 午後 ${windLabelOf(newWeather, month)}`;
 
   // 4. 空港・港の利用可否（大雨＝海路全停止+空港閉鎖 / 強風＝海路停止+風向次第で欠航。両者は独立）
@@ -1723,7 +1731,7 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
   const seaOk = isSeaAvailable(newWeather, month);
 
   const weatherSummary = buildWeatherSummary(newWeather, month, airportAvail, seaOk);
-  log.push(`天候: ${weatherSummary} ／ 風: ${windSummary}`);
+  // 天候は日報の「午前」「午後」欄に集約（イベントログには重複して載せない）
 
   // 5. 軍事配置 (4:00)
   const newMilitary = updateMilitary({ ...state, phase: newPhase }, log);
@@ -1967,6 +1975,11 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
 
   // 施設破壊などインフラ被害を反映（B1修正）し、被害後の空港利用可否を再計算（地震破壊分 infraAfterEq を含む）
   const damagedInfra: InfraState = { ...infraAfterEq, ...eventResult.infraPenalty };
+  // 午前(1時の天候・地震後の施設) / 午後(13時の天候・当日イベント後の施設) を別々に要約
+  const halfDay = {
+    am: { summary: halfDaySummary('午前', amWeather, month, checkAirportAvailability(amWeather, month, infraAfterEq), isSeaAvailable(amWeather, month), state.prepLevel), dice: amDice },
+    pm: { summary: halfDaySummary('午後', newWeather, month, checkAirportAvailability(newWeather, month, damagedInfra), isSeaAvailable(newWeather, month), state.prepLevel), dice: pmDice },
+  };
   const airportAvailFinal = checkAirportAvailability(newWeather, month, damagedInfra);
   // ピストン輸送の発火判定（ハブ機能喪失=破壊/運航拒否）には当日限りの一時閉鎖を含めない（コピーを保持）
   // ハブ機能喪失の判定は施設破壊・路線停止のみ（天候・一時閉鎖は含めない）。ver4.0 4.8: 破壊/運航拒否/撃墜が発火条件
@@ -2048,7 +2061,7 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
     capacityMultiplier: eventResult.capacityMultiplier,
     hourlyRolls: eventResult.hourlyRolls,
     eventLog: log,
-    weatherSummary, windSummary, phaseChanged,
+    weatherSummary, windSummary, halfDay, phaseChanged,
     dmatExtraDead,
     // 地震死＋攻撃死(人口から実際に除去できた分)＋占領によるエリア全滅。全て人口除去と一致（保存則）
     eventDead: attackRemoved + occupationDead,
@@ -2061,7 +2074,7 @@ export function executeDayPhase2(
   phase1: DayPhase1Result,
   orders: EvacuationOrder[]
 ): { newState: GameState; log: DayLog } {
-  const { stateAfterEvents, newPhase, newWeather, newMilitary, airportAvail, hourlyRolls, eventLog, weatherSummary, windSummary, capacities } = phase1;
+  const { stateAfterEvents, newPhase, newWeather, newMilitary, airportAvail, hourlyRolls, eventLog, weatherSummary, windSummary, halfDay, capacities } = phase1;
   const { day } = stateAfterEvents;
   const dayLabel = day === 0 ? 'X日' : day > 0 ? `X+${day}日` : `X${day}日`;
 
@@ -2333,6 +2346,7 @@ export function executeDayPhase2(
     closedFacilities: stateAfterEvents.closedFacilitiesToday ?? [],
     weatherSummary,
     windSummary,
+    halfDay,
     // 避難実行後のログ（注文無効・避難後の増援交渉・一時疲労解除・疲労限界・X+3期限）も日次ログに含める
     events: [...eventLog, ...evacLog],
     evacuations,
@@ -2410,6 +2424,23 @@ export function autoSelectOrders(phase1: DayPhase1Result): EvacuationOrder[] {
     // 中継先ハブは石垣/宮古のみ（getDayCapacities が保証）。EvacuationOrder.to へ渡すため型を絞る。
     const toDest = capacities.shuttleTo as 'ishigaki' | 'miyako';
     const fromArea = areas[fromId];
+    // 輸送量の上限: 送出側が自力で本土へ出せない見込み分（不足）と、受け入れ側が本土へ出せる余力の小さい方。
+    // 当日限りの閉鎖では発火しないが、発火時も必要以上に集約して受け入れ側があふれないようにする。
+    const daysLeft = Math.max(1, 8 - state.day + 1);
+    const popOf = (id: AreaId) => { const a = areas[id]; return a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0); };
+    const hubDailyCap = (id: AreaId) => id === 'ishigaki'
+      ? capacities.ishigakiAirMax + capacities.ishigakiCoastGuardMax + capacities.ishigakiFerryMax
+      : capacities.miyakoAirMax + capacities.shimojAirMax + capacities.miyakoCoastGuardMax + capacities.miyakoFerryMax;
+    const fromPop = popOf(fromId);
+    const toPop = toDest === 'ishigaki' ? popOf('ishigaki') + popOf('taketomi') : popOf('miyako');
+    // 受入側の余力は民間航空・フェリーのみで見積もる。海保・海自・空自は往復輸送と本土便で同じ便を共有するため、
+    // 往復に回すとその分だけ受入側の本土便が減る（余力に含めると集約しすぎて取り残しが出る）。
+    const hubCivilCap = (id: AreaId) => id === 'ishigaki'
+      ? capacities.ishigakiAirMax + capacities.ishigakiFerryMax
+      : capacities.miyakoAirMax + capacities.shimojAirMax + capacities.miyakoFerryMax;
+    const fromDeficit = fromPop - hubDailyCap(fromId) * daysLeft;
+    const toSpare = hubCivilCap(toDest) * daysLeft - toPop;
+    let shuttleBudget = Math.max(0, Math.min(fromDeficit, toSpare));
     // 送出可能な人数（宮古発は橋孤立分を差し引く）。要援護者は船舶手段を優先的に割り当てる。
     const availRes = fromId === 'miyako' ? mRes : fromArea.residents;
     let remainingVuln = fromArea.vulnerable;
@@ -2425,8 +2456,8 @@ export function autoSelectOrders(phase1: DayPhase1Result): EvacuationOrder[] {
       { method: 'ピストン陸自ヘリ', cap: capacities.shuttleJgsdfMax, vulnOk: false },
     ];
     for (const leg of legs) {
-      if (leg.cap <= 0) continue;
-      let budget = leg.cap;
+      if (leg.cap <= 0 || shuttleBudget <= 0) continue;
+      let budget = Math.min(leg.cap, shuttleBudget);
       const vuln = leg.vulnOk ? Math.min(remainingVuln, budget) : 0;
       budget -= vuln;
       const res = Math.min(remainingRes, budget);
@@ -2434,6 +2465,7 @@ export function autoSelectOrders(phase1: DayPhase1Result): EvacuationOrder[] {
       const tour = Math.min(remainingTour, budget);
       if (vuln + res + tour <= 0) continue;
       const moved = vuln + res + tour;
+      shuttleBudget -= moved;
       remainingVuln -= vuln; remainingRes -= res; remainingTour -= tour;
       // ピストンで消費した「便数」を本土便プールから差し引く。3倍手段は moved コマで ceil(moved/M) 便を消費し、
       // その各便は本土便なら1便1コマなので、本土プールからは ceil(moved/M) コマ分を減らす（二重使用・過剰削減の防止）。
@@ -2666,6 +2698,26 @@ function windLabelOf(weather: WeatherState, month: number): string {
   const dir = ['西', '北西', '北東', '東', '南東', '南西'][weather.windDirectionIndex - 1];
   const spd = isStrongWind(weather.windSpeedIndex, month) ? '強風' : '微風';
   return `${spd}(${dir})`;
+}
+
+// 半日（午前/午後）の要約: 「午前 大雨 微風 北東 閉鎖 海港、与那国、新石垣、宮古、下地島」（区切りは全角スペース）
+function halfDaySummary(
+  label: string, weather: WeatherState, month: number,
+  airportAvail: Record<string, boolean>, seaOk: boolean, prepLevel: number
+): string {
+  const cond = weather.condition === 'sunny' ? '晴' : weather.condition === 'cloudy' ? '曇' : weather.condition === 'rain' ? '雨' : '大雨';
+  const speed = isStrongWind(weather.windSpeedIndex, month) ? '強風' : '微風';
+  const dir = ['西', '北西', '北東', '東', '南東', '南西'][weather.windDirectionIndex - 1];
+  const closed: string[] = [];
+  if (!seaOk) closed.push('海港');
+  if (!airportAvail.yonaguni) closed.push('与那国');
+  if (!airportAvail.shinIshigaki) closed.push('新石垣');
+  if (!airportAvail.miyako) closed.push('宮古');
+  if (!airportAvail.shimoji) closed.push('下地島');
+  if (!airportAvail.tarama) closed.push('多良間');
+  if (prepLevel >= 4 && !airportAvail.hateruma) closed.push('波照間'); // 波照間空港はLv4以上のみ使用
+  const sp = '\u3000'; // 全角スペース
+  return [label, cond, speed, dir, '閉鎖', closed.length ? closed.join('、') : 'なし'].join(sp);
 }
 
 function buildWeatherSummary(

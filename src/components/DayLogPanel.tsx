@@ -45,7 +45,7 @@ export function DayLogPanel({ logs }: Props) {
                 {PHASE_LABELS[log.phase]}
               </span>
               {log.eventPhase != null && <span style={styles.phaseNum}>フェーズ{log.eventPhase}</span>}
-              <span style={styles.weatherBadge}>{log.weatherSummary.split('/')[0].trim()}</span>
+              <span style={styles.weatherBadge}>{log.halfDay ? `午前${log.halfDay.am.summary.split('\u3000')[1]} ／ 午後${log.halfDay.pm.summary.split('\u3000')[1]}` : log.weatherSummary.split('/')[0].trim()}</span>
               {log.windSummary && <span style={styles.windBadge}>🌬 {log.windSummary}</span>}
             </div>
             <div style={styles.headerRight}>
@@ -60,7 +60,12 @@ export function DayLogPanel({ logs }: Props) {
               {/* 天候 */}
               <div style={styles.section}>
                 <div style={styles.sectionTitle}>🌤 天候・状況</div>
-                <p style={styles.sectionContent}>{log.weatherSummary}</p>
+                {log.halfDay ? [log.halfDay.am, log.halfDay.pm].map((h, i) => (
+                  <div key={i} style={{ marginBottom: 6 }}>
+                    <p style={{ ...styles.sectionContent, fontWeight: 700, margin: 0 }}>{h.summary}</p>
+                    {h.dice.map((d, j) => <p key={j} style={{ ...styles.sectionContent, margin: 0, paddingLeft: '2.2em', fontFamily: FONT.mono, fontSize: 11 }}>{d}</p>)}
+                  </div>
+                )) : <p style={styles.sectionContent}>{log.weatherSummary}</p>}
               </div>
 
               {/* 避難実績 */}

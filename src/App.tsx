@@ -205,6 +205,7 @@ export default function App() {
             infra={gameState.infra}
             transport={gameState.transport}
             closedToday={gameState.dayLogs[gameState.dayLogs.length - 1]?.closedFacilities ?? []}
+            prepLevel={gameState.prepLevel}
             evacuated={gameState.evacuated}
             dead={gameState.dead}
             dayLogs={gameState.dayLogs}
