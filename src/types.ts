@@ -182,6 +182,7 @@ export interface DayLog {
   weatherSummary: string;
   windSummary: string;  // 午前(1時)/午後(13時)の風速・風向（例: 午前 微風(北東) ／ 午後 強風(南東)）
   halfDay: { am: HalfDayWeather; pm: HalfDayWeather };
+  weatherClosed: string[]; // 悪天候（大雨/強風）で使えない施設: 空路キー / 'sea'(全海港)。マップの⛈️表示用
   events: string[];
   evacuations: EvacuationRecord[];
   fatigueSummary: string;
@@ -266,6 +267,7 @@ export interface DayPhase1Result {
   weatherSummary: string;
   windSummary: string;   // 午前/午後の風速・風向
   halfDay: { am: HalfDayWeather; pm: HalfDayWeather };
+  weatherClosed: string[];
   phaseChanged: boolean;
   // DMAT未派遣で確定した追加死者コマ数（当日の死者総数に加算する）
   dmatExtraDead: number;

@@ -1976,6 +1976,17 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
   // 施設破壊などインフラ被害を反映（B1修正）し、被害後の空港利用可否を再計算（地震破壊分 infraAfterEq を含む）
   const damagedInfra: InfraState = { ...infraAfterEq, ...eventResult.infraPenalty };
   // 午前(1時の天候・地震後の施設) / 午後(13時の天候・当日イベント後の施設) を別々に要約
+  // 悪天候（大雨/強風）で使えない施設（施設自体は健在）。マップの⛈️表示用。午後(13時)の天候で判定
+  const wxAvail = checkAirportAvailability(newWeather, month, damagedInfra);
+  const AIR_INFRA_FOR_WX: Record<string, keyof InfraState> = {
+    shinIshigaki: 'shinIshigakiAirport', miyako: 'miyakoAirport', shimoji: 'shimojiAirport',
+    yonaguni: 'yonagunAirport', hateruma: 'haterumaAirport', tarama: 'taramaAirport',
+  };
+  const weatherClosed: string[] = Object.entries(AIR_INFRA_FOR_WX)
+    // 下地島空港は伊良部大橋経由でしか到達できない。橋の崩落による停止は悪天候ではないので除外
+    .filter(([k, infraKey]) => damagedInfra[infraKey] && (k !== 'shimoji' || damagedInfra.bridgeIrabu) && !wxAvail[k])
+    .map(([k]) => k);
+  if (!isSeaAvailable(newWeather, month)) weatherClosed.push('sea');
   const halfDay = {
     am: { summary: halfDaySummary('午前', amWeather, month, checkAirportAvailability(amWeather, month, infraAfterEq), isSeaAvailable(amWeather, month), state.prepLevel), dice: amDice },
     pm: { summary: halfDaySummary('午後', newWeather, month, checkAirportAvailability(newWeather, month, damagedInfra), isSeaAvailable(newWeather, month), state.prepLevel), dice: pmDice },
@@ -2061,7 +2072,7 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
     capacityMultiplier: eventResult.capacityMultiplier,
     hourlyRolls: eventResult.hourlyRolls,
     eventLog: log,
-    weatherSummary, windSummary, halfDay, phaseChanged,
+    weatherSummary, windSummary, halfDay, weatherClosed, phaseChanged,
     dmatExtraDead,
     // 地震死＋攻撃死(人口から実際に除去できた分)＋占領によるエリア全滅。全て人口除去と一致（保存則）
     eventDead: attackRemoved + occupationDead,
@@ -2074,7 +2085,7 @@ export function executeDayPhase2(
   phase1: DayPhase1Result,
   orders: EvacuationOrder[]
 ): { newState: GameState; log: DayLog } {
-  const { stateAfterEvents, newPhase, newWeather, newMilitary, airportAvail, hourlyRolls, eventLog, weatherSummary, windSummary, halfDay, capacities } = phase1;
+  const { stateAfterEvents, newPhase, newWeather, newMilitary, airportAvail, hourlyRolls, eventLog, weatherSummary, windSummary, halfDay, weatherClosed, capacities } = phase1;
   const { day } = stateAfterEvents;
   const dayLabel = day === 0 ? 'X日' : day > 0 ? `X+${day}日` : `X${day}日`;
 
@@ -2347,6 +2358,7 @@ export function executeDayPhase2(
     weatherSummary,
     windSummary,
     halfDay,
+    weatherClosed,
     // 避難実行後のログ（注文無効・避難後の増援交渉・一時疲労解除・疲労限界・X+3期限）も日次ログに含める
     events: [...eventLog, ...evacLog],
     evacuations,

@@ -10,6 +10,7 @@ interface Props {
   infra?: InfraState;
   transport?: TransportState;   // 路線別の恒久停止（💥表示）
   closedToday?: string[];       // 当日限りの使用不能施設（🚫表示）
+  weatherClosed?: string[];     // 悪天候で使用不能な施設（⛈️表示）: 空路キー / 'sea'
   prepLevel?: number;           // 波照間空港はLv4以上でのみ使用（未満は❌表示）
   evacuated?: number;
   dead?: number;
@@ -51,6 +52,7 @@ const ISLAND_LABELS: { x: number; y: number; name: string; big?: boolean }[] = [
   { x: 36, y: 86, name: '与那国島', big: true },
   { x: 64, y: 144, name: '西表島', big: true },
   { x: 79, y: 92, name: '鳩間島' },
+  { x: 58, y: 121, name: '船浮' },
   { x: 114, y: 97, name: '小浜島' },
   { x: 123, y: 117, name: '竹富島' },
   { x: 143, y: 146, name: '黒島' },
@@ -71,6 +73,7 @@ const FACILITIES: Fac[] = [
   { x: 48, y: 89, kind: 'air', name: '与那国空港', air: 'yonaguni', infra: 'yonagunAirport' },
   { x: 20, y: 114, kind: 'sea', name: '久部良港', ship: 'kubura', infra: 'kuburaPort' },
   { x: 70, y: 119, kind: 'sea', name: '上原港' },
+  { x: 61, y: 135, kind: 'sea', name: '船浮港' },
   { x: 99, y: 138, kind: 'sea', name: '大原港' },
   { x: 108, y: 165, kind: 'air', name: '波照間空港', air: 'hateruma', infra: 'haterumaAirport' },
   { x: 86, y: 156, kind: 'sea', name: '波照間港' },
@@ -132,6 +135,7 @@ const SUB_ISLANDS: Record<AreaId, { blob: SubBlob; weight: number; tourist?: num
     { blob: { cx: 134, cy: 144, rx: 5, ry: 4 }, weight: 2 },  // 黒島
     { blob: { cx: 114, cy: 106, rx: 4, ry: 3 }, weight: 2 },  // 小浜島
     { blob: { cx: 79, cy: 102, rx: 4, ry: 3 }, weight: 1 },   // 鳩間島
+    { blob: { cx: 65, cy: 128, rx: 3, ry: 2.5 }, weight: 1 },  // 船浮（西表島西部。陸路なし＝鳩間島同様に船舶輸送が必要）
   ],
   ishigaki: [
     { blob: { cx: 154, cy: 92, rx: 23, ry: 14 }, weight: 1, tourist: 1 }, // 石垣島（観光最大5。港・空港アイコンを縁に残すため内側に）
@@ -228,14 +232,17 @@ function totalKoma(a: AreaState): number {
   return a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0);
 }
 
-export function IllustratedMap({ areas, infra, transport, closedToday = [], prepLevel = 6, evacuated = 0, dead = 0, dayLogs }: Props) {
+export function IllustratedMap({ areas, infra, transport, closedToday = [], weatherClosed = [], prepLevel = 6, evacuated = 0, dead = 0, dayLogs }: Props) {
   // 施設の使用可否マーク: 💥=恒久使用不能（破壊/撃墜・撃沈/運航拒否） / 🚫=当日限り使用不能（乱闘/サイバー/障害物散布/海上民兵等）
-  const facilityMark = (f: Fac): '💥' | '🚫' | '❌' | null => {
+  const facilityMark = (f: Fac): '💥' | '🚫' | '❌' | '⛈️' | null => {
     const destroyed = !!(f.infra && infra && infra[f.infra] === false);
     const routeDown = !!((f.air && transport?.disabledAirRoutes?.[f.air as keyof TransportState['disabledAirRoutes']])
       || (f.ship && transport?.disabledShipRoutes?.[f.ship as keyof TransportState['disabledShipRoutes']]));
     if (destroyed || routeDown) return '💥';
     if (f.air === 'hateruma' && prepLevel < 4) return '❌'; // 事前準備Lv不足で使用不可（破壊ではない）
+    // 悪天候（大雨=全空港・全海港 / 強風=風向次第で空港、海港は全停止）
+    const wxKey = f.air ?? (f.name === '多良間空港' ? 'tarama' : undefined);
+    if ((wxKey && weatherClosed.includes(wxKey)) || (f.kind === 'sea' && weatherClosed.includes('sea'))) return '⛈️';
     if ((f.air && closedToday.includes(f.air)) || (f.ship && closedToday.includes(`ship:${f.ship}`))) return '🚫';
     return null;
   };
@@ -434,7 +441,7 @@ export function IllustratedMap({ areas, infra, transport, closedToday = [], prep
             <div key={f.name} style={{ position: 'absolute', left: px(f.x), top: py(f.y), transform: 'translate(-50%,-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 7 }}>
               <span style={{ position: 'relative', display: 'inline-flex' }}>
                 <span style={f.kind === 'air' ? styles.airDot : styles.seaDot}>{f.kind === 'air' ? '✈' : '⚓'}</span>
-                {facilityMark(f) && <span style={styles.facMark} title={facilityMark(f) === '💥' ? '使用不能（破壊/撃墜・撃沈/運航拒否）' : facilityMark(f) === '❌' ? '事前準備Lv4未満のため使用不可' : '当日使用不能'}>{facilityMark(f)}</span>}
+                {facilityMark(f) && <span style={styles.facMark} title={facilityMark(f) === '💥' ? '使用不能（破壊/撃墜・撃沈/運航拒否）' : facilityMark(f) === '❌' ? '事前準備Lv4未満のため使用不可' : facilityMark(f) === '⛈️' ? '悪天候（大雨/強風）で使用不能' : '当日使用不能'}>{facilityMark(f)}</span>}
               </span>
               <span style={styles.facLabel}>{f.name}</span>
             </div>
@@ -496,7 +503,7 @@ export function IllustratedMap({ areas, infra, transport, closedToday = [], prep
 
       <div style={styles.caption}>
         コマ：<b style={{ color: '#2f80ed' }}>●青＝住民</b> ／ <b style={{ color: '#c98f00' }}>●黄＝観光客</b> ／ <b style={{ color: '#eb5757' }}>●赤＝要援護者</b> ／ <b style={{ color: '#1b8a4b' }}>●緑＝待機（石垣ハブ等に集結し避難手段を待つ避難民）</b>。
-        施設：🟡空港 ／ 🔵海港 ／ 🌉橋（崩落で🚧＝該当島は避難不可） ／ 🚫＝当日使用不能（乱闘・サイバー・障害物散布・海上民兵・ボイコット等） ／ 💥＝使用不能（破壊・撃墜/撃沈・運航拒否） ／ ❌＝事前準備Lv不足で使用不可（波照間空港はLv4以上）。自動再生中、避難したコマは本土へ移動して積み上がり、死亡は右下の枠に入ります。
+        施設：🟡空港 ／ 🔵海港 ／ 🌉橋（崩落で🚧＝該当島は避難不可） ／ 🚫＝当日使用不能（乱闘・サイバー・障害物散布・海上民兵・ボイコット等） ／ 💥＝使用不能（破壊・撃墜/撃沈・運航拒否） ／ ❌＝事前準備Lv不足で使用不可（波照間空港はLv4以上） ／ ⛈️＝悪天候（大雨・強風）で使用不能。自動再生中、避難したコマは本土へ移動して積み上がり、死亡は右下の枠に入ります。
       </div>
     </div>
   );
