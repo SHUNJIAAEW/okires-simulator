@@ -6,6 +6,16 @@ export type WeatherCondition = 'sunny' | 'cloudy' | 'rain' | 'heavy-rain';
 
 export type AreaId = 'yonaguni' | 'taketomi' | 'ishigaki' | 'miyako';
 
+// ===== AI災害司令官: 避難方針 =====
+// autoSelectOrders の手段ブロックの試行順を切り替える。'balanced' は従来の自動注文と完全に同一。
+export type EvacPolicy = 'balanced' | 'sea-first' | 'air-first' | 'vulnerable-first' | 'shuttle-first';
+
+// ===== 要支援者モデル（④）: 要援護者コマの内訳（乳幼児/高齢者/車椅子/医療依存）=====
+// 不変条件: AreaState.vulnerableBreakdown の合計 = AreaState.vulnerable（自宅エリア残）
+//           GameState.vulnerableInTransit の合計 = 全ハブの stagingVulnerable 合計
+export type VulnerableCategory = 'infant' | 'elderly' | 'wheelchair' | 'medical';
+export type VulnerableBreakdown = Record<VulnerableCategory, number>;
+
 export interface WeatherState {
   condition: WeatherCondition;
   conditionIndex: number;
@@ -25,6 +35,8 @@ export interface AreaState {
   stagingPort: number;         // ハブ(石垣/宮古)で本土便待ちの白コマ（住民・観光客）
   stagingVulnerable: number;   // ハブで本土便待ちの要援護者（海路でのみ搬出可。航空機不可）
   inTransitToHub: number;
+  // 要支援者モデル（④）: 自宅エリアに残る要援護者(vulnerable)のカテゴリ内訳。合計 = vulnerable
+  vulnerableBreakdown: VulnerableBreakdown;
 }
 
 export interface InfraState {
@@ -182,7 +194,7 @@ export interface DayLog {
   weatherSummary: string;
   windSummary: string;  // 午前(1時)/午後(13時)の風速・風向（例: 午前 微風(北東) ／ 午後 強風(南東)）
   halfDay: { am: HalfDayWeather; pm: HalfDayWeather };
-  weatherClosed: string[]; // 悪天候（大雨/強風）で使えない施設: 空路キー / 'sea'(全海港)。マップの⛈️表示用
+  weatherClosed: string[]; // 悪天候で使えない施設: '空路キー:理由' / 'sea:理由'(全海港)。理由 rain=大雨⛈️ / wind=強風💨。マップ表示用
   events: string[];
   evacuations: EvacuationRecord[];
   fatigueSummary: string;
@@ -197,6 +209,12 @@ export interface DayLog {
     fatigue: number;
   }>;
   hourlyRolls: HourlyRoll[];  // 24時間別ダイス
+  // ===== AI災害司令官（指標用・追加フィールド）=====
+  capacityOffered: number;             // その日に提供された総輸送容量（本土便＋島間フィーダー便。往復便は共有アセットのため含めない）
+  vulnerableArrived: VulnerableBreakdown; // その日に本土へ到着した要援護者（カテゴリ別）
+  vulnerableDiedToday: VulnerableBreakdown; // その日に死亡した要援護者（カテゴリ別・自宅/ハブ待機を含む）
+  stagingVulnerableByHub: Record<AreaId, number>; // 日末時点のハブ待機要援護者（最大待機日数の算出用）
+  policy?: EvacPolicy;                 // 自動注文に使った方針（手動注文の日は undefined）
 }
 
 export interface GameState {
@@ -243,6 +261,10 @@ export interface GameState {
   pac3Relocated: boolean;
   // マップ表示用: 当日限りの使用不能施設（空港=空路キー / 港='ship:'+海路キー）
   closedFacilitiesToday: string[];
+  // ===== 要支援者モデル（④）=====
+  vulnerableInTransit: VulnerableBreakdown;  // ハブ(石垣/宮古)で本土便待ちの要援護者（カテゴリ別）。合計 = Σ stagingVulnerable
+  vulnerableEvacuated: VulnerableBreakdown;  // 本土到着済み要援護者（カテゴリ別）
+  vulnerableDead: VulnerableBreakdown;       // 死亡した要援護者（カテゴリ別）
 }
 
 export interface SetupConfig {
