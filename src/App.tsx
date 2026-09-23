@@ -1,6 +1,9 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import type { GameState, SetupConfig, AreaId } from './types';
+import type { GameState, SetupConfig, AreaId, EvacPolicy } from './types';
 import { createInitialState, prepareDayPhase1, executeDayPhase2, autoSelectOrders, activeHandPenalty, eventPhase } from './gameEngine';
+import { runDay, analyzeDay } from './commander';
+import { CommanderPanel, CommanderKpiBar } from './components/CommanderPanel';
+import type { CommanderRecord } from './components/CommanderPanel';
 import { SetupScreen } from './components/SetupScreen';
 import { DayLogPanel } from './components/DayLogPanel';
 import { ResultScreen } from './components/ResultScreen';
@@ -37,14 +40,46 @@ export default function App() {
   const [autoPlay, setAutoPlay] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
   const autoPlayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 司令官モード（🎖）: ON のとき方針カード→実行→AI分析の流れを使う。OFF 時の既存挙動（一括実行・自動再生）は不変。
+  const [commanderMode, setCommanderMode] = useState(false);
+  const [policy, setPolicy] = useState<EvacPolicy>('balanced');
+  const [commanderRecords, setCommanderRecords] = useState<CommanderRecord[]>([]);
+  const commanderRunningRef = useRef(false); // 連打で同じ日を二重実行しないための同期ガード
 
   const handleStart = (config: SetupConfig) => {
     const initialState = createInitialState(config);
     setGameState(initialState);
     setIsComplete(false);
     setAutoPlay(false);
+    setCommanderRecords([]);
+    setPolicy('balanced');
     setScreen('simulation');
   };
+
+  // 司令官モード: 選んだ方針で1日進める（runDay = prepareDayPhase1 → autoSelectOrders(policy) → executeDayPhase2）。
+  // 日ごとにランダムな seed を採り、analyzeDay の「別方針なら±何コマ」を同じダイスで再計算できるようにする。
+  const handleCommanderExecute = useCallback(() => {
+    if (!gameState || isComplete || commanderRunningRef.current) return;
+    commanderRunningRef.current = true;
+    setAutoPlay(false);
+    setIsSimulating(true);
+    setTimeout(() => {
+      try {
+        const seed = Math.floor(Math.random() * 0x7fffffff);
+        const r = runDay(gameState, policy, seed);
+        const analysis = analyzeDay(gameState, r.newState, r.log, r.capacities, policy, seed);
+        setCommanderRecords(prev => [...prev, { day: r.log.day, dayLabel: r.log.dayLabel, policy, analysis, capacities: r.capacities }]);
+        setGameState(r.newState);
+        const totalRemaining = Object.values(r.newState.areas).reduce(
+          (s, a) => s + a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0), 0
+        );
+        if (r.newState.day > 8 || totalRemaining === 0) setIsComplete(true);
+      } finally {
+        commanderRunningRef.current = false;
+        setIsSimulating(false);
+      }
+    }, 30);
+  }, [gameState, isComplete, policy]);
 
   // AI全日程一括実行（同期ループ・即座に結果へ）
   const handleFullAutoRun = useCallback(() => {
@@ -99,6 +134,7 @@ export default function App() {
     setGameState(null);
     setAutoPlay(false);
     setIsComplete(false);
+    setCommanderRecords([]);
     setScreen('setup');
   };
 
@@ -113,7 +149,7 @@ export default function App() {
   if (screen === 'result' && gameState) {
     return (
       <div style={styles.appBg}>
-        <ResultScreen state={gameState} onRestart={handleRestart} />
+        <ResultScreen state={gameState} onRestart={handleRestart} commanderRecords={commanderRecords} />
       </div>
     );
   }
@@ -190,6 +226,14 @@ export default function App() {
         </div>
       </div>
 
+      {/* 司令官KPIバー（司令官モードOFFでも表示） */}
+      <CommanderKpiBar
+        state={gameState}
+        lastCapacities={commanderRecords.length > 0 && commanderRecords[commanderRecords.length - 1].day === gameState.day - 1
+          ? commanderRecords[commanderRecords.length - 1].capacities : null}
+        isMobile={isMobile}
+      />
+
       {/* メインコンテンツ */}
       <div style={{
         ...styles.mainContent,
@@ -212,7 +256,32 @@ export default function App() {
             dayLogs={gameState.dayLogs}
           />
 
+          {commanderMode && (
+            <CommanderPanel
+              state={gameState}
+              isMobile={isMobile}
+              policy={policy}
+              onPolicyChange={setPolicy}
+              onExecute={handleCommanderExecute}
+              disabled={isSimulating || autoPlay}
+              isComplete={isComplete}
+              lastRecord={commanderRecords.length > 0 ? commanderRecords[commanderRecords.length - 1] : null}
+            />
+          )}
+
           <div style={styles.controlPanel}>
+            <button
+              className="tac-ghost"
+              style={{
+                ...styles.autoPlayBtn,
+                background: commanderMode ? 'rgba(255,179,0,0.16)' : 'rgba(42,100,150,0.12)',
+                borderColor: commanderMode ? C.amber : C.borderHi,
+                color: commanderMode ? C.amber : C.white,
+              }}
+              onClick={() => setCommanderMode(m => !m)}
+            >
+              {commanderMode ? '🎖 司令官モード ON（クリックでOFF）' : '🎖 司令官モード（方針を自分で決める）'}
+            </button>
             {isComplete ? (
               <button className="tac-cta" style={styles.fullAutoBtn} onClick={() => setScreen('result')}>
                 ✅ シミュレーション完了 → 結果を見る

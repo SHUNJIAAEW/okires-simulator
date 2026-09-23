@@ -6,6 +6,9 @@ import { DayLogPanel } from './DayLogPanel';
 import { exportDailyReportPdf } from '../dailyReport';
 import { C, FONT } from '../theme';
 import { handsByFatigue } from '../constants';
+import { computeMetrics, POLICY_LABELS, BOTTLENECK_LABELS } from '../commander';
+import { VULNERABLE_CATEGORIES, VULNERABLE_CATEGORY_JP, breakdownTotal } from '../gameEngine';
+import type { CommanderRecord } from './CommanderPanel';
 
 // ── 結果の内訳分析（いつ・なぜ・どのように・どうすべきか）を dayLogs から導出 ──
 interface CauseRow { when: string; what: string; count: number; }
@@ -56,6 +59,8 @@ function analyzeEvacuated(dayLogs: DayLog[]): { rows: CauseRow[]; total: number 
 interface Props {
   state: GameState;
   onRestart: () => void;
+  // 司令官モードで進めた日の記録（方針・分析）。無い/空なら判断ログは出さない
+  commanderRecords?: CommanderRecord[];
 }
 
 const AREA_NAMES: Record<AreaId, string> = {
@@ -111,9 +116,10 @@ function Corners({ color = C.borderHi }: { color?: string }) {
   );
 }
 
-export function ResultScreen({ state, onRestart }: Props) {
+export function ResultScreen({ state, onRestart, commanderRecords = [] }: Props) {
   const { evacuated, dead, areas, dayLogs, prepLevel, shelterLevel, month } = state;
   const isMobile = useWindowWidth() < 768;
+  const metrics = computeMetrics(state);
 
   const totalRemaining = Object.values(areas).reduce((sum, a) =>
     sum + a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0), 0
@@ -248,6 +254,10 @@ export function ResultScreen({ state, onRestart }: Props) {
             <span style={styles.logoYear}>2026</span>
           </div>
           <h1 style={styles.title}>シミュレーション結果</h1>
+          <p style={styles.headline}>
+            あなたの避難計画では <b style={{ color: rating.color }}>{evacuationRate.toFixed(1)}%</b> が安全圏へ到達しました。
+          </p>
+          <p style={styles.headlineSub}>残った <b style={{ color: C.amber }}>{(100 - evacuationRate).toFixed(1)}%</b> は誰か、なぜ逃げられなかったのか ↓</p>
           <p style={styles.subtitle}>
             事前準備 <b style={styles.subHi}>Lv.{prepLevel}</b> ／ 抗堪性 <b style={styles.subHi}>Lv.{shelterLevel}</b> ／ <b style={styles.subHi}>{month}月</b> 発生
           </p>
@@ -363,6 +373,23 @@ export function ResultScreen({ state, onRestart }: Props) {
           />
         </Card>
 
+        {/* 残った○％は誰か・なぜか（カテゴリ×原因） */}
+        <Card title={`残った ${(100 - evacuationRate).toFixed(1)}% は誰か、なぜ逃げられなかったのか`} en="WHO WAS LEFT / WHY" accent={C.amber}>
+          <WhoWasLeft state={state} strandedRows={strandedAnalysis.rows} deathRows={deathAnalysis.rows} isMobile={isMobile} />
+        </Card>
+
+        {/* 要支援者指標（④） */}
+        <Card title="要支援者指標" en="VULNERABLE METRICS" accent={C.violet}>
+          <VulnerableMetrics m={metrics} isMobile={isMobile} />
+        </Card>
+
+        {/* 判断ログ（司令官モードで進めた日） */}
+        {commanderRecords.length > 0 && (
+          <Card title="判断ログ ― 司令官モードでの日別の方針と分析" en="DECISION LOG" accent={C.amber}>
+            <DecisionLog records={commanderRecords} logs={dayLogs} isMobile={isMobile} />
+          </Card>
+        )}
+
         {/* 1日ごとの詳細（各コマの振り返り） */}
         <Card title="1日ごとの詳細 ― 各コマの振り返り" en="DAY-BY-DAY REVIEW" accent={C.blue}>
           <button className="no-print tac-ghost" style={styles.dayToggle} onClick={() => setShowDays(s => !s)}>
@@ -476,6 +503,152 @@ export function ResultScreen({ state, onRestart }: Props) {
   );
 }
 
+// 小数の表示丸め（0.9999… → 1 / 0.5 → 0.5）
+const n1 = (x: number) => { const r = Math.round(x * 10) / 10; return Number.isInteger(r) ? `${r}` : r.toFixed(1); };
+
+// ── 残った○％は誰か（カテゴリ×原因）──
+const WHITE_CAUSE_LABEL = '（取り残しの原因は上の「取り残し」表と同じ。エリア別に集計）';
+function WhoWasLeft({ state, strandedRows, deathRows, isMobile }: {
+  state: GameState; strandedRows: CauseRow[]; deathRows: CauseRow[]; isMobile: boolean;
+}) {
+  const { areas } = state;
+  const total = state.evacuated + state.dead + Object.values(areas).reduce((s, a) => s + a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0), 0);
+  const residents = Object.values(areas).reduce((s, a) => s + a.residents, 0);
+  const tourists = Object.values(areas).reduce((s, a) => s + a.tourists, 0);
+  const stagingWhite = Object.values(areas).reduce((s, a) => s + a.stagingPort, 0);
+  const vulnHome = (c: (typeof VULNERABLE_CATEGORIES)[number]) => Object.values(areas).reduce((s, a) => s + (a.vulnerableBreakdown?.[c] ?? 0), 0);
+  const vulnWait = (c: (typeof VULNERABLE_CATEGORIES)[number]) => state.vulnerableInTransit?.[c] ?? 0;
+  const vulnDead = (c: (typeof VULNERABLE_CATEGORIES)[number]) => state.vulnerableDead?.[c] ?? 0;
+  const vulnDeadTotal = breakdownTotal(state.vulnerableDead);
+  const whiteDead = Math.max(0, state.dead - vulnDeadTotal);
+  // 原因: 取り残しはエリア別原因（重複除去）、死亡は日別原因（重複除去）
+  const strandedCauses = [...new Set(strandedRows.map(r => r.what))];
+  const deathCauses = [...new Set(deathRows.map(r => r.what))];
+  const areasWithVuln = Object.values(areas).filter(a => a.vulnerable + (a.stagingVulnerable ?? 0) > 0).map(a => a.name);
+  const vulnCause = (left: number) => left > 0
+    ? ['要援護者は海路のみ搭乗可（航空機不可）', ...(areasWithVuln.length ? [`残存エリア: ${areasWithVuln.join('・')}`] : []), ...strandedCauses].join('／')
+    : '—';
+
+  interface Row { who: string; left: number; dead: number; cause: string; color: string }
+  const rows: Row[] = [
+    { who: '一般住民', left: residents, dead: 0, cause: residents > 0 ? strandedCauses.join('／') || WHITE_CAUSE_LABEL : '—', color: C.blue },
+    { who: '観光客', left: tourists, dead: 0, cause: tourists > 0 ? strandedCauses.join('／') || WHITE_CAUSE_LABEL : '—', color: C.blue },
+    { who: 'ハブ待機（住民・観光客）', left: stagingWhite, dead: 0, cause: stagingWhite > 0 ? '本土便の容量不足・海路/空路停止でハブに滞留' : '—', color: C.blue },
+    ...VULNERABLE_CATEGORIES.map(c => ({
+      who: `要援護者: ${VULNERABLE_CATEGORY_JP[c]}`,
+      left: vulnHome(c) + vulnWait(c), dead: vulnDead(c),
+      cause: [
+        vulnHome(c) + vulnWait(c) > 0 ? `取り残し: ${vulnCause(vulnHome(c) + vulnWait(c))}` : '',
+        vulnDead(c) > 0 ? `死亡: ${deathCauses.join('／') || '—'}` : '',
+      ].filter(Boolean).join(' ／ ') || '—',
+      color: C.amber,
+    })),
+  ];
+  // 一般住民・観光客の死亡は合算でしか分からないため別行
+  if (whiteDead > 0) rows.push({ who: '一般住民・観光客（死亡）', left: 0, dead: whiteDead, cause: deathCauses.join('／') || '—', color: C.red });
+
+  const leftTotal = rows.reduce((s, r) => s + r.left, 0);
+  const deadTotal = rows.reduce((s, r) => s + r.dead, 0);
+  const pctOf = (n: number) => (total > 0 ? `${(n / total * 100).toFixed(1)}%` : '—');
+  return (
+    <div>
+      <div style={styles.whoSummary}>
+        取り残し <b style={{ color: C.amber }}>{n1(leftTotal)}コマ（{pctOf(leftTotal)}）</b> ＋ 死亡 <b style={{ color: C.red }}>{n1(deadTotal)}コマ（{pctOf(deadTotal)}）</b>
+        ＝ 安全圏へ到達できなかった <b style={{ color: C.white }}>{n1(leftTotal + deadTotal)}コマ（{pctOf(leftTotal + deadTotal)}）</b>
+      </div>
+      <div style={{ ...styles.whoHead, gridTemplateColumns: isMobile ? '1.2fr 0.5fr 0.5fr' : '1.3fr 0.5fr 0.5fr 2.4fr' }}>
+        <span>誰が</span><span style={{ textAlign: 'right' }}>取り残し</span><span style={{ textAlign: 'right' }}>死亡</span>
+        {!isMobile && <span>なぜ（主な原因）</span>}
+      </div>
+      {rows.filter(r => r.left > 0 || r.dead > 0).map(r => (
+        <div key={r.who} style={{ ...styles.whoRow, gridTemplateColumns: isMobile ? '1.2fr 0.5fr 0.5fr' : '1.3fr 0.5fr 0.5fr 2.4fr' }}>
+          <span style={{ color: r.color, fontWeight: 700 }}>{r.who}</span>
+          <span style={{ ...styles.whoNum, color: r.left > 0 ? C.amber : C.dim }}>{r.left > 0 ? n1(r.left) : '–'}</span>
+          <span style={{ ...styles.whoNum, color: r.dead > 0 ? C.red : C.dim }}>{r.dead > 0 ? n1(r.dead) : '–'}</span>
+          <span style={{ ...styles.whoCause, gridColumn: isMobile ? '1 / -1' : undefined }}>{r.cause}</span>
+        </div>
+      ))}
+      {leftTotal + deadTotal === 0 && <AnaRow k="—" v="全員が安全圏へ到達した。取り残し・死亡なし。" />}
+    </div>
+  );
+}
+
+// ── 要支援者指標（④） ──
+function VulnerableMetrics({ m, isMobile }: { m: ReturnType<typeof computeMetrics>; isMobile: boolean }) {
+  const pct = (x: number | null) => (x == null ? '—' : `${(x * 100).toFixed(0)}%`);
+  const days = (x: number | null) => (x == null ? '—' : `${x.toFixed(1)}日`);
+  const dayLabel = (x: number | null) => (x == null ? '' : `（X${x >= 0 ? '+' : ''}${x.toFixed(1)}日 平均到着）`);
+  const vTotal = breakdownTotal(m.vulnerableTotals);
+  const vEvac = breakdownTotal(m.vulnerableEvacuated);
+  const vDead = breakdownTotal(m.vulnerableDead);
+  return (
+    <div>
+      <div style={{ ...styles.statsGrid, gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)', marginBottom: 14 }}>
+        <StatCard label="要支援者避難率" value={pct(m.vulnerableEvacRate)} unit="" sub={`${n1(vEvac)}/${n1(vTotal)}コマ 到着・死亡${n1(vDead)}`} color={m.vulnerableEvacRate != null && m.vulnerableEvacRate >= 0.8 ? C.green : C.amber} icon="♿" />
+        <StatCard label="医療搬送成功率" value={pct(m.medicalTransportRate)} unit="" sub={`医療依存 ${n1(m.vulnerableEvacuated.medical)}/${n1(m.vulnerableTotals.medical)}コマ`} color={m.medicalTransportRate != null && m.medicalTransportRate >= 0.8 ? C.green : C.red} icon="🏥" />
+        <StatCard label="平均避難日数（全体）" value={days(m.avgEvacuationDaysFromStart)} unit="" sub={`X-3日を1日目${dayLabel(m.avgEvacuationDay)}`} color={C.blue} icon="📅" />
+        <StatCard label="平均避難日数（要援護者）" value={days(m.avgVulnerableEvacuationDay == null ? null : m.avgVulnerableEvacuationDay + 4)} unit="" sub={`X-3日を1日目${dayLabel(m.avgVulnerableEvacuationDay)}`} color={C.violet} icon="🛟" />
+        <StatCard label="最大待機日数" value={`${m.maxVulnerableWaitDays}`} unit="日" sub="ハブで要援護者が連続待機" color={m.maxVulnerableWaitDays >= 3 ? C.red : C.bright} icon="⏳" />
+        <StatCard label="輸送資源効率" value={pct(m.transportEfficiency)} unit="" sub={`本土避難${m.evacuated}／提供容量${m.capacityOfferedTotal.toFixed(0)}コマ`} color={m.transportEfficiency != null && m.transportEfficiency >= 0.7 ? C.green : C.amber} icon="🚢" />
+      </div>
+      <div style={styles.anaSubHead}>カテゴリ別 要支援者避難率</div>
+      {VULNERABLE_CATEGORIES.map(c => {
+        const r = m.vulnerableEvacRateByCategory[c];
+        const tot = m.vulnerableTotals[c];
+        return (
+          <div key={c} style={styles.catRow}>
+            <span style={styles.catLabel}>{VULNERABLE_CATEGORY_JP[c]}</span>
+            <div style={styles.catBarOuter}>
+              <div style={{ ...styles.catBarInner, width: `${(r ?? 0) * 100}%`, background: r != null && r >= 0.8 ? C.green : r != null && r >= 0.5 ? C.amber : C.red }} />
+            </div>
+            <span style={styles.catVal}>{pct(r)} <span style={{ color: C.dim }}>({n1(m.vulnerableEvacuated[c])}/{n1(tot)}・死亡{n1(m.vulnerableDead[c])})</span></span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── 判断ログ（司令官モード） ──
+function DecisionLog({ records, logs, isMobile }: { records: CommanderRecord[]; logs: DayLog[]; isMobile: boolean }) {
+  const byDay = new Map(records.map(r => [r.day, r]));
+  return (
+    <div>
+      <div style={styles.chartNote}>司令官モードで方針を選んで進めた日を一覧します。自動再生・一括実行で進めた日は「自動（バランス）」です。</div>
+      {logs.map(log => {
+        const rec = byDay.get(log.day);
+        const a = rec?.analysis;
+        const policyLabel = rec ? POLICY_LABELS[rec.policy].label : log.policy ? `${POLICY_LABELS[log.policy].label}（自動）` : '自動（バランス）';
+        return (
+          <div key={log.day} style={{ ...styles.decisionRow, gridTemplateColumns: isMobile ? '64px 1fr' : '72px 120px 1fr' }}>
+            <span style={styles.decisionDay}>{log.dayLabel}</span>
+            <span style={{ ...styles.decisionPolicy, color: rec ? C.amber : C.dim }}>{policyLabel}</span>
+            <span style={{ ...styles.decisionBody, gridColumn: isMobile ? '1 / -1' : undefined }}>
+              {a ? (
+                <>
+                  <span>避難{n1(a.evacuatedToday)}・死亡{n1(a.deadToday)}・残{n1(a.remaining)}コマ</span>
+                  <span style={styles.decisionBn}>
+                    {a.bottlenecks.map(b => (
+                      <span key={b} style={{ ...styles.decisionBadge, borderColor: b === 'none' ? C.green : C.red, color: b === 'none' ? C.green : '#ff8d8d' }}>{BOTTLENECK_LABELS[b]}</span>
+                    ))}
+                  </span>
+                  {a.alternatives.length > 0 && (
+                    <span style={{ color: C.dim }}>
+                      同じダイスなら: {a.alternatives.map(alt => `${alt.label} ${alt.deltaEvacuated >= 0 ? '+' : ''}${n1(alt.deltaEvacuated)}`).join('／')}
+                    </span>
+                  )}
+                </>
+              ) : (
+                <span style={{ color: C.dim }}>避難{log.evacuations.reduce((s, e) => s + e.count, 0)}コマ（累計{log.totalEvacuatedSoFar}）</span>
+              )}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function AnaRow({ k, v }: { k: string; v: string }) {
   return (
     <div style={styles.anaRow}>
@@ -565,6 +738,24 @@ const styles: Record<string, React.CSSProperties> = {
   logoYear: { fontFamily: FONT.mono, fontSize: 13, fontWeight: 700, color: C.bgDeep, background: C.green, padding: '2px 7px', borderRadius: 3 },
   title: { fontSize: 24, fontWeight: 700, color: C.white, margin: '6px 0', fontFamily: FONT.jp },
   subtitle: { color: C.dim, fontSize: 13, fontFamily: FONT.mono },
+  headline: { color: C.white, fontSize: 17, fontWeight: 700, margin: '4px 0 2px', lineHeight: 1.5 },
+  headlineSub: { color: C.body, fontSize: 13, margin: '0 0 6px' },
+  whoSummary: { fontSize: 12.5, color: C.body, lineHeight: 1.7, marginBottom: 10, background: 'rgba(255,179,0,0.06)', border: `1px solid ${C.border}`, borderRadius: 4, padding: '8px 12px' },
+  whoHead: { display: 'grid', gap: 10, fontSize: 10, color: C.dim, fontFamily: FONT.mono, letterSpacing: 0.5, borderBottom: `1px solid ${C.border}`, padding: '2px 0 4px' },
+  whoRow: { display: 'grid', gap: 10, fontSize: 12.5, padding: '6px 0', borderBottom: `1px solid ${C.border}`, alignItems: 'start' },
+  whoNum: { fontFamily: FONT.mono, fontWeight: 800, textAlign: 'right' },
+  whoCause: { color: C.body, fontSize: 11.5, lineHeight: 1.5 },
+  catRow: { display: 'flex', alignItems: 'center', gap: 10, padding: '4px 0', fontSize: 12 },
+  catLabel: { minWidth: 64, color: C.bright, fontWeight: 700 },
+  catBarOuter: { flex: 1, height: 10, background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 5, overflow: 'hidden' },
+  catBarInner: { height: '100%', borderRadius: 5, transition: 'width 0.6s ease' },
+  catVal: { minWidth: 120, fontFamily: FONT.mono, fontSize: 11, color: C.bright, textAlign: 'right' },
+  decisionRow: { display: 'grid', gap: 10, padding: '7px 0', borderBottom: `1px solid ${C.border}`, fontSize: 12, alignItems: 'start' },
+  decisionDay: { fontFamily: FONT.mono, color: C.amber, fontWeight: 700 },
+  decisionPolicy: { fontWeight: 700 },
+  decisionBody: { display: 'flex', flexDirection: 'column', gap: 3, color: C.body, lineHeight: 1.5 },
+  decisionBn: { display: 'flex', flexWrap: 'wrap', gap: 4 },
+  decisionBadge: { fontSize: 10, border: '1px solid', borderRadius: 3, padding: '1px 6px', fontWeight: 700 },
   subHi: { color: C.bright },
 
   scoreCard: { position: 'relative', background: `linear-gradient(180deg, ${C.bgPanel}, ${C.bgDeep})`, borderWidth: 1, borderStyle: 'solid', borderRadius: 4, padding: 24 },
