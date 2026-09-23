@@ -3,6 +3,7 @@ import type { GameState, SetupConfig, AreaId, EvacPolicy } from './types';
 import { createInitialState, prepareDayPhase1, executeDayPhase2, autoSelectOrders, activeHandPenalty, eventPhase } from './gameEngine';
 import { runDay, analyzeDay } from './commander';
 import { CommanderPanel, CommanderKpiBar } from './components/CommanderPanel';
+import { COMMANDER_ENABLED } from './features';
 import type { CommanderRecord } from './components/CommanderPanel';
 import { SetupScreen } from './components/SetupScreen';
 import { DayLogPanel } from './components/DayLogPanel';
@@ -226,13 +227,13 @@ export default function App() {
         </div>
       </div>
 
-      {/* 司令官KPIバー（司令官モードOFFでも表示） */}
-      <CommanderKpiBar
+      {/* 司令官KPIバー（追加費用オプション: COMMANDER_ENABLED のときのみ） */}
+      {COMMANDER_ENABLED && <CommanderKpiBar
         state={gameState}
         lastCapacities={commanderRecords.length > 0 && commanderRecords[commanderRecords.length - 1].day === gameState.day - 1
           ? commanderRecords[commanderRecords.length - 1].capacities : null}
         isMobile={isMobile}
-      />
+      />}
 
       {/* メインコンテンツ */}
       <div style={{
@@ -256,7 +257,7 @@ export default function App() {
             dayLogs={gameState.dayLogs}
           />
 
-          {commanderMode && (
+          {COMMANDER_ENABLED && commanderMode && (
             <CommanderPanel
               state={gameState}
               isMobile={isMobile}
@@ -270,7 +271,7 @@ export default function App() {
           )}
 
           <div style={styles.controlPanel}>
-            <button
+            {COMMANDER_ENABLED && <button
               className="tac-ghost"
               style={{
                 ...styles.autoPlayBtn,
@@ -281,7 +282,7 @@ export default function App() {
               onClick={() => setCommanderMode(m => !m)}
             >
               {commanderMode ? '🎖 司令官モード ON（クリックでOFF）' : '🎖 司令官モード（方針を自分で決める）'}
-            </button>
+            </button>}
             {isComplete ? (
               <button className="tac-cta" style={styles.fullAutoBtn} onClick={() => setScreen('result')}>
                 ✅ シミュレーション完了 → 結果を見る

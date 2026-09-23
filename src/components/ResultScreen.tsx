@@ -1,3 +1,4 @@
+import { COMMANDER_ENABLED } from '../features';
 import React, { useState } from 'react';
 import type { GameState, DayLog } from '../types';
 import type { AreaId } from '../types';
@@ -117,6 +118,7 @@ function Corners({ color = C.borderHi }: { color?: string }) {
 }
 
 export function ResultScreen({ state, onRestart, commanderRecords = [] }: Props) {
+  const commanderUi = COMMANDER_ENABLED;
   const { evacuated, dead, areas, dayLogs, prepLevel, shelterLevel, month } = state;
   const isMobile = useWindowWidth() < 768;
   const metrics = computeMetrics(state);
@@ -254,10 +256,12 @@ export function ResultScreen({ state, onRestart, commanderRecords = [] }: Props)
             <span style={styles.logoYear}>2026</span>
           </div>
           <h1 style={styles.title}>シミュレーション結果</h1>
+          {commanderUi && (<>
           <p style={styles.headline}>
             あなたの避難計画では <b style={{ color: rating.color }}>{evacuationRate.toFixed(1)}%</b> が安全圏へ到達しました。
           </p>
           <p style={styles.headlineSub}>残った <b style={{ color: C.amber }}>{(100 - evacuationRate).toFixed(1)}%</b> は誰か、なぜ逃げられなかったのか ↓</p>
+          </>)}
           <p style={styles.subtitle}>
             事前準備 <b style={styles.subHi}>Lv.{prepLevel}</b> ／ 抗堪性 <b style={styles.subHi}>Lv.{shelterLevel}</b> ／ <b style={styles.subHi}>{month}月</b> 発生
           </p>
@@ -373,6 +377,8 @@ export function ResultScreen({ state, onRestart, commanderRecords = [] }: Props)
           />
         </Card>
 
+        {/* 以下3カードは追加費用オプション（AI災害司令官）。COMMANDER_ENABLED のときのみ表示 */}
+        {commanderUi && (<>
         {/* 残った○％は誰か・なぜか（カテゴリ×原因） */}
         <Card title={`残った ${(100 - evacuationRate).toFixed(1)}% は誰か、なぜ逃げられなかったのか`} en="WHO WAS LEFT / WHY" accent={C.amber}>
           <WhoWasLeft state={state} strandedRows={strandedAnalysis.rows} deathRows={deathAnalysis.rows} isMobile={isMobile} />
@@ -382,9 +388,10 @@ export function ResultScreen({ state, onRestart, commanderRecords = [] }: Props)
         <Card title="要支援者指標" en="VULNERABLE METRICS" accent={C.violet}>
           <VulnerableMetrics m={metrics} isMobile={isMobile} />
         </Card>
+        </>)}
 
         {/* 判断ログ（司令官モードで進めた日） */}
-        {commanderRecords.length > 0 && (
+        {commanderUi && commanderRecords.length > 0 && (
           <Card title="判断ログ ― 司令官モードでの日別の方針と分析" en="DECISION LOG" accent={C.amber}>
             <DecisionLog records={commanderRecords} logs={dayLogs} isMobile={isMobile} />
           </Card>
