@@ -75,6 +75,15 @@ export interface MilitaryState {
 // 海路: ishigakiPort / hiraraPort(平良) / kubura(久部良)
 export type AirRouteKey = 'shinIshigaki' | 'miyako' | 'shimoji' | 'yonaguni' | 'hateruma';
 export type ShipRouteKey = 'ishigakiPort' | 'hiraraPort' | 'kubura';
+// 竹富町 離島港（→石垣港フェリーの発港）。容量は constants.TAKETOMI_PORT_CAPACITY。funauki(船浮→白浜)は島内移動で石垣便合計に含めない
+export type TaketomiPortKey = 'ohara' | 'uehara' | 'kohama' | 'taketomi' | 'kuroshima' | 'hateruma' | 'hatoma' | 'funauki';
+
+// マニュアル(2026.9) B/C表 不時着: 当該空港の輸送能力を翌日24時まで −25%。同じ空港に他国機も不時着中なら合計 −50%。
+export interface AirportLanding {
+  air: AirRouteKey;
+  country: 'china' | 'taiwan';
+  untilDay: number; // この日の24時まで有効（発生日+1）
+}
 
 export interface TransportState {
   coastGuardToday: number;
@@ -89,13 +98,15 @@ export interface TransportState {
   // 路線別の恒久停止（撃墜/撃沈/運航拒否/施設破壊で当該路線のみ以後使用不可）
   disabledAirRoutes: Partial<Record<AirRouteKey, boolean>>;
   disabledShipRoutes: Partial<Record<ShipRouteKey, boolean>>;
+  // 竹富町離島港（大原/上原）発の民間船舶便 恒久停止（B表 船舶便攻撃）。その港の容量を石垣便合計から恒久的に除く。旧stateでは undefined
+  disabledTaketomiPorts?: Partial<Record<TaketomiPortKey, boolean>>;
 }
 
 // 臨時増援交渉の対象手段（海保は対象外）
 export type ReinforcementMeans = 'jgsdf' | 'jmsdf' | 'jasdf';
 
-// 手数ペナルティ: 不時着（ver4.0 6.3.6）は軍機の国（同国は何機でも−1、異国で−2）、
-// 'negotiation' は臨時増援交渉（4.9）で消費した1手（1件=−1）。untilDay=その日の24時まで有効。
+// 手数ペナルティ: 'negotiation' は臨時増援交渉（4.9）で消費した1手（1件=−1）。untilDay=その日の24時まで有効。
+// 'china'/'taiwan' は旧仕様（不時着=エリア手数−1）の互換値。マニュアル(2026.9)以降の不時着は GameState.airportLandings で空港別容量倍率にする。
 export interface HandPenalty {
   country: 'china' | 'taiwan' | 'negotiation';
   untilDay: number;
@@ -255,6 +266,8 @@ export interface GameState {
   reinforcement: Record<ReinforcementMeans, { day: number; roll: number; success: boolean } | null>;
   // ver4.0 6.3.6: 中国/台湾軍機 不時着による一時手数ペナルティ（当日と翌日24時まで有効。国別に最大1、合計最大2）
   handPenalty: Record<AreaId, HandPenalty[]>;
+  // マニュアル(2026.9) 不時着: 空港別×国別の有効期限（翌日24時まで）。空港の輸送能力 −25%/国（最大 −50%）。旧stateでは undefined
+  airportLandings?: AirportLanding[];
   // ver4.0 6.4.2/3: 上陸・ヘリボーン成立で当該エリアは「占領」状態（残存コマ全滅・以後の攻撃/避難注文は無効）
   occupied: Record<AreaId, boolean>;
   // ver4.0 4.12: PAC3 撤収・再配備（片方ハブの避難完了後、もう一方へ全数移動）。一度だけ。
@@ -296,5 +309,6 @@ export interface DayPhase1Result {
   // イベント攻撃(市街0.5/撃沈1/上陸=エリア全滅/施設破壊死傷0.5)＋地震死者による死者コマ数（当日の死者総数に加算する）
   eventDead: number;
   // ver4.0 6.1 A表「住民の避難拒否」: 当日そのエリア発の避難注文を無効にする（他エリアの通過＝ハブ待機コマの搬出は可）
+  // マニュアル(2026.9)では避難拒否は孤島集落のみ（集落人口シェアで当該エリア容量を減らす近似）のため通常は空配列。互換のため残置
   evacRefusedToday: AreaId[];
 }

@@ -413,8 +413,9 @@ export function analyzeDay(
         '占領エリアは避難不可。残るエリアへ輸送資源を集中させる案を検討する',
         'PAC3 撤収・再配備の条件（片方ハブの避難完了）を確認する');
     }
-    if (evStr.includes('避難拒否')) {
-      push('refusal', '住民の避難拒否（当日限り）で当該エリア発の注文が無効になった。ハブ待機コマの搬出は継続。',
+    // マニュアル(2026.9): 避難拒否は孤島集落に当たった時のみ効力（集落シェアで当該エリア容量を減らす近似）。「影響なし」ログでは検知しない
+    if (evStr.includes('からの避難は同日24時まで不可')) {
+      push('refusal', '孤島集落の住民の避難拒否（当日限り）で当該エリアの容量が集落シェアぶん減った。他集落・ハブ待機コマの搬出は継続。',
         '避難拒否は当日限り。翌日の注文で当該エリアを優先する案を検討する');
     }
     const lowHands = AREA_IDS.filter(id => areaRemaining(after, id) > 0 && handsByFatigue(id, after.areas[id].fatigue) <= 1);

@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import type { GameState, SetupConfig, AreaId, EvacPolicy } from './types';
-import { createInitialState, prepareDayPhase1, executeDayPhase2, autoSelectOrders, activeHandPenalty, eventPhase } from './gameEngine';
+import { createInitialState, prepareDayPhase1, executeDayPhase2, autoSelectOrders, activeHandPenalty, airportLandingFactor, eventPhase } from './gameEngine';
 import { runDay, analyzeDay } from './commander';
 import { CommanderPanel, CommanderKpiBar } from './components/CommanderPanel';
 import { COMMANDER_ENABLED } from './features';
@@ -375,6 +375,13 @@ export default function App() {
                 return n > 0 ? `${AREA_JP[id] ?? id}−${n}` : null;
               })
               .filter((x): x is string => x !== null);
+            // 不時着中の空港（マニュアル2026.9: 空港別 −25%/国・最大−50%・翌日24時まで）
+            const airportLandingsJp = (['yonaguni', 'shinIshigaki', 'miyako', 'shimoji', 'hateruma'] as const)
+              .map(air => {
+                const f = airportLandingFactor(gameState, air);
+                return f < 1 ? `${AIR_JP[air] ?? air}−${Math.round((1 - f) * 100)}%` : null;
+              })
+              .filter((x): x is string => x !== null);
             return (
               <div style={styles.statusCard}>
                 <div style={styles.statusRow}>
@@ -397,8 +404,14 @@ export default function App() {
                 </div>
                 {landingPenalties.length > 0 && (
                   <div style={styles.statusRow}>
-                    <span style={styles.statusLabel}>🛬 手数ペナルティ(不時着/交渉)</span>
+                    <span style={styles.statusLabel}>🤝 手数ペナルティ(交渉)</span>
                     <span style={{ ...styles.statusValue, color: C.amber }}>{landingPenalties.join('・')}</span>
+                  </div>
+                )}
+                {airportLandingsJp.length > 0 && (
+                  <div style={styles.statusRow}>
+                    <span style={styles.statusLabel}>🛬 不時着中(輸送能力)</span>
+                    <span style={{ ...styles.statusValue, color: C.amber }}>{airportLandingsJp.join('・')}</span>
                   </div>
                 )}
               </div>

@@ -1,6 +1,6 @@
 // OKIRES2026 ゲーム定数
 
-import type { AreaId, WeatherCondition } from './types';
+import type { AreaId, WeatherCondition, TaketomiPortKey } from './types';
 
 // ===== 天候トラック =====
 // 月別の天候トラック (1-indexed)
@@ -194,8 +194,45 @@ export function handsByFatigue(area: AreaId, fatigue: number): number {
 }
 
 // ===== 島間フェリー容量 =====
-// 竹富町各島→石垣 (1日最大)
-export const TAKETOMI_TO_ISHIGAKI_FERRY_MAX = 11; // コマ数/日 (全便フル運行時)
+// 竹富町 離島港ごとの→石垣港フェリー容量（コマ/日）。マニュアル(2026.9): 竹富町→石垣 計11コマ/日 を港別に分解。
+// 機雷/閉鎖（同日24時まで）や船舶便攻撃（恒久停止）でその港の分を当日/以後の合計から除く。
+// funauki(船浮→白浜)は西表島内の移動（0.5）で石垣便合計には含めない。
+export const TAKETOMI_PORT_CAPACITY: Record<TaketomiPortKey, number> = {
+  ohara: 2, uehara: 2, kohama: 2, taketomi: 2, kuroshima: 1, hateruma: 1, hatoma: 1, funauki: 0.5,
+};
+export const TAKETOMI_PORT_JP: Record<TaketomiPortKey, string> = {
+  ohara: '大原港', uehara: '上原港', kohama: '小浜港', taketomi: '竹富港', kuroshima: '黒島港', hateruma: '波照間港', hatoma: '鳩間港', funauki: '船浮港',
+};
+// 竹富町各島→石垣 (1日最大) = 石垣便を出す港（船浮以外）の合計 = 11
+export const TAKETOMI_TO_ISHIGAKI_FERRY_MAX = (Object.keys(TAKETOMI_PORT_CAPACITY) as TaketomiPortKey[])
+  .filter(k => k !== 'funauki').reduce((s, k) => s + TAKETOMI_PORT_CAPACITY[k], 0); // = 11 コマ/日
+
+// ===== 孤島集落の人口シェア（マニュアル(2026.9) A表 集落・市街地表の近似）=====
+// エンジンはエリア単位のため、孤島集落（祖納/船浮/鳩間/波照間/黒島/小浜/竹富/塩川/来間/池間）に当たった時は
+// その集落の人口シェアぶんだけ当該エリアの当日容量を落として近似する:
+//   避難コスト×2 → 容量 × 1/(1+share×(2−1))  ／  避難拒否 → 容量 × (1−share)
+// 祖納=与那国の0.5。竹富町は 船浮1/鳩間1/波照間3/黒島2/小浜2/竹富2 (+西表/その他=6) の重み合計17。宮古は 塩川3/来間1/池間1 の重み合計97。
+export const SETTLEMENT_SHARE: Record<string, { area: AreaId; share: number }> = {
+  sonai: { area: 'yonaguni', share: 0.5 },
+  funauki: { area: 'taketomi', share: 1 / 17 },
+  hatoma: { area: 'taketomi', share: 1 / 17 },
+  hateruma: { area: 'taketomi', share: 3 / 17 },
+  kuroshima: { area: 'taketomi', share: 2 / 17 },
+  kohama: { area: 'taketomi', share: 2 / 17 },
+  taketomi: { area: 'taketomi', share: 2 / 17 },
+  shiokawa: { area: 'miyako', share: 3 / 97 },
+  kurima: { area: 'miyako', share: 1 / 97 },
+  ikema: { area: 'miyako', share: 1 / 97 },
+};
+export const SETTLEMENT_COST_FACTOR = 2; // 孤島集落からの避難コスト×2
+
+// ===== 宮古エリア内の離島 人口シェア（D表 ヘリボーンの「陸続き」近似）=====
+// 橋が破壊されていれば陸続きでないため占領を免れる。伊良部・下地は宮古島市人口の約9%（重み9/97）で近似。
+export const MIYAKO_ISLAND_SHARE = {
+  kurima: 1 / 97,       // 来間島（来間大橋）
+  ikema: 1 / 97,        // 池間島（池間大橋）
+  irabuShimoji: 9 / 97, // 伊良部島・下地島（伊良部大橋）
+} as const;
 
 // 与那国→石垣 フェリー
 export const YONAGUNI_TO_ISHIGAKI_FERRY = 0.5; // コマ/日
