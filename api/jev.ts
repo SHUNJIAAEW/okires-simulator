@@ -1,3 +1,4 @@
+/// <reference types="node" />
 // Vercel Serverless Function: AI災害司令官の採点・重点領域を Jev（typesafe.ai）に問い合わせる窓口。
 // ブラウザへ API キーを露出させないため、サーバ側で TYPESAFE_API_KEY を使う。キー未設定なら 501 を返し、
 // フロント（src/advisor.ts）はルールベースへフォールバックする。
