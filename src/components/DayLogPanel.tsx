@@ -131,7 +131,7 @@ export function DayLogPanel({ logs }: Props) {
                       </div>
                       {snap.total > 0 && (
                         <div style={styles.snapBreakdown}>
-                          住{snap.residents}・観{snap.tourists}・要{snap.vulnerable}{snap.staging > 0 ? `・待${snap.staging}` : ''}
+                          住{snap.residents}・観{snap.tourists}・要{snap.vulnerable}{snap.staging > 0 ? `・待${snap.staging}` : ''}{(snap.isolated ?? 0) > 0 ? `・孤立${snap.isolated}` : ''}
                         </div>
                       )}
                       <div style={styles.snapFatigue}>疲労{snap.fatigue >= 0 ? '+' : ''}{snap.fatigue.toFixed(1)}</div>

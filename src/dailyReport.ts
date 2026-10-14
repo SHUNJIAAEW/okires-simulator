@@ -1,5 +1,7 @@
 // 毎日の詳細な行動記録をまとめてPDF保存（印刷用の独立ウィンドウを開く）
 import type { GameState, AreaId, DayLog } from './types';
+import { FACILITY_COLUMNS } from './facilities';
+import { ISLAND_COLUMNS } from './islands';
 
 const AREA_JP: Record<AreaId, string> = {
   yonaguni: '与那国島', taketomi: '竹富町全島', ishigaki: '石垣島', miyako: '宮古島・多良間',
@@ -31,10 +33,10 @@ function dayBlock(log: DayLog, prevEvac: number, prevDead: number): string {
       }).join('')}</div>`
     : '';
 
-  const snaps = `<table class="t"><tr><th>エリア</th><th>残</th><th>住</th><th>観</th><th>要</th><th>待</th><th>疲労</th></tr>${
+  const snaps = `<table class="t"><tr><th>エリア</th><th>残</th><th>住</th><th>観</th><th>要</th><th>待</th><th>孤立</th><th>疲労</th></tr>${
     (Object.keys(AREA_JP) as AreaId[]).map(id => {
       const s = log.areaSnapshots[id];
-      return `<tr><td>${AREA_JP[id]}</td><td class="r">${s.total}</td><td class="r">${s.residents}</td><td class="r">${s.tourists}</td><td class="r">${s.vulnerable}</td><td class="r">${s.staging}</td><td class="r">${s.fatigue >= 0 ? '+' : ''}${s.fatigue.toFixed(1)}</td></tr>`;
+      return `<tr><td>${AREA_JP[id]}</td><td class="r">${s.total}</td><td class="r">${s.residents}</td><td class="r">${s.tourists}</td><td class="r">${s.vulnerable}</td><td class="r">${s.staging}</td><td class="r">${s.isolated ?? 0}</td><td class="r">${s.fatigue >= 0 ? '+' : ''}${s.fatigue.toFixed(1)}</td></tr>`;
     }).join('')
   }</table>`;
 
@@ -53,13 +55,46 @@ function dayBlock(log: DayLog, prevEvac: number, prevDead: number): string {
   </section>`;
 }
 
+// (a) 主要インフラ状況表: 行=日、列=施設。セル=その日のマーク（💥 > ❌ > 🚫 > ⛈️/💨、午前/午後が異なれば併記。無事は ○）
+function facilityTable(dayLogs: DayLog[]): string {
+  const head = `<tr><th>日</th>${FACILITY_COLUMNS.map(f => `<th>${esc(f.name)}</th>`).join('')}</tr>`;
+  const rows = dayLogs.map(l => {
+    const st = l.facilityStatus;
+    return `<tr><td>${esc(l.dayLabel)}</td>${FACILITY_COLUMNS.map(f => {
+      const v = st ? (st[f.key] ?? '○') : '－';
+      return `<td class="c${v === '○' ? ' ok' : ''}">${esc(v)}</td>`;
+    }).join('')}</tr>`;
+  }).join('');
+  return `<section class="ov"><h2>主要インフラ状況（日別）</h2>
+    <table class="t ov"><thead>${head}</thead><tbody>${rows}</tbody></table>
+    <div class="note">○=使用可 ／ 💥=破壊・撃墜/撃沈・運航拒否で使用不能 ／ ❌=事前準備Lv不足で使用不可 ／ 🚫=当日限り使用不能（乱闘/サイバー/障害物散布/海上民兵等） ／ ⛈️=大雨 ／ 💨=強風（午前/午後で異なる場合は併記）</div>
+  </section>`;
+}
+
+// (b) 孤立島・集落 残存表: 行=日、列=島。セル=その日末の残存コマ数（0なら「0 ✅」）
+function islandTable(dayLogs: DayLog[]): string {
+  const head = `<tr><th>日</th>${ISLAND_COLUMNS.map(c => `<th>${esc(c.label)}</th>`).join('')}</tr>`;
+  const fmt = (n: number) => (n === 0 ? '0 ✅' : Number.isInteger(n) ? String(n) : n.toFixed(1));
+  const rows = dayLogs.map(l => {
+    const sn = l.islandSnapshot;
+    return `<tr><td>${esc(l.dayLabel)}</td>${ISLAND_COLUMNS.map(c => {
+      const v = sn ? (sn[c.key] ?? 0) : null;
+      return `<td class="r${v === 0 ? ' ok' : ''}">${v === null ? '－' : fmt(v)}</td>`;
+    }).join('')}</tr>`;
+  }).join('');
+  return `<section class="ov"><h2>孤立島・集落 残存コマ（日末）</h2>
+    <table class="t ov"><thead>${head}</thead><tbody>${rows}</tbody></table>
+    <div class="note">※鳩間・船浮以外は人口比による按分の参考値（エンジンはエリア単位で計算。鳩間・船浮は西表島への島内移送待ちコマの実数）</div>
+  </section>`;
+}
+
 export function exportDailyReportPdf(state: GameState): void {
   const { dayLogs, prepLevel, shelterLevel, month, evacuated, dead } = state;
   if (!dayLogs || dayLogs.length === 0) {
     alert('まだ行動記録がありません。シミュレーションを進めてから保存してください。');
     return;
   }
-  const totalRemaining = Object.values(state.areas).reduce((s, a) => s + a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0), 0);
+  const totalRemaining = Object.values(state.areas).reduce((s, a) => s + a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0) + (a.isolatedPending ?? 0), 0);
   const maxK = evacuated + dead + totalRemaining;
   const rate = maxK > 0 ? (evacuated / maxK * 100).toFixed(1) : '0';
 
@@ -102,6 +137,11 @@ export function exportDailyReportPdf(state: GameState): void {
     .d b { color:#64748b; }
     .d.hit { background:#fff3d6; border-color:#e0a800; }
     .d.space { background:#eef2f6; }
+    section.ov { border:1px solid #d4dde6; border-radius:6px; padding:8px 10px; margin-bottom:10px; break-inside:avoid; page-break-inside:avoid; }
+    table.t.ov th, table.t.ov td { text-align:center; white-space:nowrap; }
+    table.t.ov td.c { font-size:11px; }
+    table.t.ov td.ok { color:#0e7c66; }
+    .note { color:#475569; font-size:9.5px; margin-top:4px; }
     @media print { .noprint { display:none; } }
     .noprint { text-align:center; margin:10px 0 16px; }
     .noprint button { font-size:14px; padding:8px 18px; border:none; border-radius:6px; background:#1b6fa3; color:#fff; cursor:pointer; }
@@ -113,6 +153,8 @@ export function exportDailyReportPdf(state: GameState): void {
     </div>
     <div class="summary">最終結果：避難完了 ${evacuated}コマ ／ 取り残し ${totalRemaining}コマ ／ 死亡 ${dead}コマ ／ 避難完了率 ${rate}%</div>
     <div class="noprint"><button onclick="window.print()">🖨 PDFで保存 / 印刷</button></div>
+    ${facilityTable(dayLogs)}
+    ${islandTable(dayLogs)}
     ${body}
   </body></html>`;
 

@@ -80,7 +80,7 @@ function analyzeStranded(
   const anyAir = Object.values(transport.disabledAirRoutes ?? {}).some(Boolean) || transport.civilianAirDisabled;
   const anyShip = Object.values(transport.disabledShipRoutes ?? {}).some(Boolean) || transport.civilianShipDisabled;
   for (const [id, a] of Object.entries(areas)) {
-    const rem = a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0);
+    const rem = a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0) + (a.isolatedPending ?? 0);
     if (rem <= 0) continue;
     total += rem;
     let what = '輸送容量が人数に追いつかなかった';
@@ -124,7 +124,7 @@ export function ResultScreen({ state, onRestart, commanderRecords = [] }: Props)
   const metrics = computeMetrics(state);
 
   const totalRemaining = Object.values(areas).reduce((sum, a) =>
-    sum + a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0), 0
+    sum + a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0) + (a.isolatedPending ?? 0), 0
   );
   const maxEvacuated = evacuated + dead + totalRemaining;
   const evacuationRate = maxEvacuated > 0 ? (evacuated / maxEvacuated * 100) : 0;
@@ -411,7 +411,7 @@ export function ResultScreen({ state, onRestart, commanderRecords = [] }: Props)
         <Card title="エリア別残員状況" en="SECTOR STATUS" accent={C.blue}>
           <div style={{ ...styles.areaGrid, gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)' }}>
             {Object.entries(areas).map(([id, area]) => {
-              const remaining = area.residents + area.tourists + area.vulnerable + area.stagingPort + (area.stagingVulnerable ?? 0);
+              const remaining = area.residents + area.tourists + area.vulnerable + area.stagingPort + (area.stagingVulnerable ?? 0)  + (area.isolatedPending ?? 0);
               const done = remaining === 0;
               return (
                 <div key={id} style={{ ...styles.areaCard, borderColor: done ? C.green : C.amber, background: done ? 'rgba(0,255,136,0.06)' : 'rgba(255,179,0,0.06)' }}>
@@ -452,7 +452,7 @@ export function ResultScreen({ state, onRestart, commanderRecords = [] }: Props)
 
           {regionalInsights.map((region) => {
             const area = areas[region.id];
-            const remaining = area.residents + area.tourists + area.vulnerable + area.stagingPort + (area.stagingVulnerable ?? 0);
+            const remaining = area.residents + area.tourists + area.vulnerable + area.stagingPort + (area.stagingVulnerable ?? 0)  + (area.isolatedPending ?? 0);
             return (
               <div key={region.id} style={{ ...styles.regionBlock, borderLeft: `3px solid ${region.color}` }}>
                 <div style={styles.regionHeader}>
@@ -519,8 +519,8 @@ function WhoWasLeft({ state, strandedRows, deathRows, isMobile }: {
   state: GameState; strandedRows: CauseRow[]; deathRows: CauseRow[]; isMobile: boolean;
 }) {
   const { areas } = state;
-  const total = state.evacuated + state.dead + Object.values(areas).reduce((s, a) => s + a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0), 0);
-  const residents = Object.values(areas).reduce((s, a) => s + a.residents, 0);
+  const total = state.evacuated + state.dead + Object.values(areas).reduce((s, a) => s + a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0) + (a.isolatedPending ?? 0), 0);
+  const residents = Object.values(areas).reduce((s, a) => s + a.residents + (a.isolatedPending ?? 0), 0); // 鳩間・船浮の移送待ちも住民
   const tourists = Object.values(areas).reduce((s, a) => s + a.tourists, 0);
   const stagingWhite = Object.values(areas).reduce((s, a) => s + a.stagingPort, 0);
   const vulnHome = (c: (typeof VULNERABLE_CATEGORIES)[number]) => Object.values(areas).reduce((s, a) => s + (a.vulnerableBreakdown?.[c] ?? 0), 0);

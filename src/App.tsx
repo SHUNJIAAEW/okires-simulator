@@ -72,7 +72,7 @@ export default function App() {
         setCommanderRecords(prev => [...prev, { day: r.log.day, dayLabel: r.log.dayLabel, policy, analysis, capacities: r.capacities }]);
         setGameState(r.newState);
         const totalRemaining = Object.values(r.newState.areas).reduce(
-          (s, a) => s + a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0), 0
+          (s, a) => s + a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0) + (a.isolatedPending ?? 0), 0
         );
         if (r.newState.day > 8 || totalRemaining === 0) setIsComplete(true);
       } finally {
@@ -96,7 +96,7 @@ export default function App() {
         const { newState } = executeDayPhase2(state, phase1, orders);
         state = newState;
         const remaining = Object.values(state.areas).reduce(
-          (s, a) => s + a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0), 0
+          (s, a) => s + a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0) + (a.isolatedPending ?? 0), 0
         );
         if (state.day > 8 || remaining === 0) break;
       }
@@ -118,7 +118,7 @@ export default function App() {
         const { newState } = executeDayPhase2(gameState, phase1, orders);
         setGameState(newState);
         const totalRemaining = Object.values(newState.areas).reduce(
-          (s, a) => s + a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0), 0
+          (s, a) => s + a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0) + (a.isolatedPending ?? 0), 0
         );
         const done = newState.day > 8 || totalRemaining === 0;
         if (done) {
@@ -158,7 +158,7 @@ export default function App() {
   if (!gameState) return null;
 
   const totalRemaining = Object.values(gameState.areas).reduce(
-    (s, a) => s + a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0), 0
+    (s, a) => s + a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0) + (a.isolatedPending ?? 0), 0
   );
   const totalInitial = gameState.evacuated + gameState.dead + totalRemaining;
   const evacuationRate = totalInitial > 0 ? (gameState.evacuated / totalInitial * 100) : 0;
@@ -367,7 +367,7 @@ export default function App() {
               : anyToday
                 ? { t: `本日交渉: 陸自${mark(rein.jgsdf)}/海自${mark(rein.jmsdf)}/空自${mark(rein.jasdf)}`, c: C.amber }
                 : { t: '待機(残0の手段で1日1回交渉)', c: C.dim };
-            // 不時着ペナルティ（当日有効分）
+            // 増援交渉の手数ペナルティ（当日有効分。handPenalty には臨時増援交渉の1手消費のみ積まれる）
             const AREA_JP: Record<string, string> = { yonaguni: '与那国', taketomi: '竹富', ishigaki: '石垣', miyako: '宮古' };
             const landingPenalties = (Object.keys(gameState.handPenalty ?? {}) as AreaId[])
               .map(id => {

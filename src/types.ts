@@ -37,6 +37,11 @@ export interface AreaState {
   inTransitToHub: number;
   // 要支援者モデル（④）: 自宅エリアに残る要援護者(vulnerable)のカテゴリ内訳。合計 = vulnerable
   vulnerableBreakdown: VulnerableBreakdown;
+  // 孤立集落モデル: 鳩間島・船浮に残るコマ（竹富町のみ使用。他エリアは 0/undefined）。
+  // 西表島へ船で島内移送（鳩間港 1コマ/日・船浮港 0.5コマ/日）されるまで本土向けフェリーには乗れない。
+  // 人口保存則の対象（残存 = residents + tourists + vulnerable + staging + isolatedPending）。
+  isolatedPending?: number;
+  isolatedPendingBy?: { hatoma: number; funauki: number }; // 内訳（合計 = isolatedPending）
 }
 
 export interface InfraState {
@@ -217,6 +222,7 @@ export interface DayLog {
     tourists: number;
     vulnerable: number;
     staging: number;
+    isolated?: number;  // 鳩間・船浮の島内移送待ちコマ（total に含む。旧stateでは undefined）
     fatigue: number;
   }>;
   hourlyRolls: HourlyRoll[];  // 24時間別ダイス
@@ -226,6 +232,11 @@ export interface DayLog {
   vulnerableDiedToday: VulnerableBreakdown; // その日に死亡した要援護者（カテゴリ別・自宅/ハブ待機を含む）
   stagingVulnerableByHub: Record<AreaId, number>; // 日末時点のハブ待機要援護者（最大待機日数の算出用）
   policy?: EvacPolicy;                 // 自動注文に使った方針（手動注文の日は undefined）
+  // ===== 日報PDF 一覧表用（日末に記録。旧stateでは undefined）=====
+  // 主要インフラ状況: 施設キー(facilities.ts FACILITY_COLUMNS の key) → マーク文字列（'○' / 💥 / ❌ / 🚫 / ⛈️ / 💨 / '午前⛈️/午後○' 等）
+  facilityStatus?: Record<string, string>;
+  // 孤立島・集落の残存コマ（islands.ts ISLAND_COLUMNS の key → コマ数）。鳩間・船浮は実数、他は人口比按分の参考値
+  islandSnapshot?: Record<string, number>;
 }
 
 export interface GameState {
@@ -311,4 +322,8 @@ export interface DayPhase1Result {
   // ver4.0 6.1 A表「住民の避難拒否」: 当日そのエリア発の避難注文を無効にする（他エリアの通過＝ハブ待機コマの搬出は可）
   // マニュアル(2026.9)では避難拒否は孤島集落のみ（集落人口シェアで当該エリア容量を減らす近似）のため通常は空配列。互換のため残置
   evacRefusedToday: AreaId[];
+  // 竹富町離島港の当日倍率（機雷/ボイコット=0、インフラ表=×1/1.5 等）。鳩間→西表・船浮→西表の島内移送容量に適用
+  taketomiPortMultiplier?: Record<TaketomiPortKey, number>;
+  // 午前(1時)の天候で使えない施設（weatherClosed と同形式）。日報の主要インフラ状況表で午前/午後を分けて表示する
+  weatherClosedAm?: string[];
 }

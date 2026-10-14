@@ -72,7 +72,7 @@ const AREA_IDS: AreaId[] = ['yonaguni', 'taketomi', 'ishigaki', 'miyako'];
 
 export function areaRemaining(state: GameState, id: AreaId): number {
   const a = state.areas[id];
-  return a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0);
+  return a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0) + (a.isolatedPending ?? 0);
 }
 export function totalRemaining(state: GameState): number {
   return AREA_IDS.reduce((s, id) => s + areaRemaining(state, id), 0);

@@ -2,8 +2,10 @@
 // 各島・港・空港の名前入り。自動再生中はコマが島→ハブ→本土へ移動し、本土に蓄積して消えない。
 
 import React, { useMemo } from 'react';
-import type { AreaId, AreaState, InfraState, DayLog, TransportState } from '../types';
+import type { AreaId, AreaState, InfraState, DayLog, TransportState, AirRouteKey, ShipRouteKey } from '../types';
 import { FONT } from '../theme';
+import { SUB_ISLANDS, apportionArea } from '../islands';
+import { facilityMark as facilityMarkShared, type FacilityDef } from '../facilities';
 
 interface Props {
   areas: Record<AreaId, AreaState>;
@@ -67,7 +69,7 @@ const ISLAND_LABELS: { x: number; y: number; name: string; big?: boolean }[] = [
 ];
 
 // ── 施設（空港🟡 / 海港🔵）＋名前 ──
-type Fac = { x: number; y: number; kind: 'air' | 'sea'; name: string; air?: string; ship?: string; infra?: keyof InfraState };
+type Fac = { x: number; y: number; kind: 'air' | 'sea'; name: string; air?: AirRouteKey; ship?: ShipRouteKey; infra?: keyof InfraState };
 // 施設はコマ配置領域(SUB_ISLANDS blob)に名前が被らないよう、島の縁〜海側に配置する
 const FACILITIES: Fac[] = [
   { x: 48, y: 89, kind: 'air', name: '与那国空港', air: 'yonaguni', infra: 'yonagunAirport' },
@@ -119,56 +121,12 @@ const MAINLAND_DEST: Record<AreaId, { x: number; y: number }> = {
 interface Tok { id: string; x0: number; y0: number; x1: number; y1: number; kind: 'r' | 'v'; delay: number; last: boolean }
 const TCOLOR = { r: '#2f80ed', v: '#eb5757' } as const;
 
-// エリア内の個別島ごとのコマ配置領域＋按分ウェイト（svg座標・楕円範囲）
-// 比率は SimulationMap のボード盤（以前共有した公式マップ）由来:
-//  竹富町＝西表6/竹富2/波照間3/黒島2/小浜2(計15)、宮古は人口比で多良間・伊良部等にも配置
-type SubBlob = { cx: number; cy: number; rx: number; ry: number };
-// tourist: 観光客の配置ウェイト（ver4.0: 西表1・竹富1・石垣5・宮古島5 のみ。波照間・与那国・その他小島には置かない）
-const SUB_ISLANDS: Record<AreaId, { blob: SubBlob; weight: number; tourist?: number }[]> = {
-  yonaguni: [
-    { blob: { cx: 36, cy: 104, rx: 14, ry: 8 }, weight: 1 }, // 与那国島（ラベル上・港左を避け島中央下に）観光客なし
-  ],
-  taketomi: [
-    { blob: { cx: 86, cy: 131, rx: 18, ry: 10 }, weight: 6, tourist: 1 }, // 西表島（観光最大1）
-    { blob: { cx: 124, cy: 124, rx: 4, ry: 3 }, weight: 2, tourist: 1 },  // 竹富島（観光最大1）
-    { blob: { cx: 100, cy: 159, rx: 5, ry: 4 }, weight: 3 },  // 波照間島
-    { blob: { cx: 134, cy: 144, rx: 5, ry: 4 }, weight: 2 },  // 黒島
-    { blob: { cx: 114, cy: 106, rx: 4, ry: 3 }, weight: 2 },  // 小浜島
-    { blob: { cx: 79, cy: 102, rx: 4, ry: 3 }, weight: 1 },   // 鳩間島
-    { blob: { cx: 65, cy: 128, rx: 3, ry: 2.5 }, weight: 1 },  // 船浮（西表島西部。陸路なし＝鳩間島同様に船舶輸送が必要）
-  ],
-  ishigaki: [
-    { blob: { cx: 154, cy: 92, rx: 23, ry: 14 }, weight: 1, tourist: 1 }, // 石垣島（観光最大5。港・空港アイコンを縁に残すため内側に）
-  ],
-  miyako: [
-    { blob: { cx: 246, cy: 95, rx: 18, ry: 11 }, weight: 85, tourist: 1 }, // 宮古島（観光最大5。同上）
-    { blob: { cx: 216, cy: 94, rx: 6, ry: 4 }, weight: 6 },    // 伊良部島
-    { blob: { cx: 203, cy: 96, rx: 4, ry: 3 }, weight: 1 },    // 下地島
-    { blob: { cx: 200, cy: 151, rx: 7, ry: 4 }, weight: 3 },   // 多良間島
-    { blob: { cx: 240, cy: 65, rx: 4, ry: 3 }, weight: 1 },    // 池間島
-    { blob: { cx: 236, cy: 119, rx: 4, ry: 3 }, weight: 1 },   // 来間島
-  ],
-};
-
-// 整数 total を weights で按分（最大剰余法）。総数を保ったまま各島へ配分する。
-function apportion(total: number, weights: number[]): number[] {
-  // 負の weight は 0 に丸めて防御（負の配分を返さない）
-  const w = weights.map(x => Math.max(0, x));
-  const sum = w.reduce((a, b) => a + b, 0);
-  if (sum <= 0 || total <= 0) return w.map(() => 0);
-  const raw = w.map(x => (total * x) / sum);
-  const base = raw.map(Math.floor);
-  let rem = total - base.reduce((a, b) => a + b, 0);
-  const order = raw
-    .map((r, i) => ({ i, frac: r - Math.floor(r) }))
-    .sort((a, b) => b.frac - a.frac);
-  for (let k = 0; rem > 0 && order.length > 0; k++, rem--) base[order[k % order.length].i]++;
-  return base;
-}
+// 島別のコマ配置領域・按分ウェイト・按分ロジックは src/islands.ts（日報PDFの島別残存表と共通）
 
 // コマ種別の色（白マスに乗るコマ）
 const KOMA_COLOR: Record<string, string> = {
   r: '#2f80ed', // 住民
+  h: '#2f80ed', // 住民 半コマ（孤立集落の 0.5コマ端数。小さく描く）
   t: '#e0a800', // 観光客
   v: '#eb5757', // 要援護者
   s: '#1b8a4b', // 待機
@@ -192,7 +150,7 @@ function PersonIcon({ color }: { color: string }) {
 }
 
 // 島の中に白マスを格子配置し、現在のコマを種別色で乗せる
-function buildCells(area: AreaState, blob: { cx: number; cy: number; rx: number; ry: number }): Cell[] {
+function buildCells(area: AreaState, blob: { cx: number; cy: number; rx: number; ry: number }, halfKoma = 0): Cell[] {
   // 小数（死亡0.5コマ等）や負値で Array() が落ちないよう整数化
   const ci = (x: number) => Math.max(0, Math.round(x));
   const kinds: string[] = [
@@ -200,6 +158,7 @@ function buildCells(area: AreaState, blob: { cx: number; cy: number; rx: number;
     ...Array(ci(area.tourists)).fill('t'),
     ...Array(ci(area.vulnerable)).fill('v'),
     ...Array(ci(area.stagingPort + (area.stagingVulnerable ?? 0))).fill('s'),
+    ...Array(ci(halfKoma)).fill('h'),
   ];
   const n = kinds.length;
   if (n === 0) return [];
@@ -222,33 +181,26 @@ function buildCells(area: AreaState, blob: { cx: number; cy: number; rx: number;
     cells.push({
       x: blob.cx + (col - (cols - 1) / 2) * stepX + jx,
       y: blob.cy + (row - (rows - 1) / 2) * stepY + jy,
-      size, kind: kinds[i],
+      size: kinds[i] === 'h' ? size * 0.7 : size, kind: kinds[i],
     });
   }
   return cells;
 }
 
 function totalKoma(a: AreaState): number {
-  return a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0);
+  return a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0) + (a.isolatedPending ?? 0);
 }
 
 export function IllustratedMap({ areas, infra, transport, closedToday = [], weatherClosed = [], prepLevel = 6, evacuated = 0, dead = 0, dayLogs }: Props) {
-  // 施設の使用可否マーク: 💥=恒久使用不能（破壊/撃墜・撃沈/運航拒否） / 🚫=当日限り使用不能（乱闘/サイバー/障害物散布/海上民兵等）
-  // 優先順位: 💥 > ❌ > ⛈️/💨 > 🚫
+  // 施設の使用可否マーク（facilities.ts と共通。日報PDFの主要インフラ状況表と同じ判定）:
+  // 💥=恒久使用不能（破壊/撃墜・撃沈/運航拒否） > ❌=Lv不足 > 🚫=当日限り使用不能 > ⛈️/💨=悪天候
   const facilityMark = (f: Fac): '💥' | '🚫' | '❌' | '⛈️' | '💨' | null => {
-    const destroyed = !!(f.infra && infra && infra[f.infra] === false);
-    const routeDown = !!((f.air && transport?.disabledAirRoutes?.[f.air as keyof TransportState['disabledAirRoutes']])
-      || (f.ship && transport?.disabledShipRoutes?.[f.ship as keyof TransportState['disabledShipRoutes']]));
-    if (destroyed || routeDown) return '💥';
-    if (f.air === 'hateruma' && prepLevel < 4) return '❌'; // 事前準備Lv不足で使用不可（破壊ではない）
-    // 悪天候（大雨=全空港・全海港 / 強風=風向次第で空港、海港は全停止）
-    const wxKey = f.kind === 'sea' ? 'sea' : (f.air ?? (f.name === '多良間空港' ? 'tarama' : undefined));
-    if (wxKey) {
-      if (weatherClosed.includes(`${wxKey}:rain`)) return '⛈️';
-      if (weatherClosed.includes(`${wxKey}:wind`)) return '💨';
-    }
-    if ((f.air && closedToday.includes(f.air)) || (f.ship && closedToday.includes(`ship:${f.ship}`))) return '🚫';
-    return null;
+    const def: FacilityDef = {
+      key: f.name, name: f.name, kind: f.kind, air: f.air, ship: f.ship, infra: f.infra,
+      wxKey: f.kind === 'sea' ? 'sea' : (f.air ?? (f.name === '多良間空港' ? 'tarama' : undefined)),
+      minPrepLevel: f.air === 'hateruma' ? 4 : undefined,
+    };
+    return facilityMarkShared(def, { infra, transport, closedToday, weatherClosed, prepLevel });
   };
   // 全日程の避難実績からトークンを生成。本土到着分は蓄積（消えない）。最新日のみアニメ、過去日は到達点で静止。
   // 中継ハブ（石垣/宮古）到着は「その日だけ」表示する：到着後は島上の緑（待機）コマとして既に描画されるため、
@@ -288,37 +240,20 @@ export function IllustratedMap({ areas, infra, transport, closedToday = [], weat
     return out;
   }, [dayLogs]);
 
-  // 各島の白マス（現在のコマ配置）
+  // 各島の白マス（現在のコマ配置）。按分は islands.ts の apportionArea（鳩間・船浮は isolatedPendingBy の実数、他は人口比按分）
   const cellsByArea = useMemo(() => {
-    const ci = (x: number) => Math.max(0, Math.round(x));
     const out: { id: string; cells: Cell[] }[] = [];
     (Object.keys(SUB_ISLANDS) as AreaId[]).forEach(id => {
       const a = areas[id];
       const subs = SUB_ISLANDS[id];
-      const w = subs.map(s => s.weight);
-      // 観光客は tourist ウェイトのある島（西表/竹富/石垣/宮古島）にのみ配置（ver4.0。波照間等には置かない）
-      const tw = subs.map(s => s.tourist ?? 0);
-      const res = apportion(ci(a.residents), w);
-      const tou = apportion(ci(a.tourists), tw.some(x => x > 0) ? tw : w);
-      const vul = apportion(ci(a.vulnerable), w);
-      const stg = apportion(ci(a.stagingPort + (a.stagingVulnerable ?? 0)), w);
-      // 描画された各島が空にならないよう、weight>0 の島へ最低1コマを保証する
-      // （住民を最多の島から1つ移して総数は保持。住民が足りる時のみ実施）
-      const totalOf = (i: number) => res[i] + tou[i] + vul[i] + stg[i];
-      subs.forEach((_s, i) => {
-        if (w[i] > 0 && totalOf(i) === 0) {
-          let donor = -1;
-          for (let j = 0; j < subs.length; j++) {
-            if (res[j] > (donor === -1 ? 1 : res[donor])) donor = j;
-          }
-          if (donor !== -1 && res[donor] > 1) { res[donor]--; res[i]++; }
-        }
-      });
+      const counts = apportionArea(a, subs);
       subs.forEach((s, si) => {
+        const c = counts[si];
         const subArea: AreaState = {
-          ...a, residents: res[si], tourists: tou[si], vulnerable: vul[si], stagingPort: stg[si], stagingVulnerable: 0,
+          ...a, residents: c.res, tourists: c.tou, vulnerable: c.vul, stagingPort: c.stg, stagingVulnerable: 0,
+          isolatedPending: 0, isolatedPendingBy: undefined,
         };
-        out.push({ id: `${id}-${si}`, cells: buildCells(subArea, s.blob) });
+        out.push({ id: `${id}-${si}`, cells: buildCells(subArea, s.blob, c.half ?? 0) });
       });
     });
     return out;
