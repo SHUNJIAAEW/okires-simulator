@@ -237,6 +237,12 @@ export interface DayLog {
   facilityStatus?: Record<string, string>;
   // 孤立島・集落の残存コマ（islands.ts ISLAND_COLUMNS の key → コマ数）。鳩間・船浮は実数、他は人口比按分の参考値
   islandSnapshot?: Record<string, number>;
+  // 日報PDF 戦力配備表用（日末）: 自衛隊残数・中国軍配備・PAC3配備
+  forceSnapshot?: {
+    jgsdfRemaining: number; jmsdfRemaining: number; jasdfRemaining: number;
+    jsdfSea: number; jsdfAir: number; chineseSea: number; chineseAir: number;
+    pac3Ishigaki: number; pac3Miyako: number; senkakuOccupied: boolean;
+  };
 }
 
 export interface GameState {

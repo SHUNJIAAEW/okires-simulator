@@ -314,7 +314,7 @@ function penaltyCount(list: HandPenalty[], day: number): number {
 
 // ===== 臨時増援交渉（ver4.0 4.9）共通処理 =====
 // 有事・Lv3以上で、残回数0かつ当日未交渉の手段ごとにダイス1回（出目≤min(Lv,5)で成功→+1）。
-// 交渉1回につき「任意エリアの1手」を消費: 残存の多い石垣/宮古（無ければ人のいるエリア）に handPenalty{negotiation, untilDay} を積む。
+// 交渉1回につき「任意エリアの1手」を消費: 余裕のある（残存の少ない・無人の）未占領の石垣/宮古（両方占領なら竹富/与那国）に handPenalty{negotiation, untilDay} を積む。
 // when='beforeEvac'（1時〜避難前）は untilDay=当日、when='afterEvac'（避難実行後）は翌日の1手として untilDay=翌日。
 function negotiateReinforcement(
   opts: {
@@ -341,15 +341,17 @@ function negotiateReinforcement(
     const a = opts.areas[id];
     return opts.occupied[id] ? 0 : a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0) + (a.isolatedPending ?? 0);
   };
+  // 1手消費は「余裕のあるエリア」から: 未占領の石垣/宮古のうち残存人数が少ない方（無人なら手数が余っているので優先）。
+  // 石垣/宮古とも占領済みなら竹富/与那国の残存が少ない方。全エリア占領なら null。
   const pickArea = (): AreaId | null => {
-    const hubs = (['ishigaki', 'miyako'] as AreaId[]).filter(id => alive(id) > 0).sort((a, b) => alive(b) - alive(a));
+    const free = (ids: AreaId[]) => ids.filter(id => !opts.occupied[id]).sort((a, b) => alive(a) - alive(b));
+    const hubs = free(['ishigaki', 'miyako']);
     if (hubs.length) return hubs[0];
-    const others = (['taketomi', 'yonaguni'] as AreaId[]).filter(id => alive(id) > 0).sort((a, b) => alive(b) - alive(a));
-    return others[0] ?? null;
+    return free(['taketomi', 'yonaguni'])[0] ?? null;
   };
   // マニュアル4.9 の根拠（Codex再検証で確認・維持）:
   //  - 避難前(1時〜)の交渉で得た+1は当日使用可（4.9「翌日以降に使用しても良い」＝当日使用も可）。
-  //  - 1手消費は「対象の4エリアのいずれか任意の手数を1手」なので、石垣/宮古が無人なら竹富/与那国から消費してよい。
+  //  - 1手消費は「対象の4エリアのいずれか任意の手数を1手」なので、取り残しの多いエリアを避け、余裕のある(無人・少人数の)ハブから消費する。
   const untilDay = opts.when === 'beforeEvac' ? opts.day : opts.day + 1;
   const timing = opts.when === 'beforeEvac' ? '' : '（避難実行後に残0）';
   for (const m of ['jgsdf', 'jmsdf', 'jasdf'] as ReinforcementMeans[]) {
@@ -2855,6 +2857,13 @@ export function executeDayPhase2(
       closedToday: stateAfterEvents.closedFacilitiesToday ?? [], weatherClosed, prepLevel: stateAfterEvents.prepLevel,
     }, phase1.weatherClosedAm),
     islandSnapshot: islandSnapshot(areas),
+    forceSnapshot: {
+      jgsdfRemaining: newTransport.jgsdfRemaining, jmsdfRemaining: newTransport.jmsdfRemaining, jasdfRemaining: newTransport.jasdfRemaining,
+      jsdfSea: stateAfterEvents.military.jsdfSea, jsdfAir: stateAfterEvents.military.jsdfAir,
+      chineseSea: stateAfterEvents.military.chineseSea, chineseAir: stateAfterEvents.military.chineseAir,
+      pac3Ishigaki: stateAfterEvents.military.pac3Ishigaki, pac3Miyako: stateAfterEvents.military.pac3Miyako,
+      senkakuOccupied: newMilitary.senkakuOccupied || stateAfterEvents.military.senkakuOccupied,
+    },
   };
 
   const newState: GameState = {

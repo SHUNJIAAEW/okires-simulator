@@ -88,6 +88,23 @@ function islandTable(dayLogs: DayLog[]): string {
   </section>`;
 }
 
+// (c) 戦力配備表: 行=日、列=自衛隊残数(陸自ヘリ/海自輸送艦/空自輸送機)・海自/空自配備・中国海軍/空軍配備・PAC3(石垣/宮古)・尖閣
+function forceTable(dayLogs: DayLog[]): string {
+  const cols = ['陸自ヘリ 残', '海自輸送艦 残', '空自輸送機 残', '海自 配備', '空自 配備', '中国海軍 配備', '中国空軍 配備', 'PAC3 石垣', 'PAC3 宮古', '尖閣'];
+  const head = `<tr><th>日</th>${cols.map(c => `<th>${esc(c)}</th>`).join('')}</tr>`;
+  const rows = dayLogs.map(l => {
+    const f = l.forceSnapshot;
+    const cells = f
+      ? [f.jgsdfRemaining, f.jmsdfRemaining, f.jasdfRemaining, f.jsdfSea, f.jsdfAir, f.chineseSea, f.chineseAir, f.pac3Ishigaki, f.pac3Miyako, f.senkakuOccupied ? '占領' : '－'].map(String)
+      : cols.map(() => '－');
+    return `<tr><td>${esc(l.dayLabel)}</td>${cells.map(v => `<td class="r">${esc(v)}</td>`).join('')}</tr>`;
+  }).join('');
+  return `<section class="ov"><h2>戦力配備（日末）</h2>
+    <table class="t ov"><thead>${head}</thead><tbody>${rows}</tbody></table>
+    <div class="note">残=自衛隊輸送の残回数（陸自ヘリ・海自輸送艦・空自輸送機。増援交渉成功で+1） ／ 配備=4:00の配備ダイスで決まる海自・空自・中国海軍・中国空軍の配備数（当日の自衛隊喪失を反映した日末値） ／ PAC3=石垣（石垣・竹富町）/宮古（宮古・下地島）の配備数</div>
+  </section>`;
+}
+
 export function exportDailyReportPdf(state: GameState): void {
   const { dayLogs, prepLevel, shelterLevel, month, evacuated, dead } = state;
   if (!dayLogs || dayLogs.length === 0) {
@@ -155,6 +172,7 @@ export function exportDailyReportPdf(state: GameState): void {
     <div class="noprint"><button onclick="window.print()">🖨 PDFで保存 / 印刷</button></div>
     ${facilityTable(dayLogs)}
     ${islandTable(dayLogs)}
+    ${forceTable(dayLogs)}
     ${body}
   </body></html>`;
 
