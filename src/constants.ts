@@ -22,12 +22,13 @@ export function getInitialWeatherIndex(month: number): number {
   return 4; // 曇(4)
 }
 
-// ===== 風速トラック =====（仕様2026.7.6）
-// 3-11月: 8段階、4と8が強風（1微2微3微4強5微6微7微8強）
-// 12,1,2月: 8段階、8のみ強風（1..7微風,8強風）
+// ===== 風速トラック =====（AI-OKIRESマニュアル 天候・風速・風向 2026.10）
+// 12,1,2月: 8段階、4と8が強風（微1 微2 微3 強4 微5 微6 微7 強8）
+// 3-11月: 8段階、8のみ強風（微1〜微7, 強8）
+// ※ 仕様2026.7.6 とは月の割当が逆（旧: 3-11月=4と8 / 12,1,2月=8のみ）。2026.10 マニュアルを正とする。
 export const WIND_SPEED_TRACKS = {
-  warmSeason: ['calm', 'calm', 'calm', 'strong', 'calm', 'calm', 'calm', 'strong'] as const,
-  coldSeason: ['calm', 'calm', 'calm', 'calm', 'calm', 'calm', 'calm', 'strong'] as const,
+  winter: ['calm', 'calm', 'calm', 'strong', 'calm', 'calm', 'calm', 'strong'] as const,   // 12,1,2月
+  other: ['calm', 'calm', 'calm', 'calm', 'calm', 'calm', 'calm', 'strong'] as const,      // 3-11月
 };
 
 export function getInitialWindSpeedIndex(month: number): number {
@@ -37,18 +38,19 @@ export function getInitialWindSpeedIndex(month: number): number {
 }
 
 export function isStrongWind(speedIndex: number, month: number): boolean {
-  // 仕様2026.7.6: 3-11月は4と8が強風、12,1,2月は8のみ強風
-  if (month >= 3 && month <= 11) return speedIndex === 4 || speedIndex === 8;
-  return speedIndex === 8; // 12,1,2月
+  // マニュアル2026.10: 12,1,2月は4と8が強風、3-11月は8のみ強風
+  if (month === 12 || month <= 2) return speedIndex === 4 || speedIndex === 8;
+  return speedIndex === 8; // 3-11月
 }
 
 // ===== 風向 =====
 // 1=西, 2=北西, 3=北東, 4=東, 5=南東, 6=南西
 export const WIND_DIRECTIONS = ['西', '北西', '北東', '東', '南東', '南西'];
 
+// マニュアル2026.10: 12,1,2,3,4月=北東3 ／ 5〜11月=南東5（旧仕様の「7〜11月」は誤記）
 export function getInitialWindDirectionIndex(month: number): number {
   if (month >= 12 || month <= 4) return 3; // 北東
-  return 5; // 南東
+  return 5; // 南東 (5-11月)
 }
 
 // ===== 空港の滑走路方向 =====
