@@ -224,6 +224,8 @@ export interface DayLog {
     staging: number;
     isolated?: number;  // 鳩間・船浮の島内移送待ちコマ（total に含む。旧stateでは undefined）
     fatigue: number;
+    hands?: number;     // 日末の実効手数（疲労による手数 − 増援交渉の1手消費。旧stateでは undefined）
+    handsBase?: number; // 疲労による手数（ペナルティ控除前）
   }>;
   hourlyRolls: HourlyRoll[];  // 24時間別ダイス
   // ===== AI災害司令官（指標用・追加フィールド）=====

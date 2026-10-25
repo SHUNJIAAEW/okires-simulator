@@ -105,6 +105,29 @@ function forceTable(dayLogs: DayLog[]): string {
   </section>`;
 }
 
+// (d) 4エリアの疲労度・手数表: 行=日、列=エリア。セル=「疲労 ／ 手数（ペナルティがあれば 基本−消費）」
+function fatigueTable(dayLogs: DayLog[]): string {
+  const AREAS: { id: AreaId; label: string }[] = [
+    { id: 'yonaguni', label: '与那国島' }, { id: 'taketomi', label: '竹富町全島' }, { id: 'ishigaki', label: '石垣島' }, { id: 'miyako', label: '宮古島・多良間' },
+  ];
+  const head = `<tr><th rowspan="2">日</th>${AREAS.map(a => `<th colspan="2">${esc(a.label)}</th>`).join('')}</tr><tr>${AREAS.map(() => '<th>疲労</th><th>手数</th>').join('')}</tr>`;
+  const rows = dayLogs.map(l => {
+    const cells = AREAS.map(a => {
+      const sn = l.areaSnapshots?.[a.id];
+      if (!sn) return '<td class="r">－</td><td class="r">－</td>';
+      const f = `${sn.fatigue >= 0 ? '+' : ''}${sn.fatigue.toFixed(1)}`;
+      const h = sn.hands === undefined ? '－'
+        : sn.handsBase !== undefined && sn.handsBase !== sn.hands ? `${sn.hands}（${sn.handsBase}−${sn.handsBase - sn.hands}）` : String(sn.hands);
+      return `<td class="r">${esc(f)}</td><td class="r${sn.hands === 0 ? ' warn' : ''}">${esc(h)}</td>`;
+    }).join('');
+    return `<tr><td>${esc(l.dayLabel)}</td>${cells}</tr>`;
+  }).join('');
+  return `<section class="ov"><h2>エリア別 疲労度・手数（日末）</h2>
+    <table class="t ov"><thead>${head}</thead><tbody>${rows}</tbody></table>
+    <div class="note">疲労=日末の疲労度（抗堪性Lvで初期はマイナス） ／ 手数=疲労度から決まる当日の行動手数。括弧は「基本手数−臨時増援交渉で消費した1手」。実効手数0はその日の避難行動不可（基本手数0の場合が疲労限界）</div>
+  </section>`;
+}
+
 export function exportDailyReportPdf(state: GameState): void {
   const { dayLogs, prepLevel, shelterLevel, month, evacuated, dead } = state;
   if (!dayLogs || dayLogs.length === 0) {
@@ -158,6 +181,7 @@ export function exportDailyReportPdf(state: GameState): void {
     table.t.ov th, table.t.ov td { text-align:center; white-space:nowrap; }
     table.t.ov td.c { font-size:11px; }
     table.t.ov td.ok { color:#0e7c66; }
+    table.t.ov td.warn { color:#b42318; font-weight:600; }
     .note { color:#475569; font-size:9.5px; margin-top:4px; }
     @media print { .noprint { display:none; } }
     .noprint { text-align:center; margin:10px 0 16px; }
@@ -173,6 +197,7 @@ export function exportDailyReportPdf(state: GameState): void {
     ${facilityTable(dayLogs)}
     ${islandTable(dayLogs)}
     ${forceTable(dayLogs)}
+    ${fatigueTable(dayLogs)}
     ${body}
   </body></html>`;
 

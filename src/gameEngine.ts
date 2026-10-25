@@ -343,8 +343,15 @@ function negotiateReinforcement(
   };
   // 1手消費は「余裕のあるエリア」から: 未占領の石垣/宮古のうち残存人数が少ない方（無人なら手数が余っているので優先）。
   // 石垣/宮古とも占領済みなら竹富/与那国の残存が少ない方。全エリア占領なら null。
+  // 優先順: ①無人（手数が不要）→ ②消費後も残る手数（基本手数−既存ペナルティ）が多い → ③残存人数が少ない
+  const spareHands = (id: AreaId) => handsByFatigue(id, opts.areas[id].fatigue) - penaltyCount(handPenalty[id], untilDay);
   const pickArea = (): AreaId | null => {
-    const free = (ids: AreaId[]) => ids.filter(id => !opts.occupied[id]).sort((a, b) => alive(a) - alive(b));
+    const free = (ids: AreaId[]) => ids.filter(id => !opts.occupied[id]).sort((a, b) => {
+      const ea = alive(a) === 0 ? 0 : 1, eb = alive(b) === 0 ? 0 : 1;
+      if (ea !== eb) return ea - eb;
+      if (spareHands(a) !== spareHands(b)) return spareHands(b) - spareHands(a);
+      return alive(a) - alive(b);
+    });
     const hubs = free(['ishigaki', 'miyako']);
     if (hubs.length) return hubs[0];
     return free(['taketomi', 'yonaguni'])[0] ?? null;
@@ -2810,6 +2817,8 @@ export function executeDayPhase2(
       staging: a.stagingPort + (a.stagingVulnerable ?? 0),
       isolated: a.isolatedPending ?? 0, // 鳩間・船浮の島内移送待ち（total に含む）
       fatigue: a.fatigue,
+      handsBase: handsByFatigue(a.id, a.fatigue),
+      hands: Math.max(0, handsByFatigue(a.id, a.fatigue) - activeHandPenalty(stateAfterEvents, a.id, day)),
     }])
   ) as DayLog['areaSnapshots'];
 
