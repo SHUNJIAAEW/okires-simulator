@@ -5,7 +5,7 @@
 import type { AreaId, AreaState } from './types';
 
 export type SubBlob = { cx: number; cy: number; rx: number; ry: number };
-export type SubIsland = { key: string; name: string; blob: SubBlob; weight: number; tourist?: number; isolated?: boolean };
+export type SubIsland = { key: string; name: string; blob: SubBlob; weight: number; tourist?: number; isolated?: boolean; max?: number }; // max: 島に置くコマの上限（住民+要援護者+待機の合計。超過分は最大ウェイトの島へ）
 
 // 鳩間島・船浮は isolatedPendingBy の実数を描く（按分しない・最低1コマ保証も適用しない）
 export const ISOLATED_KEYS = ['hatoma', 'funauki'] as const;
@@ -22,7 +22,7 @@ export const SUB_ISLANDS: Record<AreaId, SubIsland[]> = {
   taketomi: [
     { key: 'iriomote', name: '西表島', blob: { cx: 86, cy: 131, rx: 18, ry: 10 }, weight: 6, tourist: 1 }, // 観光最大1
     { key: 'taketomi', name: '竹富島', blob: { cx: 124, cy: 124, rx: 4, ry: 3 }, weight: 2, tourist: 1 },  // 観光最大1
-    { key: 'hateruma', name: '波照間島', blob: { cx: 100, cy: 159, rx: 5, ry: 4 }, weight: 3 },
+    { key: 'hateruma', name: '波照間島', blob: { cx: 100, cy: 159, rx: 5, ry: 4 }, weight: 3, max: 1 }, // 観光客なし。住民🔵+要援護者🔴 合計で最大1コマ
     { key: 'kuroshima', name: '黒島', blob: { cx: 134, cy: 144, rx: 5, ry: 4 }, weight: 2 },
     { key: 'kohama', name: '小浜島', blob: { cx: 114, cy: 106, rx: 4, ry: 3 }, weight: 2 },
     // 鳩間島・船浮: 孤立集落（AreaState.isolatedPendingBy の実数を表示）。weight は按分に使わない
@@ -37,7 +37,7 @@ export const SUB_ISLANDS: Record<AreaId, SubIsland[]> = {
     { key: 'irabu', name: '伊良部島', blob: { cx: 216, cy: 94, rx: 6, ry: 4 }, weight: 6 },
     { key: 'shimoji', name: '下地島', blob: { cx: 203, cy: 96, rx: 4, ry: 3 }, weight: 1 },
     // 多良間島: 初期配置（住民54・要援護者込み）で1コマになるよう weight 2（3だと2コマになる）
-    { key: 'tarama', name: '多良間島', blob: { cx: 200, cy: 151, rx: 7, ry: 4 }, weight: 2 },
+    { key: 'tarama', name: '多良間島', blob: { cx: 200, cy: 151, rx: 7, ry: 4 }, weight: 2, max: 1 }, // 合計で最大1コマ
     { key: 'ikema', name: '池間島', blob: { cx: 240, cy: 65, rx: 4, ry: 3 }, weight: 1 },
     { key: 'kurima', name: '来間島', blob: { cx: 236, cy: 119, rx: 4, ry: 3 }, weight: 1 },
   ],
@@ -92,6 +92,22 @@ export function apportionArea(a: AreaState, subs: SubIsland[]): SubCounts[] {
     res[i] = Math.floor(n + 1e-9); half[i] = n - res[i] > 1e-9 ? 1 : 0; tou[i] = 0; vul[i] = 0; stg[i] = 0;
   });
   const totalOf = (i: number) => res[i] + tou[i] + vul[i] + stg[i] + half[i];
+  // 島ごとの上限（波照間・多良間=1）: 住民・要援護者・待機を別々に按分すると合計が上限を超え得るため、
+  // 超過分（要援護者→待機→観光→住民→半コマの順）を最大ウェイトの島（西表島/宮古島）へ移す（総数は保持）
+  let sink = -1;
+  w.forEach((x, i) => { if (x > 0 && subs[i].max === undefined && (sink === -1 || x > w[sink])) sink = i; });
+  if (sink !== -1) {
+    subs.forEach((s, i) => {
+      if (s.isolated || s.max === undefined) return;
+      let over = totalOf(i) - s.max;
+      const shift = (arr: number[]) => { const n = Math.min(over, arr[i]); arr[i] -= n; arr[sink] += n; over -= n; };
+      if (over > 0) shift(vul);
+      if (over > 0) shift(stg);
+      if (over > 0) shift(tou);
+      if (over > 0) shift(res);
+      if (over > 0 && half[i] > 0) { half[i] = 0; half[sink] += 1; }
+    });
+  }
   subs.forEach((s, i) => {
     if (s.isolated || w[i] <= 0 || totalOf(i) !== 0) return;
     let donor = -1;
