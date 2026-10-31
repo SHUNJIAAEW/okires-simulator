@@ -197,6 +197,7 @@ export function handsByFatigue(area: AreaId, fatigue: number): number {
 
 // ===== 島間フェリー容量 =====
 // 竹富町 離島港ごとの→石垣港フェリー容量（コマ/日）。マニュアル(2026.9): 竹富町→石垣 計11コマ/日 を港別に分解。
+// ※ 鳩間港(1)・船浮港(0.5)は孤立集落→西表島の島内移送専用のため、石垣直行の合計からは除く（直行は最大10コマ/日）。
 // 機雷/閉鎖（同日24時まで）や船舶便攻撃（恒久停止）でその港の分を当日/以後の合計から除く。
 // funauki(船浮→白浜)は西表島内の移動（0.5）で石垣便合計には含めない。
 export const TAKETOMI_PORT_CAPACITY: Record<TaketomiPortKey, number> = {

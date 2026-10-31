@@ -325,6 +325,9 @@ function negotiateReinforcement(
     reinforcement: GameState['reinforcement'];
     handPenalty: Record<AreaId, HandPenalty[]>;
     when: 'beforeEvac' | 'afterEvac';
+    // 陸自ヘリはピストン輸送専用のため、ピストンが起こり得る状況（Lv2以上かつハブ空港の破壊/路線停止）でのみ交渉する
+    infra?: InfraState;
+    disabledAirRoutes?: TransportState['disabledAirRoutes'];
   },
   log: string[]
 ): { gain: Record<ReinforcementMeans, number>; reinforcement: GameState['reinforcement']; handPenalty: Record<AreaId, HandPenalty[]> } {
@@ -341,34 +344,47 @@ function negotiateReinforcement(
     const a = opts.areas[id];
     return opts.occupied[id] ? 0 : a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0) + (a.isolatedPending ?? 0);
   };
-  // 1手消費は「余裕のあるエリア」から: 未占領の石垣/宮古のうち残存人数が少ない方（無人なら手数が余っているので優先）。
-  // 石垣/宮古とも占領済みなら竹富/与那国の残存が少ない方。全エリア占領なら null。
-  // 優先順: ①無人（手数が不要）→ ②消費後も残る手数（基本手数−既存ペナルティ）が多い → ③残存人数が少ない
+  // AIの交渉判断（自動実行の方針。ルール自体は「任意の4エリアの1手」を消費）:
+  //  1手は「無人で手数が残っている未占領エリア」からだけ払う。人のいるエリアの1手を使うとその日の輸送力が
+  //  (手数−1)/手数 に落ち、得られる+1コマより損失が大きい（全シミュ検証: Lv3で避難率が約1.3pt低下）ため、払える無人エリアが無ければ交渉を見送る。
+  //  無人エリアが複数あれば石垣/宮古を優先し、次に残り手数の多い順。
   const spareHands = (id: AreaId) => handsByFatigue(id, opts.areas[id].fatigue) - penaltyCount(handPenalty[id], untilDay);
   const pickArea = (): AreaId | null => {
-    const free = (ids: AreaId[]) => ids.filter(id => !opts.occupied[id]).sort((a, b) => {
-      const ea = alive(a) === 0 ? 0 : 1, eb = alive(b) === 0 ? 0 : 1;
-      if (ea !== eb) return ea - eb;
-      if (spareHands(a) !== spareHands(b)) return spareHands(b) - spareHands(a);
-      return alive(a) - alive(b);
-    });
-    const hubs = free(['ishigaki', 'miyako']);
-    if (hubs.length) return hubs[0];
-    return free(['taketomi', 'yonaguni'])[0] ?? null;
+    const order: AreaId[] = ['ishigaki', 'miyako', 'taketomi', 'yonaguni'];
+    const cands = order.filter(id => !opts.occupied[id] && alive(id) === 0 && spareHands(id) > 0);
+    cands.sort((a, b) => spareHands(b) - spareHands(a) || order.indexOf(a) - order.indexOf(b));
+    return cands[0] ?? null;
+  };
+  // 交渉する価値がある手段か: 避難待ちの人がいること。陸自ヘリはピストン輸送の発火条件（Lv2以上・新石垣/宮古/下地島の破壊か路線停止）も要する。
+  const anyoneLeft = (['yonaguni', 'taketomi', 'ishigaki', 'miyako'] as AreaId[]).some(id => alive(id) > 0);
+  const hubAirDown = !!opts.infra && (!opts.infra.shinIshigakiAirport || !opts.infra.miyakoAirport || !opts.infra.shimojiAirport
+    || !!opts.disabledAirRoutes?.shinIshigaki || !!opts.disabledAirRoutes?.miyako || !!opts.disabledAirRoutes?.shimoji);
+  const useful: Record<ReinforcementMeans, boolean> = {
+    jgsdf: anyoneLeft && opts.prepLevel >= SHUTTLE_MIN_LEVEL && hubAirDown,
+    jmsdf: anyoneLeft,
+    jasdf: anyoneLeft,
   };
   // マニュアル4.9 の根拠（Codex再検証で確認・維持）:
   //  - 避難前(1時〜)の交渉で得た+1は当日使用可（4.9「翌日以降に使用しても良い」＝当日使用も可）。
   //  - 1手消費は「対象の4エリアのいずれか任意の手数を1手」なので、取り残しの多いエリアを避け、余裕のある(無人・少人数の)ハブから消費する。
   const untilDay = opts.when === 'beforeEvac' ? opts.day : opts.day + 1;
   const timing = opts.when === 'beforeEvac' ? '' : '（避難実行後に残0）';
+  const skipped: string[] = [];
   for (const m of ['jgsdf', 'jmsdf', 'jasdf'] as ReinforcementMeans[]) {
     if (opts.remaining[m] > 0) continue;               // 使い切っていない（獲得分未消化を含む）
     if (reinforcement[m]?.day === opts.day) continue;  // 1日1回
+    if (!useful[m]) continue;                          // 使い道が無い手段は交渉しない（1手の無駄遣い防止）
+    const payer = pickArea();
+    if (!payer) {
+      // 人のいるエリアの1手を削ると当日の輸送力が下がるため見送る。交渉済みにはしない（避難後に無人エリアができれば同日に再判断）
+      skipped.push(meansJp[m]);
+      continue;
+    }
     const roll = rollDie();
     const success = roll <= threshold;
     reinforcement[m] = { day: opts.day, roll, success };
     if (success) gain[m] = 1;
-    const area = pickArea();
+    const area = payer;
     let handJp = '（人のいるエリアなし・手消費なし）';
     if (area) {
       handPenalty[area].push({ country: 'negotiation', untilDay });
@@ -376,6 +392,7 @@ function negotiateReinforcement(
     }
     log.push(`自衛隊輸送臨時増援交渉（${meansJp[m]}）${timing}: 残0のため交渉・${handJp}。ダイス${roll}${success ? `≤${threshold} → 成功: ${meansJp[m]}+1コマ（使い切り${opts.when === 'afterEvac' ? '・翌日から使用可' : ''}）` : `>${threshold} → 失敗（翌日再交渉可）`}`);
   }
+  if (skipped.length) log.push(`自衛隊輸送臨時増援交渉${timing}: ${skipped.join('・')}は残0だが、1手を払える無人エリアが無いため見送り（人のいるエリアの手数を削ると輸送力が落ちるため）`);
   return { gain, reinforcement, handPenalty };
 }
 
@@ -1839,11 +1856,12 @@ export function getDayCapacities(
   const yonaguniSeaMax = (seaOk && ishigakiPortOpen && shipRouteOk('kubura') && state.infra.kuburaPort !== false ? YONAGUNI_TO_ISHIGAKI_FERRY : 0)
     * routeMul.ship.kubura;
 
-  // 竹富→石垣フェリー: 同上(存立危機Lv2+ / 有事)。合計11コマ/日 = 使用可能な離島港（船浮以外）の容量合計。
+  // 竹富→石垣フェリー: 同上(存立危機Lv2+ / 有事)。マニュアルの計11コマ/日から、孤立集落の港（鳩間港1・船浮港0.5）を除いた
+  // 使用可能な離島港の容量合計（最大10コマ/日）。鳩間港・船浮港は西表島への島内移送専用（二重計上防止）。
   // 機雷/ボイコット（当日）・船舶便攻撃（恒久）・地震の全海港破壊(seaAllAvailable=false)でその港の分を除く。
   const taketomiFerryMax = seaOk && ishigakiPortOpen && state.infra.seaAllAvailable !== false
     ? (Object.keys(TAKETOMI_PORT_CAPACITY) as TaketomiPortKey[])
-        .filter(k => k !== 'funauki' && !transport.disabledTaketomiPorts?.[k])
+        .filter(k => k !== 'funauki' && k !== 'hatoma' && !transport.disabledTaketomiPorts?.[k])
         .reduce((s, k) => s + TAKETOMI_PORT_CAPACITY[k] * routeMul.tport[k], 0)
     : 0;
 
@@ -1968,15 +1986,19 @@ export function getDayCapacities(
 
   // イベント由来の容量倍率（軍民運航錯綜=0.5 / 交通混乱=0.7 等）をエリア別に適用。
   // 任意小数を避けるため 0.5 コマ単位へ丸める（通常日=倍率1では整数/0.5のまま無変化）。
-  const r05 = (x: number) => Math.round(x * 2) / 2;
+  // 最も近い0.5単位へ丸める。ちょうど中間（0.25/0.75 等）は小さい方へ寄せる
+  // （例: 不時着−25%で空自1×0.75=0.75 → 0.5。Math.round だと 1 に戻り減少が消えていた。中間以外は従来どおり最寄り: 0.7→0.5、0.8→1）
+  const r05 = (x: number) => Math.max(0, Math.ceil(x * 2 - 0.5 - 1e-9) / 2);
   // 手数ペナルティ（臨時増援交渉の1手消費。旧仕様の不時着エントリも互換で数える）: 当該エリアの手数 h=handsByFatigue に対し
   // (h−penalty)/h を容量に掛ける（h=0なら0）。ペナルティが無いエリアは従来どおり（手数は疲労限界判定にのみ使う）。
   // 不時着（マニュアル2026.9）は空港別倍率 am() で扱う。
+  // 疲労限界（基本手数0）のエリアは避難行動不可 → ペナルティの有無にかかわらず容量0。
   const penFactor = (a: AreaId): number => {
+    const h = handsByFatigue(a, state.areas[a].fatigue);
+    if (h <= 0) return 0;
     const pen = activeHandPenalty(state, a);
     if (pen <= 0) return 1;
-    const h = handsByFatigue(a, state.areas[a].fatigue);
-    return h > 0 ? Math.max(0, (h - pen) / h) : 0;
+    return Math.max(0, (h - pen) / h);
   };
   // 占領済みエリアは全容量0（occFactor）
   const my = capMul.yonaguni * occFactor('yonaguni') * penFactor('yonaguni'), mt = capMul.taketomi * occFactor('taketomi') * penFactor('taketomi'),
@@ -2107,6 +2129,7 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
     areas: state.areas,
     occupied: { yonaguni: isOccupied(state, 'yonaguni'), taketomi: isOccupied(state, 'taketomi'), ishigaki: isOccupied(state, 'ishigaki'), miyako: isOccupied(state, 'miyako') },
     reinforcement: state.reinforcement, handPenalty: state.handPenalty, when: 'beforeEvac',
+    infra: state.infra, disabledAirRoutes: state.transport.disabledAirRoutes,
   }, log);
   const reinforcement = rein1.reinforcement;
   const reinGain = rein1.gain;
@@ -2500,6 +2523,11 @@ export function executeDayPhase2(
       evacLog.push(`${order.method}: 集約先 ${areas[order.to].name} は占領済みのため搬入不可（注文無効）`);
       continue;
     }
+    // 疲労限界・手数切れ: 実効手数（疲労による手数−増援交渉の1手消費）が0のエリアは避難行動不可（容量側 penFactor=0 と一致）
+    if (effectiveHands(stateAfterEvents, order.from) <= 0) {
+      evacLog.push(`${order.method}: ${areas[order.from].name} は手数0（疲労限界または交渉で消費）のため避難行動不可（注文無効）`);
+      continue;
+    }
     // A表 住民の避難拒否: 当日その地区住民は避難しない（手動注文も無効化。ハブ待機コマの搬出は下で継続）
     if ((phase1.evacRefusedToday ?? []).includes(order.from)) {
       evacLog.push(`${order.method}: ${areas[order.from].name} は本日 住民の避難拒否のため避難不可（注文無効）`);
@@ -2524,7 +2552,9 @@ export function executeDayPhase2(
       evacLog.push(`${order.method}: 空自輸送機は1日1便（残${transport.jasdfRemaining}機）のため本日は使用不可（注文無効）`);
       continue;
     }
-    // 実行側ガード: 当日容量(getDayCapacities)が0の自衛隊便は手動注文でも使えない（空港破壊/悪天候/平時/占領/錯綜0等）
+    // 実行側ガード: 当日容量(getDayCapacities)が0の自衛隊便は手動注文でも使えない（空港破壊/悪天候/平時/占領/錯綜0等）。
+    // 正の場合も当日容量（不時着−25%・錯綜×0.5 等の倍率反映後）を1便の搭載上限にする（下の tripCap）。
+    let sdfCapToday = Infinity;
     if (isJasdf || isJmsdf) {
       const capToday = order.method === '空自輸送機' ? capacities.ishigakiJasdfMax
         : order.method === 'ピストン空自輸送機' ? capacities.shuttleJasdfMax
@@ -2534,6 +2564,7 @@ export function executeDayPhase2(
         evacLog.push(`${order.method}: 本日は${isJasdf ? '空自輸送機' : '海自輸送艦'}の当日容量が0（空港/海路の使用不能・平時 等）のため使用不可（注文無効）`);
         continue;
       }
+      sdfCapToday = capToday;
     }
 
     // 要援護者は海路のみ
@@ -2543,7 +2574,7 @@ export function executeDayPhase2(
 
     // コマ数上限チェック
     // 空自/海自の1便あたり上限: 本土便1コマ・往復便Mコマ（要援護者→住民→観光客の順で積む）
-    const tripCap = isJmsdf || isJasdf ? (order.method.startsWith('ピストン') ? SHUTTLE_MULTIPLIER : 1) : Infinity;
+    const tripCap = isJmsdf || isJasdf ? Math.min(order.method.startsWith('ピストン') ? SHUTTLE_MULTIPLIER : 1, sdfCapToday) : Infinity;
     let tripRoom = tripCap;
     const cappedVuln = Math.min(actualVuln, area.vulnerable, tripRoom); tripRoom -= cappedVuln;
     const cappedRes = Math.min(actualRes, area.residents, tripRoom); tripRoom -= cappedRes;
@@ -2631,6 +2662,19 @@ export function executeDayPhase2(
       }
     }
 
+    // 宮古待機コマ → 下地島空港の残容量（宮古空港が破壊・閉鎖でも下地島が使えれば搬出。同日ordersと宮古分の使用を差し引く）
+    if (airportAvail.shimoji && civAirOk && areas.miyako.stagingPort > 0) {
+      const usedByOrders = evacuations.filter(e => e.method === '下地島空港(民間)').reduce((s, e) => s + e.count, 0);
+      const shimojiAirMax = Math.max(0, capacities.shimojAirMax - usedByOrders);
+      const staging = Math.min(shimojiAirMax, areas.miyako.stagingPort);
+      if (staging > 0) {
+        areas.miyako.stagingPort -= staging;
+        evacuatedCount += staging;
+        evacuations.push({ from: 'miyako', to: '本土', count: staging, method: '下地島空港(港待機)', isVulnerable: false });
+        evacLog.push(`下地島空港: 待機${staging}コマ → 本土`);
+      }
+    }
+
     // 待機コマの海路搬出（ver4.0 4.6.5: 要援護者は海路のみ）。同日ordersが使った海路分を差し引いた残容量で、
     // 待機要援護者(stagingVulnerable)を優先し、残りで待機白コマ(stagingPort)を本土へ。民間フェリー → 海保輸送船 の順。
     const seaStaging = (hub: 'ishigaki' | 'miyako') => {
@@ -2684,6 +2728,7 @@ export function executeDayPhase2(
       const evacAllowed = newPhase === 'wartime' || (newPhase === 'crisis' && stateAfterEvents.prepLevel >= CRISIS_EVAC_MIN_LEVEL);
       const seaRain = (weatherClosed ?? []).some(w => w.startsWith('sea:'));
       const commonBlock: string | null = isOccupied(stateAfterEvents, 'taketomi') ? '竹富町占領'
+        : effectiveHands(stateAfterEvents, 'taketomi') <= 0 ? '竹富町 手数0（避難行動不可）'
         : !evacAllowed ? (newPhase === 'peacetime' ? '平時（島外避難不可）' : `存立危機事態は事前準備Lv${CRISIS_EVAC_MIN_LEVEL}以上で可`)
         : stateAfterEvents.infra.seaAllAvailable === false ? '地震で離島港が全破壊'
         : (!phase1.seaOk || seaRain) ? (weatherClosed.includes('sea:rain') ? '大雨で海路閉鎖' : '強風で海路閉鎖')
@@ -2726,6 +2771,7 @@ export function executeDayPhase2(
     remaining: { jgsdf: transport.jgsdfRemaining, jmsdf: transport.jmsdfRemaining, jasdf: transport.jasdfRemaining },
     areas, occupied: stateAfterEvents.occupied ?? { yonaguni: false, taketomi: false, ishigaki: false, miyako: false },
     reinforcement: stateAfterEvents.reinforcement, handPenalty: stateAfterEvents.handPenalty, when: 'afterEvac',
+    infra: stateAfterEvents.infra, disabledAirRoutes: transport.disabledAirRoutes,
   }, evacLog);
   transport.jgsdfRemaining += rein2.gain.jgsdf;
   transport.jmsdfRemaining += rein2.gain.jmsdf;
@@ -3046,9 +3092,9 @@ export function autoSelectOrders(phase1: DayPhase1Result, policy: EvacPolicy = '
   const jasdfIshigakiCap = Math.min(capacities.ishigakiJasdfMax, jasdfMainland);
 
   // ===== 手段ブロック（正準順＝balanced の試行順・注文の出力順）=====
-  // 竹富→石垣フェリーは従来実装では要援護者を積まない（balanced/shuttle-first は現行互換）。
-  // 新方針(sea-first/air-first/vulnerable-first)では海路のため要援護者可（ver4.0 4.6.5: 要援護者はフェリー/海保/海自）。
-  const taketomiFerryVulnOk = trackHubs;
+  // 竹富→石垣フェリーは海路なので全方針で要援護者を積む（ver4.0 4.6.5: 要援護者はフェリー/海保/海自）。
+  // 旧実装は balanced/shuttle-first で積まず、竹富の要援護者がX+3日期限で死亡していた（全シミュ検証で発見）。
+  const taketomiFerryVulnOk = true;
   const mk = (area: AreaId, to: EvacLeg['to'], method: string, kind: EvacLeg['kind'], cap: number, vulnOk: boolean, tourOk: boolean): EvacLeg =>
     ({ area, to, method, kind, cap: Math.max(0, cap), vulnOk, tourOk, vuln: 0, res: 0, tour: 0 });
   const legsByArea: Record<AreaId, EvacLeg[]> = {
@@ -3072,7 +3118,8 @@ export function autoSelectOrders(phase1: DayPhase1Result, policy: EvacPolicy = '
       // 石垣 → 本土(海保) ※ピストン消費後の残プールを反映
       mk('ishigaki', 'mainland', '海保輸送船', 'sea', cgIshigakiCap, true, false),
       // 石垣 → 本土(空自輸送機) ※白コマ(住民・観光客)のみ。要援護者は航空機不可
-      mk('ishigaki', 'mainland', '空自輸送機', 'air', airportAvail.shinIshigaki ? jasdfIshigakiCap : 0, false, true),
+      // 空自は破壊後の応急復旧（翌日以降）で民間便が止まっていても飛べる。可否は容量計算（jasdfAirfieldOk）済みの値に従う
+      mk('ishigaki', 'mainland', '空自輸送機', 'air', jasdfIshigakiCap, false, true),
       // 石垣 → 本土(海自) ※ピストン消費後の残プールを反映
       mk('ishigaki', 'mainland', '海自輸送艦', 'sea', jmsdfIshigakiCap, true, false),
       // 石垣 → 本土(民間フェリー)
