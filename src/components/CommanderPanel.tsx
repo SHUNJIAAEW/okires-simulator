@@ -380,7 +380,7 @@ function ForecastChart({ state, primary, secondary, primaryColor, secondaryColor
   const y = (rate: number) => padT + (1 - Math.max(0, Math.min(1, rate))) * (H - padT - padB);
 
   // 実績（過去日）
-  const total = state.evacuated + state.dead + totalRemaining(state);
+  const total = state.initialTotal ?? (state.evacuated + state.dead + totalRemaining(state));
   const history = state.dayLogs.map(l => ({ day: l.day, rate: total > 0 ? l.totalEvacuatedSoFar / total : 0 }));
   const startRate = evacuationRate(state);
   const startDay = Math.max(firstDay, state.day - 1); // 直近の実績日（初日は X-3 の軸上から始める）

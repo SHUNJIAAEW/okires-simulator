@@ -41,6 +41,8 @@ export default function App() {
   const [autoPlay, setAutoPlay] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
   const autoPlayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 自動再生の世代番号。一括実行・リセット・停止で進め、遅れて発火した古い内側タイマーの結果を捨てる
+  const runGenRef = useRef(0);
   // 司令官モード（🎖）: ON のとき方針カード→実行→AI分析の流れを使う。OFF 時の既存挙動（一括実行・自動再生）は不変。
   const [commanderMode, setCommanderMode] = useState(false);
   const [policy, setPolicy] = useState<EvacPolicy>('balanced');
@@ -85,6 +87,7 @@ export default function App() {
   // AI全日程一括実行（同期ループ・即座に結果へ）
   const handleFullAutoRun = useCallback(() => {
     if (!gameState) return;
+    runGenRef.current += 1; // 実行中の自動再生の内側タイマーを無効化
     setAutoPlay(false);
     setIsSimulating(true);
 
@@ -109,10 +112,12 @@ export default function App() {
   // 自動再生（1日ずつAI実行・マップを更新しながら進む）
   useEffect(() => {
     if (!autoPlay || isComplete || isSimulating) return;
+    const gen = runGenRef.current;
     autoPlayRef.current = setTimeout(() => {
-      if (!gameState || !autoPlay) return;
+      if (!gameState || !autoPlay || gen !== runGenRef.current) return;
       setIsSimulating(true);
       setTimeout(() => {
+        if (gen !== runGenRef.current) { setIsSimulating(false); return; } // 一括実行・リセット後に古い状態で上書きしない
         const phase1 = prepareDayPhase1(gameState);
         const orders = autoSelectOrders(phase1);
         const { newState } = executeDayPhase2(gameState, phase1, orders);
@@ -132,6 +137,7 @@ export default function App() {
   }, [autoPlay, isComplete, isSimulating, gameState]);
 
   const handleRestart = () => {
+    runGenRef.current += 1;
     setGameState(null);
     setAutoPlay(false);
     setIsComplete(false);
@@ -160,7 +166,7 @@ export default function App() {
   const totalRemaining = Object.values(gameState.areas).reduce(
     (s, a) => s + a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0) + (a.isolatedPending ?? 0), 0
   );
-  const totalInitial = gameState.evacuated + gameState.dead + totalRemaining;
+  const totalInitial = gameState.initialTotal ?? (gameState.evacuated + gameState.dead + totalRemaining);
   const evacuationRate = totalInitial > 0 ? (gameState.evacuated / totalInitial * 100) : 0;
   const dayIndex = gameState.day + 3;
   const currentDayLabel = DAY_LABELS[dayIndex] ?? `Day ${gameState.day}`;

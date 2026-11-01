@@ -135,7 +135,7 @@ export function exportDailyReportPdf(state: GameState): void {
     return;
   }
   const totalRemaining = Object.values(state.areas).reduce((s, a) => s + a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0) + (a.isolatedPending ?? 0), 0);
-  const maxK = evacuated + dead + totalRemaining;
+  const maxK = state.initialTotal ?? (evacuated + dead + totalRemaining);
   const rate = maxK > 0 ? (evacuated / maxK * 100).toFixed(1) : '0';
 
   let prevE = 0, prevD = 0;

@@ -59,10 +59,13 @@ export function apportion(total: number, weights: number[]): number[] {
   return base;
 }
 
+// 旧state互換: isolatedPendingBy が無く合計 isolatedPending だけある場合は鳩間に全量を置く（移送処理と同じ扱い）
+export function isolatedByOf(a: AreaState): { hatoma: number; funauki: number } {
+  return a.isolatedPendingBy ? { ...a.isolatedPendingBy } : { hatoma: Math.max(0, a.isolatedPending ?? 0), funauki: 0 };
+}
+
 export interface SubCounts { res: number; tou: number; vul: number; stg: number; half?: number } // half: 住民の 0.5コマ端数の個数（半コマとして描く）
 
-// 小数（死亡0.5コマ等）や負値で Array() が落ちないよう整数化
-const ci = (x: number) => Math.max(0, Math.round(x));
 
 // エリアのコマを SUB_ISLANDS の各島へ按分する（地図と日報で共通）。
 // - 鳩間島・船浮(isolated) は isolatedPendingBy の実数（住民扱い）。按分ウェイトから除外し、最低1コマ保証も適用しない
@@ -71,24 +74,28 @@ const ci = (x: number) => Math.max(0, Math.round(x));
 export function apportionArea(a: AreaState, subs: SubIsland[]): SubCounts[] {
   const w = subs.map(s => (s.isolated ? 0 : s.weight));
   const tw = subs.map(s => (s.isolated ? 0 : (s.tourist ?? 0)));
-  // 住民の 0.5コマ端数（船浮→西表 0.5コマ移送後など）は四捨五入せず、最大ウェイトの島（西表島等）へ半コマとして置く
-  const resInt = Math.floor(Math.max(0, a.residents) + 1e-9);
-  const resHalf = Math.max(0, a.residents) - resInt > 1e-9 ? 1 : 0;
+  // 0.5コマ端数（死亡0.5・船浮0.5移送など）は種別ごとに四捨五入せず、全種別の端数を合計して半コマとして
+  // 最大ウェイトの島（西表島/宮古島等）へ置く（例: 要援護0.5＋待機0.5 を 1＋1=2 に水増ししない）
+  const fl = (x: number) => Math.floor(Math.max(0, x) + 1e-9);
+  const stgAll = a.stagingPort + (a.stagingVulnerable ?? 0);
+  const resInt = fl(a.residents), touInt = fl(a.tourists), vulInt = fl(a.vulnerable), stgInt = fl(stgAll);
+  const fracSum = (Math.max(0, a.residents) - resInt) + (Math.max(0, a.tourists) - touInt) + (Math.max(0, a.vulnerable) - vulInt) + (Math.max(0, stgAll) - stgInt);
+  const halves = Math.round(fracSum * 2);
   const res = apportion(resInt, w);
   const half = subs.map(() => 0);
-  if (resHalf) {
+  if (halves > 0) {
     let best = -1;
     w.forEach((x, i) => { if (x > 0 && (best === -1 || x > w[best])) best = i; });
-    if (best !== -1) half[best] = 1;
+    if (best !== -1) half[best] = halves;
   }
-  const tou = apportion(ci(a.tourists), tw.some(x => x > 0) ? tw : w);
-  const vul = apportion(ci(a.vulnerable), w);
-  const stg = apportion(ci(a.stagingPort + (a.stagingVulnerable ?? 0)), w);
-  const by = a.isolatedPendingBy;
+  const tou = apportion(touInt, tw.some(x => x > 0) ? tw : w);
+  const vul = apportion(vulInt, w);
+  const stg = apportion(stgInt, w);
+  const by = isolatedByOf(a);
   subs.forEach((s, i) => {
     if (!s.isolated) return;
     // 実数（0.5刻み）を保持: 整数部は通常コマ、0.5端数は半コマとして別枠（四捨五入で 0.5→1 に増やさない）
-    const n = Math.max(0, by ? (by[s.key as IsolatedKey] ?? 0) : 0);
+    const n = Math.max(0, by[s.key as IsolatedKey] ?? 0);
     res[i] = Math.floor(n + 1e-9); half[i] = n - res[i] > 1e-9 ? 1 : 0; tou[i] = 0; vul[i] = 0; stg[i] = 0;
   });
   const totalOf = (i: number) => res[i] + tou[i] + vul[i] + stg[i] + half[i];
@@ -146,7 +153,7 @@ export function islandSnapshot(areas: Record<AreaId, AreaState>): Record<string,
       const i = subs.findIndex(s => s.key === k);
       if (i < 0) continue;
       if (subs[i].isolated) {
-        n += Math.max(0, a.isolatedPendingBy?.[k as IsolatedKey] ?? 0);
+        n += Math.max(0, isolatedByOf(a)[k as IsolatedKey] ?? 0);
       } else {
         const c = (cache[col.area] ??= apportionArea(a, subs))[i];
         n += c.res + c.tou + c.vul + c.stg + (c.half ?? 0) * 0.5;

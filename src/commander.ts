@@ -79,7 +79,7 @@ export function totalRemaining(state: GameState): number {
 }
 // 避難率 = 避難完了 / (避難完了 + 死亡 + 残) — ResultScreen と同じ定義
 export function evacuationRate(state: GameState): number {
-  const denom = state.evacuated + state.dead + totalRemaining(state);
+  const denom = state.initialTotal ?? (state.evacuated + state.dead + totalRemaining(state));
   return denom > 0 ? state.evacuated / denom : 0;
 }
 // 要援護者の総数（自宅残＋ハブ待機＋本土到着＋死亡）。カテゴリ別

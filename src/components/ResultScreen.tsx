@@ -126,7 +126,7 @@ export function ResultScreen({ state, onRestart, commanderRecords = [] }: Props)
   const totalRemaining = Object.values(areas).reduce((sum, a) =>
     sum + a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0) + (a.isolatedPending ?? 0), 0
   );
-  const maxEvacuated = evacuated + dead + totalRemaining;
+  const maxEvacuated = state.initialTotal ?? (evacuated + dead + totalRemaining);
   const evacuationRate = maxEvacuated > 0 ? (evacuated / maxEvacuated * 100) : 0;
   const score = Math.round(evacuationRate);
 
@@ -303,7 +303,7 @@ export function ResultScreen({ state, onRestart, commanderRecords = [] }: Props)
           <StatCard label="避難完了" value={`${evacuated}`} unit="コマ" sub={`${(evacuated * 1000).toLocaleString()}人`} color={C.green} icon="✈" />
           <StatCard label="取り残し" value={`${totalRemaining}`} unit="コマ" sub={`${(totalRemaining * 1000).toLocaleString()}人`} color={C.amber} icon="⏳" />
           <StatCard label="死亡" value={`${dead}`} unit="コマ" sub={`${(dead * 1000).toLocaleString()}人`} color={C.red} icon="💀" />
-          <StatCard label="シミュ期間" value={`${dayLogs.length}`} unit="日" sub="X-3〜X+8" color={C.blue} icon="📅" />
+          <StatCard label="シミュ期間" value={`${dayLogs.length}`} unit="日" sub={`X-3〜${dayLogs.length > 0 ? dayLogs[dayLogs.length - 1].dayLabel.replace(/日$/, '') : 'X+8'}${dayLogs.length > 0 && dayLogs[dayLogs.length - 1].day < 8 ? '（残存0で終了）' : ''}`} color={C.blue} icon="📅" />
           <StatCard label="実績 平均/日" value={`${avgPerDay.toFixed(1)}`} unit="コマ" sub={`${(avgPerDay * 1000).toLocaleString(undefined, { maximumFractionDigits: 0 })}人/日`} color={avgPerDay >= GOV_BENCHMARK ? C.green : C.amber} icon="📊" />
           <StatCard label="政府目標 平均/日" value={`${GOV_BENCHMARK}`} unit="コマ" sub="2万人/日" color={C.violet} icon="🎯" />
           <StatCard label="目標比" value={`${avgPerDay > 0 ? ((avgPerDay / GOV_BENCHMARK) * 100).toFixed(0) : 0}`} unit="%" sub={avgPerDay >= GOV_BENCHMARK ? '目標達成' : '目標未達'} color={avgPerDay >= GOV_BENCHMARK ? C.green : C.red} icon={avgPerDay >= GOV_BENCHMARK ? '✅' : '❌'} />

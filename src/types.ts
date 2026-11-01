@@ -265,6 +265,8 @@ export interface GameState {
   earthquakeDay: number | null;
   earthquakeLevel: number | null;
   isComplete: boolean;
+  // 初期総人口（コマ）。createInitialState で固定。旧stateでは undefined（残存+避難+死亡で代用）
+  initialTotal?: number;
   // DMAT派遣の残回数（宮古/下地/石垣トータル）。空港/海港/市街地集落攻撃の死者発生時に1消費で追加死者+疲労を防ぐ。
   dmatRemaining: number;
   // 多良間島 一時疲労（0..2）。多良間電力破壊で宮古・多良間へ加算、多良間→宮古 避難完了で戻す。

@@ -1,7 +1,7 @@
 // OKIRES2026 ゲームエンジン
 
 import { facilityStatusAll } from './facilities';
-import { islandSnapshot } from './islands';
+import { islandSnapshot, isolatedByOf } from './islands';
 import type {
   GameState, SetupConfig, AreaId, AreaState,
   WeatherState, MilitaryState, TransportState, InfraState,
@@ -256,6 +256,8 @@ export function createInitialState(config: SetupConfig): GameState {
       disabledAirRoutes: {}, disabledShipRoutes: {}, disabledTaketomiPorts: {},
     },
     evacuated: 0, dead: 0, dayLogs: [], activeEvents: [],
+    // 初期総人口（固定）。避難率の分母と人口保存則の検査に使う
+    initialTotal: Object.values(areas).reduce((t, a) => t + a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0) + (a.isolatedPending ?? 0), 0),
     earthquakeDay: null, earthquakeLevel: null, isComplete: false,
     // DMAT派遣トータル回数（事前準備Lv別 1/2/3/4/4/4）
     dmatRemaining: settings.dmat,
@@ -724,6 +726,8 @@ export interface EventResult {
   // minor=数十名（コマ除去なし） / major=数百名（0.5コマ死亡）。
   // prepareDayPhase1 でDMAT残と突き合わせ、当該エリア疲労+1／(DMAT未派遣・派遣不可なら)追加死者(major:0.5/minor:0)+疲労+1を確定する。
   dmatDeathAreas: { area: AreaId; severity: 'minor' | 'major' }[];
+  // 死傷の発生順の記録（輸送アセット攻撃等の死者 'asset' と、DMAT対象の死傷者 'dmat'）。prepareDayPhase1 はこの順で人口除去・DMAT判定を行う
+  casualtyTimeline: ({ kind: 'asset'; area: AreaId; n: number } | { kind: 'dmat'; area: AreaId; severity: 'minor' | 'major' })[];
   // ver4.0 6.4.5: 自衛隊喪失-1 を反映した後の軍事状態（当日以降のイベント判定にも即時反映・翌日へ引き継ぐ）
   military: MilitaryState;
   // ver4.0 6.4.2/3: 当日 上陸・ヘリボーンで占領されたエリア（prepareDayPhase1 で残存コマを0にし occupied へ反映。
@@ -772,6 +776,7 @@ export function generateDailyEvents(
     hourlyRolls: [],
     senkakuOccupied: false,
     dmatDeathAreas: [],
+    casualtyTimeline: [],
     military: { ...state.military },
     occupiedToday: {},
     deadByArea: { yonaguni: 0, taketomi: 0, ishigaki: 0, miyako: 0 },
@@ -1086,11 +1091,13 @@ function resolveFacilityCasualty(area: AreaId, state: GameState, result: EventRe
   if (v >= 12) {
     result.newDead += 0.5; // 計上値（人口除去と死者確定は prepareDayPhase1 7b' の逐次DMAT処理で行う）
     result.dmatDeathAreas.push({ area, severity: 'major' });
+    result.casualtyTimeline.push({ kind: 'dmat', area, severity: 'major' });
     result.log.push(`  ${formula} ≥12 → 数百名の死傷者: 0.5コマ死亡・当該エリア疲労+1・DMAT対象`);
     return '死傷者:数百名(0.5コマ)';
   }
   if (v >= 8) {
     result.dmatDeathAreas.push({ area, severity: 'minor' });
+    result.casualtyTimeline.push({ kind: 'dmat', area, severity: 'minor' });
     result.log.push(`  ${formula} 8〜11 → 数十名の死傷者: 当該エリア疲労+1・DMAT対象（コマ除去なし）`);
     return '死傷者:数十名';
   }
@@ -1107,6 +1114,7 @@ function assetDeathArea(state: GameState, result: EventResult): AreaId | null {
     if (pop > 0 && !result.occupiedToday[id]) {
       result.newDead += 1;
       result.deadByArea[id] += 1;
+      result.casualtyTimeline.push({ kind: 'asset', area: id, n: 1 });
       return id;
     }
   }
@@ -1451,6 +1459,7 @@ function processEventCell(
         result.disabledAirRoutes[cell.air] = true;
         result.newDead += 1;
         result.deadByArea[AIR_ROUTE_AREA[cell.air]] += 1; // 出発エリアの人口から除去（prepareDayPhase1）
+        result.casualtyTimeline.push({ kind: 'asset', area: AIR_ROUTE_AREA[cell.air], n: 1 });
         allAreasFatigue(1);
         result.log.push(`  ⚠️ 撃墜成立! ${jp}から同日に出発した1コマ死亡(${state.areas[AIR_ROUTE_AREA[cell.air]].name})・${jp}発の民間航空便は今後一切使用不能・全4エリア疲労+1`);
         return `【撃墜】${jp} 航空便 計${r.calcValue}≥${r.threshold}`;
@@ -1473,6 +1482,7 @@ function processEventCell(
         else result.disabledTaketomiPorts[cell.tport!] = true;
         result.newDead += 1;
         result.deadByArea[area] += 1; // 出発エリアの人口から除去（prepareDayPhase1）
+        result.casualtyTimeline.push({ kind: 'asset', area, n: 1 });
         allAreasFatigue(1);
         result.log.push(`  ⚠️ 撃沈成立! ${jp}から同日に出発した1コマ死亡(${state.areas[area].name})・${jp}発の民間船舶便は今後一切使用不能・全4エリア疲労+1`);
         return `【撃沈】${jp} 船舶便 計${r.calcValue}≥${r.threshold}`;
@@ -1665,10 +1675,12 @@ function processEventCell(
         result.log.push(`  ⚠️ 計${calcValue}≥11 → 0.5コマ死亡・${areaName}疲労+1・DMAT対象（未派遣ならさらに0.5コマ死亡・疲労+1）`);
         result.newDead += 0.5; // 計上値（人口除去と死者確定は prepareDayPhase1 7b' の逐次DMAT処理で行う）
         result.dmatDeathAreas.push({ area: targetArea, severity: 'major' });
+        result.casualtyTimeline.push({ kind: 'dmat', area: targetArea, severity: 'major' });
         return `【市街攻撃・0.5コマ死亡】${areaName} 計${calcValue}≥11`;
       } else if (calcValue >= 1) {
         result.log.push(`  ⚠️ 計${calcValue}(1〜10) → コマ死亡なし・${areaName}疲労+1・DMAT対象（未派遣ならさらに疲労+1）`);
         result.dmatDeathAreas.push({ area: targetArea, severity: 'minor' });
+        result.casualtyTimeline.push({ kind: 'dmat', area: targetArea, severity: 'minor' });
         return `【市街攻撃・疲労+1】${areaName} 計${calcValue}(1〜10)`;
       }
       return `【市街攻撃】${areaName} 計${calcValue}≤0 被害なし`;
@@ -1726,6 +1738,7 @@ function processEventCell(
       const n = Math.floor(alive * share * 2 + 1e-9) / 2;
       result.newDead += n;
       result.deadByArea[targetArea] += n;
+      if (n > 0) result.casualtyTimeline.push({ kind: 'asset', area: targetArea, n });
       result.log.push(`  ⚠️ ${cell.jp}成立! ${areaName} の一部（人口シェア${(share * 100).toFixed(1)}%）を占領 → 死者${n}コマ・全4エリア疲労+2。免れた地域: ${spared.join('・')}（エリア単位の近似。エリア自体は占領状態にしない）`);
       return `【${cell.jp}成立】${areaName} 一部占領(${(share * 100).toFixed(0)}%) 死者${n}コマ`;
     }
@@ -1975,7 +1988,8 @@ export function getDayCapacities(
   const shuttleCoastGuardMax = (shipUsable ? transport.coastGuardToday * M : 0) * hubSeaFrom;
   const shuttleJmsdfMax = (shipUsable && transport.jmsdfRemaining > 0 ? 1 * M : 0) * hubSeaFrom;
   // 空自の往復便も1日1便（=1コマ分の枠×M）。海自(shuttleJmsdfMax)と同じく残数を1日容量にしない
-  const shuttleJasdfMax = (shuttleActive && fromAirfieldOk(shuttleFrom) ? Math.min(1, transport.jasdfRemaining) * M : 0) * fromAirMul(shuttleFrom, true);
+  // 送出側・集約先の両端の飛行場が使えること（着側が当日閉鎖・悪天候なら着陸できない）
+  const shuttleJasdfMax = (shuttleActive && fromAirfieldOk(shuttleFrom) && fromAirfieldOk(shuttleTo) ? Math.min(1, transport.jasdfRemaining) * M : 0) * fromAirMul(shuttleFrom, true);
   const shuttleJgsdfMax = shuttleActive ? transport.jgsdfRemaining * 1 : 0; // 陸自ヘリ 1便1コマ
   // 民間航空3倍: 集約先ハブと送出側ハブの双方が民間便を出せる（空港無事かつ路線運航拒否でない）時のみ。
   // 基準便数は「送出側ハブが出せる方向便数」を使う（宮古発なら宮古(+下地島)、石垣発なら新石垣）。
@@ -2229,25 +2243,28 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
     if (eqRemovedTotal < eq.deaths) log.push(`🌊 地震死者${eq.deaths}コマのうち残存人口を超える${eq.deaths - eqRemovedTotal}コマは発生しない（実死者${eqRemovedTotal}）`);
   }
 
-  // 7b. 撃墜/撃沈/輸送アセット攻撃の死者（deadByArea）を当該エリアの人口から実際に除去する。
-  //     当日死者は「実際に除去できた数」で集計する（無人エリアでは死者は発生しない＝人口保存則）。
-  for (const id of Object.keys(areasAfterEvents) as AreaId[]) {
-    const atk = eventResult.deadByArea[id];
-    if (atk <= 0) continue;
-    const r1 = removeFromArea(areasAfterEvents[id], atk, ledger);
-    attackRemoved += r1;
-    if (atk - r1 > 0) log.push(`${state.areas[id].name}: 死者${atk}コマ計上のうち残存人口を超える${atk - r1}コマは発生しない（実死者${r1}）`);
-  }
-
-  // 7b'. DMAT連動（ver4.0 4.11/6.6/6.7）: 市街攻撃/施設破壊の死傷者を発生順に1件ずつ逐次処理する。
-  //      「攻撃死(major 0.5)を人口除去 → 除去後に無人なら被害なし(DMAT不要・疲労なし) → 当該疲労+1 → DMAT判定」。
-  //      派遣可能は石垣島・宮古島のみ（与那国・竹富は派遣不可＝常に追加被害）。DMAT残>0なら1消費して追加被害を防ぐ。
-  //      追加被害（未派遣/派遣不可）: major → 追加死者0.5コマ＋当該疲労+1 ／ minor → 追加死者0＋当該疲労+1。除去後の人口を次の判定に使う。
+  // 7b/7b'. 死傷の逐次処理（発生順 = casualtyTimeline）。
+  //   'asset' : 撃墜/撃沈/輸送アセット攻撃/部分占領の死者を当該エリアの人口から実除去（無人なら死者は発生しない＝人口保存則）。
+  //   'dmat'  : 市街攻撃/施設破壊の死傷者（ver4.0 4.11/6.6/6.7）。「攻撃死(major 0.5)を人口除去 → 除去後に無人なら被害なし(DMAT不要・疲労なし)
+  //             → 当該疲労+1 → DMAT判定」。派遣可能は石垣島・宮古島のみ。DMAT残>0なら1消費して追加被害を防ぐ。
+  //             追加被害（未派遣/派遣不可）: major → 追加死者0.5コマ＋当該疲労+1 ／ minor → 追加死者0＋当該疲労+1。
+  //   以前は種類別に「アセット死を全部 → DMAT対象を全部」の順で処理しており、後から起きたアセット死が先の市街攻撃を無人扱いにしていた。
   const alive = (a: AreaState) => a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0) + (a.isolatedPending ?? 0);
-  for (const { area, severity } of eventResult.dmatDeathAreas) {
-    const name = state.areas[area].name;
+  const timeline = eventResult.casualtyTimeline ?? [
+    ...(Object.keys(eventResult.deadByArea) as AreaId[]).filter(id => eventResult.deadByArea[id] > 0).map(id => ({ kind: 'asset' as const, area: id, n: eventResult.deadByArea[id] })),
+    ...eventResult.dmatDeathAreas.map(d => ({ kind: 'dmat' as const, ...d })),
+  ];
+  for (const ev of timeline) {
+    const name = state.areas[ev.area].name;
+    const aa = areasAfterEvents[ev.area];
+    if (ev.kind === 'asset') {
+      const r1 = removeFromArea(aa, ev.n, ledger);
+      attackRemoved += r1;
+      if (ev.n - r1 > 0) log.push(`${name}: 死者${ev.n}コマ計上のうち残存人口を超える${ev.n - r1}コマは発生しない（実死者${r1}）`);
+      continue;
+    }
+    const severity = ev.severity;
     const sevJp = severity === 'major' ? '数百名' : '数十名';
-    const aa = areasAfterEvents[area];
     if (alive(aa) <= 0) {
       log.push(`${name}の死傷者(${sevJp}): 無人エリアのため被害なし（DMAT消費なし）`);
       continue;
@@ -2261,7 +2278,7 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
       log.push(`${name}の死傷者(${sevJp}): 攻撃死で無人になったため追加被害なし（DMAT消費なし）`);
       continue;
     }
-    const dmatAllowed = area === 'ishigaki' || area === 'miyako';
+    const dmatAllowed = ev.area === 'ishigaki' || ev.area === 'miyako';
     if (dmatAllowed && dmatRemaining > 0) {
       dmatRemaining -= 1;
       log.push(`DMAT派遣: ${name}の死傷者(${sevJp})に対応（残り${dmatRemaining}回）→ 追加被害を防止（疲労+1のみ）`);
@@ -2513,6 +2530,48 @@ export function executeDayPhase2(
   // 航空機手段（民間航空・空自輸送機・陸自ヘリ）は要援護者不可（ver4.0 4.6.5: 要援護者はフェリー/海保/海自のみ）
   const isAircraftMethod = (m: string) =>
     m.includes('空自輸送機') || m.includes('陸自ヘリ') || m.includes('民間航空') || (m.includes('空港') && m.includes('民間'));
+  // 実行側の経路・容量検証: 手段ごとに「出発エリア・行き先・当日容量プール」を定め、注文の合計が当日容量を超えないようにする。
+  // 自動注文(autoSelectOrders)は容量内で生成されるため結果は変わらない。手動・水増し・重複注文でも容量と経路を越えない最終防衛線。
+  const shFrom = capacities.shuttleFrom, shTo = capacities.shuttleTo as EvacuationOrder['to'] | null;
+  const ORDER_ROUTES: Record<string, { from: AreaId[]; to: EvacuationOrder['to'][]; pool: string }> = {
+    '与那国空港(民間)': { from: ['yonaguni'], to: ['mainland'], pool: 'yonaguniAir' },
+    'フェリー': { from: ['yonaguni'], to: ['ishigaki'], pool: 'yonaguniSea' },
+    '竹富→石垣フェリー': { from: ['taketomi'], to: ['ishigaki'], pool: 'taketomiFerry' },
+    '波照間空港(民間)': { from: ['taketomi'], to: ['ishigaki'], pool: 'haterumaAir' },
+    '新石垣空港(民間)': { from: ['ishigaki'], to: ['mainland'], pool: 'ishigakiAir' },
+    '空自輸送機': { from: ['ishigaki'], to: ['mainland'], pool: 'ishigakiJasdf' },
+    '石垣港フェリー': { from: ['ishigaki'], to: ['mainland'], pool: 'ishigakiFerry' },
+    '宮古空港(民間)': { from: ['miyako'], to: ['mainland'], pool: 'miyakoAir' },
+    '下地島空港(民間)': { from: ['miyako'], to: ['mainland'], pool: 'shimojiAir' },
+    '平良港フェリー': { from: ['miyako'], to: ['mainland'], pool: 'miyakoFerry' },
+    '海保輸送船': { from: ['ishigaki', 'miyako'], to: ['mainland'], pool: 'cg' },
+    '海自輸送艦': { from: ['ishigaki', 'miyako'], to: ['mainland'], pool: 'jmsdf' },
+    'ピストン海保輸送船': { from: shFrom ? [shFrom] : [], to: shTo ? [shTo] : [], pool: 'shCg' },
+    'ピストン海自輸送艦': { from: shFrom ? [shFrom] : [], to: shTo ? [shTo] : [], pool: 'shJmsdf' },
+    'ピストン空自輸送機': { from: shFrom ? [shFrom] : [], to: shTo ? [shTo] : [], pool: 'shJasdf' },
+    'ピストン民間航空': { from: shFrom ? [shFrom] : [], to: shTo ? [shTo] : [], pool: 'shCiv' },
+    'ピストン陸自ヘリ': { from: shFrom ? [shFrom] : [], to: shTo ? [shTo] : [], pool: 'shJgsdf' },
+  };
+  // 海保・海自はハブ別（石垣/宮古）にプールを分ける
+  const poolKey = (route: { pool: string }, from: AreaId) => (route.pool === 'cg' || route.pool === 'jmsdf') ? `${route.pool}:${from}` : route.pool;
+  const POOL_CAP: Record<string, number> = {
+    yonaguniAir: capacities.yonaguniAirMax, yonaguniSea: capacities.yonaguniSeaMax,
+    taketomiFerry: capacities.taketomiFerryMax, haterumaAir: capacities.haterumaAirMax,
+    ishigakiAir: capacities.ishigakiAirMax, ishigakiJasdf: capacities.ishigakiJasdfMax, ishigakiFerry: capacities.ishigakiFerryMax,
+    miyakoAir: capacities.miyakoAirMax, shimojiAir: capacities.shimojAirMax, miyakoFerry: capacities.miyakoFerryMax,
+    'cg:ishigaki': capacities.ishigakiCoastGuardMax, 'cg:miyako': capacities.miyakoCoastGuardMax,
+    'jmsdf:ishigaki': capacities.ishigakiJmsdfMax, 'jmsdf:miyako': capacities.miyakoJmsdfMax,
+    shCg: capacities.shuttleCoastGuardMax, shJmsdf: capacities.shuttleJmsdfMax, shJasdf: capacities.shuttleJasdfMax,
+    shCiv: capacities.shuttleCivAirMax, shJgsdf: capacities.shuttleJgsdfMax,
+  };
+  const poolUsed: Record<string, number> = {};
+  // 民間航空の便数はハブ単位で共有（本土民間便1コマ=1便、民間ピストン1コマ=1/M便）。同じ機材を本土便とピストンに二重使用させない
+  const CIV_FLIGHTS: Record<string, number> = { ishigaki: capacities.ishigakiAirMax, miyako: capacities.miyakoAirMax + capacities.shimojAirMax };
+  const civFlightsUsed: Record<string, number> = { ishigaki: 0, miyako: 0 };
+  // 民間ピストンの便数消費は0.5便単位に切り上げる（1/3便などの端数で本土便の残りが0.5コマ単位から外れないように）
+  const ceil05 = (x: number) => Math.ceil(x * 2 - 1e-9) / 2;
+  const civHubOf = (pool: string, from: AreaId): string | null =>
+    pool === 'ishigakiAir' ? 'ishigaki' : (pool === 'miyakoAir' || pool === 'shimojiAir') ? 'miyako' : pool === 'shCiv' ? from : null;
   for (const order of orders) {
     // 占領済みエリアからの避難・占領済みハブへの集約は無効（自動注文以外の手動注文も実行側で弾く）
     if (isOccupied(stateAfterEvents, order.from)) {
@@ -2526,6 +2585,24 @@ export function executeDayPhase2(
     // 疲労限界・手数切れ: 実効手数（疲労による手数−増援交渉の1手消費）が0のエリアは避難行動不可（容量側 penFactor=0 と一致）
     if (effectiveHands(stateAfterEvents, order.from) <= 0) {
       evacLog.push(`${order.method}: ${areas[order.from].name} は手数0（疲労限界または交渉で消費）のため避難行動不可（注文無効）`);
+      continue;
+    }
+    // 経路検証（手段に対して出発エリア・行き先が正しいか）と当日容量の残り
+    const route = ORDER_ROUTES[order.method];
+    if (!route || !route.from.includes(order.from) || !route.to.includes(order.to)) {
+      evacLog.push(`${order.method}: ${areas[order.from]?.name ?? order.from}→${order.to} はこの手段の経路ではないため注文無効`);
+      continue;
+    }
+    const pk = poolKey(route, order.from);
+    let poolRoom = Math.max(0, (POOL_CAP[pk] ?? 0) - (poolUsed[pk] ?? 0));
+    // 海保は1日の便数(coastGuardToday)も上限（本土便1便=1コマ、ピストン1便=Mコマ）
+    if (route.pool === 'cg') poolRoom = Math.min(poolRoom, transport.coastGuardToday);
+    if (route.pool === 'shCg') poolRoom = Math.min(poolRoom, transport.coastGuardToday * SHUTTLE_MULTIPLIER);
+    const civHub = civHubOf(route.pool, order.from);
+    const civCost = route.pool === 'shCiv' ? 1 / SHUTTLE_MULTIPLIER : 1;
+    if (civHub && CIV_FLIGHTS[civHub] !== undefined) poolRoom = Math.min(poolRoom, Math.floor(Math.max(0, CIV_FLIGHTS[civHub] - civFlightsUsed[civHub]) / civCost * 2 + 1e-9) / 2);
+    if (poolRoom <= 0) {
+      evacLog.push(`${order.method}: 本日の容量を使い切った（または容量0）ため注文無効`);
       continue;
     }
     // A表 住民の避難拒否: 当日その地区住民は避難しない（手動注文も無効化。ハブ待機コマの搬出は下で継続）
@@ -2574,13 +2651,15 @@ export function executeDayPhase2(
 
     // コマ数上限チェック
     // 空自/海自の1便あたり上限: 本土便1コマ・往復便Mコマ（要援護者→住民→観光客の順で積む）
-    const tripCap = isJmsdf || isJasdf ? Math.min(order.method.startsWith('ピストン') ? SHUTTLE_MULTIPLIER : 1, sdfCapToday) : Infinity;
+    const tripCap = Math.min(isJmsdf || isJasdf ? Math.min(order.method.startsWith('ピストン') ? SHUTTLE_MULTIPLIER : 1, sdfCapToday) : Infinity, poolRoom);
     let tripRoom = tripCap;
     const cappedVuln = Math.min(actualVuln, area.vulnerable, tripRoom); tripRoom -= cappedVuln;
     const cappedRes = Math.min(actualRes, area.residents, tripRoom); tripRoom -= cappedRes;
     const cappedTour = Math.min(actualTour, area.tourists, tripRoom);
     const cappedTotal = cappedVuln + cappedRes + cappedTour;
     if (cappedTotal <= 0) continue;
+    poolUsed[pk] = (poolUsed[pk] ?? 0) + cappedTotal;
+    if (civHub && civFlightsUsed[civHub] !== undefined) civFlightsUsed[civHub] += civCost === 1 ? cappedTotal : ceil05(cappedTotal / SHUTTLE_MULTIPLIER);
 
     area.vulnerable -= cappedVuln;
     area.residents -= cappedRes;
@@ -2637,8 +2716,8 @@ export function executeDayPhase2(
 
     // 石垣空路（容量は phase1.capacities=倍率反映＋0.5丸め済を使用。同日ordersが使った空路分を差し引き二重使用を防止）
     if (airportAvail.shinIshigaki && civAirOk) {
-      const usedByOrders = evacuations.filter(e => e.method === '新石垣空港(民間)').reduce((s, e) => s + e.count, 0);
-      const airMax = Math.max(0, capacities.ishigakiAirMax - usedByOrders);
+      // 本土民間便・民間ピストンで使った便数（civFlightsUsed）を差し引いた残り
+      const airMax = Math.max(0, CIV_FLIGHTS.ishigaki - civFlightsUsed.ishigaki);
       // 残り容量で stagingPort(竹富/与那国からの流入コマ)を本土へ輸送
       const staging = Math.min(airMax, areas.ishigaki.stagingPort);
       if (staging > 0) {
@@ -2646,32 +2725,48 @@ export function executeDayPhase2(
         evacuatedCount += staging;
         evacuations.push({ from: 'ishigaki', to: '本土', count: staging, method: '新石垣空港(港待機)', isVulnerable: false });
         evacLog.push(`新石垣空港: 待機${staging}コマ → 本土`);
+        civFlightsUsed.ishigaki += staging;
+      }
+    }
+
+    // 石垣待機コマ → 空自輸送機（応急復旧後は民間便が止まっていても飛べる）。1日1便・当日容量まで。要援護者は航空機不可なので白コマのみ
+    if (capacities.ishigakiJasdfMax > 0 && jasdfTripsToday < 1 && transport.jasdfRemaining > 0 && areas.ishigaki.stagingPort > 0) {
+      const n = Math.min(Math.min(1, capacities.ishigakiJasdfMax), areas.ishigaki.stagingPort);
+      if (n > 0) {
+        areas.ishigaki.stagingPort -= n;
+        evacuatedCount += n;
+        evacuations.push({ from: 'ishigaki', to: '本土', count: n, method: '空自輸送機(港待機)', isVulnerable: false });
+        evacLog.push(`空自輸送機: 石垣の待機${n}コマ → 本土`);
+        transport.jasdfRemaining = Math.max(0, transport.jasdfRemaining - 1); // 当日の空自はこれで1便使用（以降に空自の搬出は無い）
       }
     }
 
     // 宮古待機コマ（同上。同日ordersが使った空路分を差し引く）
     if (airportAvail.miyako && civAirOk) {
       const usedByOrders = evacuations.filter(e => e.method === '宮古空港(民間)').reduce((s, e) => s + e.count, 0);
-      const miyakoAirMax = Math.max(0, capacities.miyakoAirMax - usedByOrders);
+      // 空港別の残り と 宮古ハブ全体の便数の残り（民間ピストン使用分を含む）の小さい方
+      const miyakoAirMax = Math.max(0, Math.min(capacities.miyakoAirMax - usedByOrders, CIV_FLIGHTS.miyako - civFlightsUsed.miyako));
       const staging = Math.min(miyakoAirMax, areas.miyako.stagingPort);
       if (staging > 0) {
         areas.miyako.stagingPort -= staging;
         evacuatedCount += staging;
         evacuations.push({ from: 'miyako', to: '本土', count: staging, method: '宮古空港(港待機)', isVulnerable: false });
         evacLog.push(`宮古空港: 待機${staging}コマ → 本土`);
+        civFlightsUsed.miyako += staging;
       }
     }
 
     // 宮古待機コマ → 下地島空港の残容量（宮古空港が破壊・閉鎖でも下地島が使えれば搬出。同日ordersと宮古分の使用を差し引く）
     if (airportAvail.shimoji && civAirOk && areas.miyako.stagingPort > 0) {
       const usedByOrders = evacuations.filter(e => e.method === '下地島空港(民間)').reduce((s, e) => s + e.count, 0);
-      const shimojiAirMax = Math.max(0, capacities.shimojAirMax - usedByOrders);
+      const shimojiAirMax = Math.max(0, Math.min(capacities.shimojAirMax - usedByOrders, CIV_FLIGHTS.miyako - civFlightsUsed.miyako));
       const staging = Math.min(shimojiAirMax, areas.miyako.stagingPort);
       if (staging > 0) {
         areas.miyako.stagingPort -= staging;
         evacuatedCount += staging;
         evacuations.push({ from: 'miyako', to: '本土', count: staging, method: '下地島空港(港待機)', isVulnerable: false });
         evacLog.push(`下地島空港: 待機${staging}コマ → 本土`);
+        civFlightsUsed.miyako += staging;
       }
     }
 
@@ -2722,7 +2817,7 @@ export function executeDayPhase2(
   // 移送されたコマは同日中は本土向けフェリーに乗らず、翌日から通常の residents として扱う（当日処理の最後に residents へ加算）。
   {
     const tk = areas.taketomi;
-    const by = tk.isolatedPendingBy ?? { hatoma: tk.isolatedPending ?? 0, funauki: 0 };
+    const by = isolatedByOf(tk);
     const pendingTotal = Math.max(0, by.hatoma) + Math.max(0, by.funauki);
     if (pendingTotal > 0) {
       const evacAllowed = newPhase === 'wartime' || (newPhase === 'crisis' && stateAfterEvents.prepLevel >= CRISIS_EVAC_MIN_LEVEL);
@@ -2868,6 +2963,13 @@ export function executeDayPhase2(
     }])
   ) as DayLog['areaSnapshots'];
 
+  // 人口保存則の自己検査（初期総数 = 残存 + 累計避難 + 累計死亡）。崩れたら日報に警告を残す（通常は発生しない）
+  if (stateAfterEvents.initialTotal !== undefined) {
+    const aliveNow = Object.values(areas).reduce((t, a) => t + a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0) + (a.isolatedPending ?? 0), 0);
+    const gap = stateAfterEvents.initialTotal - (aliveNow + newEvacuated + newDead);
+    if (Math.abs(gap) > 1e-6) evacLog.push(`⚠️ 人口保存則の不一致: 初期${stateAfterEvents.initialTotal} − (残存${aliveNow}+避難${newEvacuated}+死亡${newDead}) = ${gap}`);
+  }
+
   const dLog: DayLog = {
     day,
     dayLabel,
@@ -2966,7 +3068,7 @@ export function totalCapacityOffered(c: DayCapacities): number {
 
 // ===== AI自動選択（autoplay用）=====
 // 避難方針(EvacPolicy)で「手段ブロックの試行順」を切り替える。'balanced' は従来実装と完全に同一の注文を返す。
-//   balanced         : 従来順（空路→海保→空自→海自→フェリー）。ハブ(石垣/宮古)の本土便は総人口ベースで注文し実行側の上限で確定（現行互換）
+//   balanced         : 従来順（空路→海保→空自→海自→フェリー）。全方針で各エリアの残人口を追跡して注文する
 //   sea-first        : 各エリアで海路（フェリー/海保/海自）を先に試し、空路は後
 //   air-first        : 各エリアで空路（民間航空/空自）を先に試し、海路は後
 //   vulnerable-first : 各エリアで海路手段の枠をまず要援護者で埋め、白コマ（住民・観光客）は残容量で
@@ -2990,7 +3092,9 @@ export function autoSelectOrders(phase1: DayPhase1Result, policy: EvacPolicy = '
   const { transport } = state;
   const civAirOk = !transport.civilianAirDisabled;
   // 方針別の挙動スイッチ
-  const trackHubs = policy === 'sea-first' || policy === 'air-first' || policy === 'vulnerable-first';
+  // 全方針で石垣/宮古の残人口を追跡する（旧 balanced/shuttle-first は未追跡で、同じ要援護者を2つの注文が取り合い、
+  // 空いた海路枠を住民に使わず残すことがあった。同乱数の対比較で Lv3 +0.05pt・Lv4 +0.17pt、悪化するレベルなし）
+  const trackHubs = true;
   const shuttleFirst = policy === 'shuttle-first';
 
   // 橋（池間・来間・伊良部）が落ちると、その離島住民は宮古本島へ渡れず移動不可＝孤立
@@ -3018,6 +3122,8 @@ export function autoSelectOrders(phase1: DayPhase1Result, policy: EvacPolicy = '
   // さらに海自は「1日1コマ」上限（残隻数が2以上でも同日に2コマ使わない）。
   let jmsdfMainland = Math.min(capacities.ishigakiJmsdfMax + capacities.miyakoJmsdfMax, capacities.jmsdfRemaining, 1);
   let jasdfMainland = capacities.ishigakiJasdfMax;                                      // 空自 (石垣のみ)
+  // 民間ピストンで使った便数（送出側ハブ別）。同じ空港の民間便なので本土民間便の容量から差し引く（宮古は宮古空港→下地島の順に充当）
+  const civShuttleFlights: Record<AreaId, number> = { yonaguni: 0, taketomi: 0, ishigaki: 0, miyako: 0 };
 
   // ===== Section2: 石垣島⇔宮古島 2島間往復(ピストン)輸送 =====
   // 片方ハブの本土空路が破壊/運航拒否の時、破壊された側ハブの住民を機能している側ハブへ集約する。
@@ -3076,6 +3182,7 @@ export function autoSelectOrders(phase1: DayPhase1Result, policy: EvacPolicy = '
       if (leg.method === 'ピストン海保輸送船') cgMainland = Math.max(0, cgMainland - Math.ceil(moved / M));
       else if (leg.method === 'ピストン海自輸送艦') jmsdfMainland = Math.max(0, jmsdfMainland - Math.ceil(moved / M));
       else if (leg.method === 'ピストン空自輸送機') jasdfMainland = Math.max(0, jasdfMainland - Math.ceil(moved / M));
+      else if (leg.method === 'ピストン民間航空') civShuttleFlights[fromId] += Math.ceil(moved / M * 2 - 1e-9) / 2; // 同じ空港の便を使う → 本土民間便から差し引く（0.5便単位に切り上げ）
       // 陸自ヘリ(1倍: moved=便数)は本土プールを消費しない別枠。民間航空も本土海保/海自/空自プールを消費しない。
       orders.push({ from: fromId, to: toDest, method: leg.method, residents: res, tourists: tour, vulnerable: vuln });
     }
@@ -3097,6 +3204,13 @@ export function autoSelectOrders(phase1: DayPhase1Result, policy: EvacPolicy = '
   const taketomiFerryVulnOk = true;
   const mk = (area: AreaId, to: EvacLeg['to'], method: string, kind: EvacLeg['kind'], cap: number, vulnOk: boolean, tourOk: boolean): EvacLeg =>
     ({ area, to, method, kind, cap: Math.max(0, cap), vulnOk, tourOk, vuln: 0, res: 0, tour: 0 });
+  // 宮古発の民間ピストン便を宮古空港→下地島空港の順に割り当てる（使えない空港には割り当てない）
+  const miyakoShuttleUse = (() => {
+    let f = civShuttleFlights.miyako;
+    const mCap = civAirOk && airportAvail.miyako ? capacities.miyakoAirMax : 0;
+    const m = Math.min(f, mCap); f -= m;
+    return { miyako: m, shimoji: f };
+  })();
   const legsByArea: Record<AreaId, EvacLeg[]> = {
     yonaguni: [
       // 与那国 → 本土(空路) ※存立危機・有事では直行便が使えるので住民・観光客を最優先で直送
@@ -3114,7 +3228,7 @@ export function autoSelectOrders(phase1: DayPhase1Result, policy: EvacPolicy = '
     ishigaki: [
       // 石垣 → 本土(空路) ※与那国・竹富からの待機コマ(stagingPort)を優先確保
       mk('ishigaki', 'mainland', '新石垣空港(民間)', 'air',
-        capacities.ishigakiAirMax > 0 && civAirOk && airportAvail.shinIshigaki ? capacities.ishigakiAirMax - areas.ishigaki.stagingPort : 0, false, true),
+        capacities.ishigakiAirMax > 0 && civAirOk && airportAvail.shinIshigaki ? capacities.ishigakiAirMax - areas.ishigaki.stagingPort - civShuttleFlights.ishigaki : 0, false, true),
       // 石垣 → 本土(海保) ※ピストン消費後の残プールを反映
       mk('ishigaki', 'mainland', '海保輸送船', 'sea', cgIshigakiCap, true, false),
       // 石垣 → 本土(空自輸送機) ※白コマ(住民・観光客)のみ。要援護者は航空機不可
@@ -3127,9 +3241,9 @@ export function autoSelectOrders(phase1: DayPhase1Result, policy: EvacPolicy = '
     ],
     miyako: [
       // 宮古 → 本土(空路) ※橋崩落で孤立した住民(mRes)は移動不可
-      mk('miyako', 'mainland', '宮古空港(民間)', 'air', civAirOk && airportAvail.miyako ? capacities.miyakoAirMax : 0, false, true),
+      mk('miyako', 'mainland', '宮古空港(民間)', 'air', civAirOk && airportAvail.miyako ? capacities.miyakoAirMax - miyakoShuttleUse.miyako : 0, false, true),
       // 宮古 → 本土(下地島)
-      mk('miyako', 'mainland', '下地島空港(民間)', 'air', civAirOk && airportAvail.shimoji ? capacities.shimojAirMax : 0, false, true),
+      mk('miyako', 'mainland', '下地島空港(民間)', 'air', civAirOk && airportAvail.shimoji ? capacities.shimojAirMax - miyakoShuttleUse.shimoji : 0, false, true),
       // 宮古 → 本土(海保/海自) ※ピストン消費後の残プールを反映
       mk('miyako', 'mainland', '海保輸送船', 'sea', cgMiyakoCap, true, false),
       mk('miyako', 'mainland', '海自輸送艦', 'sea', jmsdfMiyakoCap, true, false),
@@ -3280,7 +3394,7 @@ function removeFromArea(a: AreaState, n: number, ledger: VulnLedger): number {
 
 // 孤立集落（鳩間島・船浮）の待機コマから n を取り出す（鳩間→船浮の順）。実際に取れた数を返し、内訳と合計を同期する。
 function takeIsolated(a: AreaState, n: number): number {
-  const by = a.isolatedPendingBy ?? { hatoma: 0, funauki: 0 };
+  const by = isolatedByOf(a); // 旧state（内訳なし）でも合計を内訳へ正規化してから除去（死亡計上なしの消失を防ぐ）
   let r = Math.max(0, n);
   const h = Math.min(r, Math.max(0, by.hatoma)); by.hatoma -= h; r -= h;
   const f = Math.min(r, Math.max(0, by.funauki)); by.funauki -= f; r -= f;
