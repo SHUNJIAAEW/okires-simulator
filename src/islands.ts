@@ -1,14 +1,14 @@
 // islands.ts — エリア(与那国/竹富/石垣/宮古)のコマを島別に按分する共通モジュール
 // 地図（IllustratedMap）と日報PDFの「孤立島・集落 残存表」で同じ計算を使う。
-// エンジンはエリア単位のため、鳩間島・船浮（isolatedPendingBy の実数）以外は人口比による按分の参考値。
+// エンジンはエリア単位のため、鳩間島・船浮・多良間島（isolatedPendingBy の実数）以外は人口比による按分の参考値。
 
 import type { AreaId, AreaState } from './types';
 
 export type SubBlob = { cx: number; cy: number; rx: number; ry: number };
 export type SubIsland = { key: string; name: string; blob: SubBlob; weight: number; tourist?: number; isolated?: boolean; max?: number }; // max: 島に置くコマの上限（住民+要援護者+待機の合計。超過分は最大ウェイトの島へ）
 
-// 鳩間島・船浮は isolatedPendingBy の実数を描く（按分しない・最低1コマ保証も適用しない）
-export const ISOLATED_KEYS = ['hatoma', 'funauki'] as const;
+// 鳩間島・船浮・多良間島は isolatedPendingBy の実数を描く（按分しない・最低1コマ保証も適用しない）
+export const ISOLATED_KEYS = ['hatoma', 'funauki', 'tarama'] as const;
 export type IsolatedKey = (typeof ISOLATED_KEYS)[number];
 
 // エリア内の個別島ごとのコマ配置領域（svg座標・楕円範囲）＋按分ウェイト
@@ -36,8 +36,8 @@ export const SUB_ISLANDS: Record<AreaId, SubIsland[]> = {
     { key: 'miyako', name: '宮古島', blob: { cx: 246, cy: 95, rx: 18, ry: 11 }, weight: 85, tourist: 1 }, // 観光最大5
     { key: 'irabu', name: '伊良部島', blob: { cx: 216, cy: 94, rx: 6, ry: 4 }, weight: 6 },
     { key: 'shimoji', name: '下地島', blob: { cx: 203, cy: 96, rx: 4, ry: 3 }, weight: 1 },
-    // 多良間島: 初期配置（住民54・要援護者込み）で1コマになるよう weight 2（3だと2コマになる）
-    { key: 'tarama', name: '多良間島', blob: { cx: 200, cy: 151, rx: 7, ry: 4 }, weight: 2, max: 1 }, // 合計で最大1コマ
+    // 多良間島: 孤立集落（isolatedPendingBy.tarama🔵 / taramaVuln🔴 の実数。初期1コマ）。weight は按分に使わない
+    { key: 'tarama', name: '多良間島', blob: { cx: 200, cy: 151, rx: 7, ry: 4 }, weight: 2, isolated: true },
     { key: 'ikema', name: '池間島', blob: { cx: 240, cy: 65, rx: 4, ry: 3 }, weight: 1 },
     { key: 'kurima', name: '来間島', blob: { cx: 236, cy: 119, rx: 4, ry: 3 }, weight: 1 },
   ],
@@ -59,16 +59,22 @@ export function apportion(total: number, weights: number[]): number[] {
   return base;
 }
 
-// 旧state互換: isolatedPendingBy が無く合計 isolatedPending だけある場合は鳩間に全量を置く（移送処理と同じ扱い）
-export function isolatedByOf(a: AreaState): { hatoma: number; funauki: number } {
-  return a.isolatedPendingBy ? { ...a.isolatedPendingBy } : { hatoma: Math.max(0, a.isolatedPending ?? 0), funauki: 0 };
+export type IsolatedBy = { hatoma: number; funauki: number; tarama: number; taramaVuln: number };
+// 旧state互換: isolatedPendingBy が無く合計 isolatedPending だけある場合は、竹富町は鳩間・宮古は多良間🔵に全量を置く
+export function isolatedByOf(a: AreaState): IsolatedBy {
+  const b = a.isolatedPendingBy;
+  if (b) return { hatoma: b.hatoma ?? 0, funauki: b.funauki ?? 0, tarama: b.tarama ?? 0, taramaVuln: b.taramaVuln ?? 0 };
+  const n = Math.max(0, a.isolatedPending ?? 0);
+  return a.id === 'miyako' ? { hatoma: 0, funauki: 0, tarama: n, taramaVuln: 0 } : { hatoma: n, funauki: 0, tarama: 0, taramaVuln: 0 };
 }
+export const isolatedSum = (by: IsolatedBy): number =>
+  Math.max(0, by.hatoma) + Math.max(0, by.funauki) + Math.max(0, by.tarama) + Math.max(0, by.taramaVuln);
 
-export interface SubCounts { res: number; tou: number; vul: number; stg: number; half?: number } // half: 住民の 0.5コマ端数の個数（半コマとして描く）
+export interface SubCounts { res: number; tou: number; vul: number; stg: number; half?: number; vulnHalf?: number } // half: 0.5コマ端数の個数（半コマとして描く）。vulnHalf: 多良間🔴の 0.5コマ端数（赤い半コマ）
 
 
 // エリアのコマを SUB_ISLANDS の各島へ按分する（地図と日報で共通）。
-// - 鳩間島・船浮(isolated) は isolatedPendingBy の実数（住民扱い）。按分ウェイトから除外し、最低1コマ保証も適用しない
+// - 鳩間島・船浮・多良間島(isolated) は isolatedPendingBy の実数（多良間の taramaVuln は要援護者、他は住民）。按分ウェイトから除外し、最低1コマ保証も適用しない
 // - それ以外は residents/tourists/vulnerable/staging を weight（観光客は tourist）で按分
 // - 描画された各島が空にならないよう、weight>0 の島へ最低1コマを保証（住民を最多の島から1つ移して総数は保持）
 export function apportionArea(a: AreaState, subs: SubIsland[]): SubCounts[] {
@@ -83,6 +89,7 @@ export function apportionArea(a: AreaState, subs: SubIsland[]): SubCounts[] {
   const halves = Math.round(fracSum * 2);
   const res = apportion(resInt, w);
   const half = subs.map(() => 0);
+  const vulnHalf = subs.map(() => 0);
   if (halves > 0) {
     let best = -1;
     w.forEach((x, i) => { if (x > 0 && (best === -1 || x > w[best])) best = i; });
@@ -96,10 +103,14 @@ export function apportionArea(a: AreaState, subs: SubIsland[]): SubCounts[] {
     if (!s.isolated) return;
     // 実数（0.5刻み）を保持: 整数部は通常コマ、0.5端数は半コマとして別枠（四捨五入で 0.5→1 に増やさない）
     const n = Math.max(0, by[s.key as IsolatedKey] ?? 0);
-    res[i] = Math.floor(n + 1e-9); half[i] = n - res[i] > 1e-9 ? 1 : 0; tou[i] = 0; vul[i] = 0; stg[i] = 0;
+    const v = s.key === 'tarama' ? Math.max(0, by.taramaVuln) : 0;
+    const vi = Math.floor(v + 1e-9);
+    res[i] = Math.floor(n + 1e-9); vul[i] = vi; tou[i] = 0; stg[i] = 0;
+    half[i] = n - res[i] > 1e-9 ? 1 : 0;
+    vulnHalf[i] = v - vi > 1e-9 ? 1 : 0;
   });
-  const totalOf = (i: number) => res[i] + tou[i] + vul[i] + stg[i] + half[i];
-  // 島ごとの上限（波照間・多良間=1）: 住民・要援護者・待機を別々に按分すると合計が上限を超え得るため、
+  const totalOf = (i: number) => res[i] + tou[i] + vul[i] + stg[i] + half[i] + vulnHalf[i];
+  // 島ごとの上限（波照間=1）: 住民・要援護者・待機を別々に按分すると合計が上限を超え得るため、
   // 超過分（要援護者→待機→観光→住民→半コマの順）を最大ウェイトの島（西表島/宮古島）へ移す（総数は保持）
   let sink = -1;
   w.forEach((x, i) => { if (x > 0 && subs[i].max === undefined && (sink === -1 || x > w[sink])) sink = i; });
@@ -124,7 +135,7 @@ export function apportionArea(a: AreaState, subs: SubIsland[]): SubCounts[] {
     }
     if (donor !== -1 && res[donor] > 1) { res[donor]--; res[i]++; }
   });
-  return subs.map((_s, i) => ({ res: res[i], tou: tou[i], vul: vul[i], stg: stg[i], half: half[i] }));
+  return subs.map((_s, i) => ({ res: res[i], tou: tou[i], vul: vul[i], stg: stg[i], half: half[i], vulnHalf: vulnHalf[i] }));
 }
 
 // 日報「孤立島・集落 残存表」の列（表示順）。irabuShimoji は伊良部島＋下地島の合算
@@ -141,7 +152,7 @@ export const ISLAND_COLUMNS: { key: string; label: string; area: AreaId; subKeys
   { key: 'irabuShimoji', label: '伊良部/下地', area: 'miyako', subKeys: ['irabu', 'shimoji'] },
 ];
 
-// 日末の島別残存コマ（ISLAND_COLUMNS.key → コマ数）。鳩間・船浮は isolatedPendingBy の実数（0.5刻みを保持）、他は按分の参考値
+// 日末の島別残存コマ（ISLAND_COLUMNS.key → コマ数）。鳩間・船浮・多良間は isolatedPendingBy の実数（0.5刻みを保持）、他は按分の参考値
 export function islandSnapshot(areas: Record<AreaId, AreaState>): Record<string, number> {
   const out: Record<string, number> = {};
   const cache: Partial<Record<AreaId, SubCounts[]>> = {};
@@ -153,7 +164,8 @@ export function islandSnapshot(areas: Record<AreaId, AreaState>): Record<string,
       const i = subs.findIndex(s => s.key === k);
       if (i < 0) continue;
       if (subs[i].isolated) {
-        n += Math.max(0, isolatedByOf(a)[k as IsolatedKey] ?? 0);
+        const by = isolatedByOf(a);
+        n += Math.max(0, by[k as IsolatedKey] ?? 0) + (k === 'tarama' ? Math.max(0, by.taramaVuln) : 0);
       } else {
         const c = (cache[col.area] ??= apportionArea(a, subs))[i];
         n += c.res + c.tou + c.vul + c.stg + (c.half ?? 0) * 0.5;

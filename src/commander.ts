@@ -88,6 +88,8 @@ export function vulnerableTotals(state: GameState): VulnerableBreakdown {
   for (const id of AREA_IDS) {
     const b = state.areas[id].vulnerableBreakdown;
     if (b) for (const c of VULNERABLE_CATEGORIES) t[c] += b[c];
+    const ib = state.areas[id].isolatedVulnBreakdown; // 多良間島に残る要援護者
+    if (ib) for (const c of VULNERABLE_CATEGORIES) t[c] += ib[c];
   }
   for (const c of VULNERABLE_CATEGORIES) {
     t[c] += state.vulnerableInTransit?.[c] ?? 0;

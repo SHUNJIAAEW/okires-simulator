@@ -1,7 +1,7 @@
 // OKIRES2026 ゲームエンジン
 
 import { facilityStatusAll } from './facilities';
-import { islandSnapshot, isolatedByOf } from './islands';
+import { islandSnapshot, isolatedByOf, isolatedSum } from './islands';
 import type {
   GameState, SetupConfig, AreaId, AreaState,
   WeatherState, MilitaryState, TransportState, InfraState,
@@ -13,7 +13,7 @@ import {
   getWeatherTrack, getInitialWeatherIndex, getInitialWindSpeedIndex,
   getInitialWindDirectionIndex, isStrongWind, AIRPORT_ALLOWED_WIND_DIRECTIONS,
   PREP_LEVEL_SETTINGS, YONAGUNI_TO_ISHIGAKI_FERRY,
-  TAKETOMI_PORT_CAPACITY, TAKETOMI_PORT_JP, SETTLEMENT_SHARE, SETTLEMENT_COST_FACTOR, MIYAKO_ISLAND_SHARE,
+  TAKETOMI_PORT_CAPACITY, TARAMA_TRANSFER_CAPACITY, TAKETOMI_PORT_JP, SETTLEMENT_SHARE, SETTLEMENT_COST_FACTOR, MIYAKO_ISLAND_SHARE,
   handsByFatigue, TOURIST_MAX_BY_AREA, VULNERABLE_TOTAL_MAX,
   TOURIST_BY_MONTH, RESIDENT_TOTAL_BY_AREA, PAC3_BY_LEVEL,
   SHUTTLE_MIN_LEVEL, SHUTTLE_MULTIPLIER,
@@ -215,6 +215,24 @@ export function createInitialState(config: SetupConfig): GameState {
       stagingAirport: 0, stagingPort: 0, stagingVulnerable: 0, inTransitToHub: 0,
     },
   };
+  // 孤立集落モデル（多良間島）: 宮古エリアから1コマを多良間島に置く。🔵住民か🔴要援護者かは宮古エリアの人口比でランダム。
+  // 有事に 多良間空港→宮古空港(🔵のみ 0.5コマ/日)・多良間港→平良港フェリー(🔵🔴 0.5コマ/日) で宮古島へ渡るまで本土便に乗れない。
+  {
+    const mk = areas.miyako;
+    const total = mk.residents + mk.vulnerable;
+    if (total >= 1) {
+      const vulnPick = mk.vulnerable >= 1 && Math.random() * total < mk.vulnerable;
+      if (vulnPick) {
+        mk.vulnerable -= 1;
+        mk.isolatedVulnBreakdown = takeVulnerableBreakdown(mk, 1);
+        mk.isolatedPendingBy = { hatoma: 0, funauki: 0, tarama: 0, taramaVuln: 1 };
+      } else {
+        mk.residents -= 1;
+        mk.isolatedPendingBy = { hatoma: 0, funauki: 0, tarama: 1, taramaVuln: 0 };
+      }
+      mk.isolatedPending = 1;
+    }
+  }
 
   const weatherTrack = getWeatherTrack(month);
   const weatherIdx = getInitialWeatherIndex(month);
@@ -709,6 +727,8 @@ export interface EventResult {
   shipRouteMultiplier: Record<ShipRouteKey, number>;
   // 竹富町離島港別の倍率（機雷/ボイコット=0、インフラ表 1/1.5・1/2）。竹富→石垣フェリー合計 = Σ 港容量×倍率
   taketomiPortMultiplier: Record<TaketomiPortKey, number>;
+  // 多良間島→宮古島の島内移送の当日倍率（インフラ表の多良間空港/多良間港）
+  taramaRouteMultiplier: { air: number; sea: number };
   // 漁港表（西表漁港/細崎漁港/前泊港）: 海保輸送船・海自輸送艦の避難コスト×1.5/×2 → ハブの海保・海自容量に 1/1.5・1/2
   hubSeaMultiplier: Record<'ishigaki' | 'miyako', number>;
   // 多良間港が当日閉鎖（ボイコット）されたか（漁港表「前泊港」の条件判定用）
@@ -767,6 +787,7 @@ export function generateDailyEvents(
     airRouteMultiplier: { shinIshigaki: 1, miyako: 1, shimoji: 1, yonaguni: 1, hateruma: 1 },
     shipRouteMultiplier: { ishigakiPort: 1, hiraraPort: 1, kubura: 1 },
     taketomiPortMultiplier: { ohara: 1, uehara: 1, kohama: 1, taketomi: 1, kuroshima: 1, hateruma: 1, hatoma: 1, funauki: 1 },
+    taramaRouteMultiplier: { air: 1, sea: 1 },
     hubSeaMultiplier: { ishigaki: 1, miyako: 1 },
     taramaPortClosedToday: false,
     disabledTaketomiPorts: {},
@@ -1193,6 +1214,8 @@ function processEventCell(
       result.seaCapacityMultiplier.taketomi *= factor;
       result.seaCapacityMultiplier.yonaguni *= factor;
     }
+    // 平良港は多良間港→平良港フェリー（多良間島の島内移送）の着港でもある
+    if (ship === 'hiraraPort' && cascade) result.taramaRouteMultiplier.sea *= factor;
   };
   // 空港の出発容量（民間・空自・往復便）に倍率を掛ける。空港自体は開いている（受け入れ可）
   const applyAirMul = (air: AirRouteKey, factor: number) => { result.airRouteMultiplier[air] *= factor; };
@@ -1262,9 +1285,10 @@ function processEventCell(
       if (occupied('miyako')) return `${t.jp} は既に占領済みエリア → 効力なし`;
       if (t.special === 'taramaPort' && islandPortsDestroyed) return `${t.jp} は地震で破壊済み → 効力なし`;
       if (t.special === 'taramaPort' && closed) result.taramaPortClosedToday = true;
-      const share = SETTLEMENT_SHARE.shiokawa.share; // 多良間島の人口シェア(3/97)
-      const m = closed ? applyShareClosed('miyako', share) : applyShareCost('miyako', share, mode.factor);
-      return `${t.jp}${fjp} ≒ 宮古島・多良間エリア容量${pct(m)}（多良間の人口シェア3/97で近似）`;
+      // 多良間島は孤立集落（isolatedPendingBy.tarama/taramaVuln）として島内移送するため、当該経路の当日倍率に直接掛ける
+      if (t.special === 'taramaAirport') result.taramaRouteMultiplier.air *= f;
+      else result.taramaRouteMultiplier.sea *= f;
+      return `${t.jp} 発の多良間→宮古 島内移送${fjp}（${t.special === 'taramaAirport' ? '空路' : 'フェリー'}）`;
     }
     // 橋: 通行コスト増はエリア容量に反映しない（ログのみ）。ボイコットの対象外は呼び出し側で除外
     return `${t.jp}: 通行コスト${closed ? '' : `×${mode.factor}`}（陸橋は避難容量に反映せずログのみ）`;
@@ -1990,7 +2014,9 @@ export function getDayCapacities(
   // 空自の往復便も1日1便（=1コマ分の枠×M）。海自(shuttleJmsdfMax)と同じく残数を1日容量にしない
   // 送出側・集約先の両端の飛行場が使えること（着側が当日閉鎖・悪天候なら着陸できない）
   const shuttleJasdfMax = (shuttleActive && fromAirfieldOk(shuttleFrom) && fromAirfieldOk(shuttleTo) ? Math.min(1, transport.jasdfRemaining) * M : 0) * fromAirMul(shuttleFrom, true);
-  const shuttleJgsdfMax = shuttleActive ? transport.jgsdfRemaining * 1 : 0; // 陸自ヘリ 1便1コマ
+  // 陸自ヘリ 1便1コマ。マニュアル: 大雨・強風では使えない（輸送量は13時の天候で判定）
+  const heliWxOk = state.weather.condition !== 'heavy-rain' && !isStrongWind(state.weather.windSpeedIndex, state.month);
+  const shuttleJgsdfMax = shuttleActive && heliWxOk ? transport.jgsdfRemaining * 1 : 0;
   // 民間航空3倍: 集約先ハブと送出側ハブの双方が民間便を出せる（空港無事かつ路線運航拒否でない）時のみ。
   // 基準便数は「送出側ハブが出せる方向便数」を使う（宮古発なら宮古(+下地島)、石垣発なら新石垣）。
   const shuttleCivAirMax =
@@ -2302,8 +2328,9 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
     // 要援護者内訳も全滅→死亡へ（自宅分は内訳から、ハブ待機分は台帳から）
     addBreakdown(ledger.dead, takeVulnerableBreakdown(a, a.vulnerable));
     addBreakdown(ledger.dead, takeFromBreakdown(ledger.inTransit, a.stagingVulnerable ?? 0));
+    takeIsolated(a, a.isolatedPending ?? 0, ledger); // 孤立集落（多良間🔴の内訳も死亡へ）
     a.residents = 0; a.tourists = 0; a.vulnerable = 0; a.stagingPort = 0; a.stagingVulnerable = 0; a.stagingAirport = 0; a.inTransitToHub = 0;
-    a.isolatedPending = 0; a.isolatedPendingBy = { hatoma: 0, funauki: 0 };
+    a.isolatedPending = 0; a.isolatedPendingBy = { hatoma: 0, funauki: 0, tarama: 0, taramaVuln: 0 };
     log.push(`⚠️ ${state.areas[id].name} 占領 → 残存${wiped}コマ全滅（死者+${wiped}）。以後このエリアの避難注文・攻撃判定は無効`);
   }
 
@@ -2493,6 +2520,7 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
     eventLog: log,
     weatherSummary, windSummary, halfDay, weatherClosed, weatherClosedAm, phaseChanged,
     taketomiPortMultiplier: eventResult.taketomiPortMultiplier,
+    taramaRouteMultiplier: eventResult.taramaRouteMultiplier,
     dmatExtraDead,
     // 地震死＋攻撃死(人口から実際に除去できた分)＋占領によるエリア全滅。全て人口除去と一致（保存則）
     eventDead: attackRemoved + occupationDead,
@@ -2824,6 +2852,7 @@ export function executeDayPhase2(
       const seaRain = (weatherClosed ?? []).some(w => w.startsWith('sea:'));
       const commonBlock: string | null = isOccupied(stateAfterEvents, 'taketomi') ? '竹富町占領'
         : effectiveHands(stateAfterEvents, 'taketomi') <= 0 ? '竹富町 手数0（避難行動不可）'
+        : (phase1.evacRefusedToday ?? []).includes('taketomi') ? '竹富町 本日避難拒否'
         : !evacAllowed ? (newPhase === 'peacetime' ? '平時（島外避難不可）' : `存立危機事態は事前準備Lv${CRISIS_EVAC_MIN_LEVEL}以上で可`)
         : stateAfterEvents.infra.seaAllAvailable === false ? '地震で離島港が全破壊'
         : (!phase1.seaOk || seaRain) ? (weatherClosed.includes('sea:rain') ? '大雨で海路閉鎖' : '強風で海路閉鎖')
@@ -2850,10 +2879,80 @@ export function executeDayPhase2(
         moved.push(`${jp} ${n}コマ（${portJp}）`);
       }
       tk.isolatedPendingBy = by;
-      tk.isolatedPending = Math.max(0, by.hatoma) + Math.max(0, by.funauki);
+      tk.isolatedPending = isolatedSum(by);
       if (moved.length) evacLog.push(`🚢 島内移送: ${moved.join('／')}（西表島着。本土向けフェリーは翌日から）`);
       // 平時/Lv不足で島外避難自体が不可の日は毎日同じ理由になるため記録しない（避難可の日の阻害要因だけ残す）
       if (blocked.length && evacAllowed) evacLog.push(`🚫 島内移送不可: ${blocked.join('／')}`);
+    }
+  }
+
+  // --- 孤立集落の島内移送（多良間島→宮古島）---
+  // マニュアル: 多良間島・宮古島は有事のみ避難可（存立危機では不可）。
+  //   空路: 多良間空港→宮古空港 民間便 0.5コマ/日（実際は50人×2便を多めに見て1便0.5コマ）。🔵住民のみ（要援護者は航空機不可）。
+  //         多良間空港の大雨・強風（風向に関係なく）は一時閉鎖。宮古空港の破壊・閉鎖・民間航空停止でも不可。
+  //   海路: 多良間港→平良港フェリー 0.5コマ/日。🔴要援護者を優先し、残りで🔵住民。
+  //         海路の悪天候・地震の離島港全破壊・平良港の破壊/閉鎖で不可。
+  //   インフラ表の多良間空港/多良間港（閉鎖=0・コスト×f=1/f）は taramaRouteMultiplier で掛け、0.5コマ単位に切り捨て。
+  // 移送されたコマは同日中は本土便に乗らず、翌日から宮古島の住民/要援護者として扱う。
+  {
+    const mk = areas.miyako;
+    const by = isolatedByOf(mk);
+    if (isolatedSum(by) > 0) {
+      const evacAllowed = newPhase === 'wartime';
+      const seaRain = (weatherClosed ?? []).some(w => w.startsWith('sea:'));
+      const commonBlock: string | null = isOccupied(stateAfterEvents, 'miyako') ? '宮古島・多良間 占領'
+        : effectiveHands(stateAfterEvents, 'miyako') <= 0 ? '宮古島・多良間 手数0（避難行動不可）'
+        : (phase1.evacRefusedToday ?? []).includes('miyako') ? '宮古島・多良間 本日避難拒否'
+        : !evacAllowed ? '有事のみ可'
+        : null;
+      const f05 = (x: number) => Math.floor(x * 2 + 1e-9) / 2;
+      const mul = phase1.taramaRouteMultiplier ?? { air: 1, sea: 1 };
+      const tr = stateAfterEvents.transport;
+      const airBlock: string | null = commonBlock
+        ?? (!airportAvail.tarama ? (stateAfterEvents.infra.taramaAirport === false ? '多良間空港 破壊' : '多良間空港 一時閉鎖（大雨/強風）')
+        : stateAfterEvents.infra.miyakoAirport === false ? '宮古空港 破壊（民間航空不可）'
+        : !airportAvail.miyako ? '宮古空港 閉鎖'
+        : (tr.civilianAirDisabled || tr.disabledAirRoutes?.miyako) ? '宮古空港の民間航空 運航停止'
+        : mul.air <= 0 ? '多良間空港 当日閉鎖'
+        : null);
+      const seaBlock: string | null = commonBlock
+        ?? ((!phase1.seaOk || seaRain) ? (weatherClosed.includes('sea:rain') ? '大雨で海路閉鎖' : '強風で海路閉鎖')
+        : stateAfterEvents.infra.seaAllAvailable === false ? '地震で多良間港が破壊'
+        : stateAfterEvents.infra.hiraraPort === false ? '平良港 破壊'
+        : mul.sea <= 0 ? '多良間港/平良港 当日閉鎖'
+        : null);
+      const moved: string[] = [];
+      const blocked: string[] = [];
+      // 空路（🔵のみ）
+      if (by.tarama > 0) {
+        if (airBlock) blocked.push(`空路: ${airBlock}`);
+        else {
+          const n = Math.min(f05(TARAMA_TRANSFER_CAPACITY.air * mul.air), by.tarama);
+          if (n > 0) { by.tarama -= n; mk.residents += n; moved.push(`多良間空港→宮古空港 🔵${n}コマ`); }
+          else blocked.push(`空路: 多良間空港 減便(×${mul.air.toFixed(2)})で本日の移送容量0`);
+        }
+      }
+      // 海路（🔴優先→🔵）
+      if (by.tarama + by.taramaVuln > 0) {
+        if (seaBlock) blocked.push(`フェリー: ${seaBlock}`);
+        else {
+          let room = f05(TARAMA_TRANSFER_CAPACITY.sea * mul.sea);
+          if (room <= 0) blocked.push(`フェリー: 減便(×${mul.sea.toFixed(2)})で本日の移送容量0`);
+          const v = Math.min(room, by.taramaVuln);
+          if (v > 0) {
+            by.taramaVuln -= v; room -= v;
+            mk.vulnerable += v;
+            addBreakdown(ensureBreakdown(mk), takeFromBreakdown(mk.isolatedVulnBreakdown ??= allocateBreakdown(v + by.taramaVuln), v));
+            moved.push(`多良間港→平良港 🔴${v}コマ`);
+          }
+          const r = Math.min(room, by.tarama);
+          if (r > 0) { by.tarama -= r; mk.residents += r; moved.push(`多良間港→平良港 🔵${r}コマ`); }
+        }
+      }
+      mk.isolatedPendingBy = by;
+      mk.isolatedPending = isolatedSum(by);
+      if (moved.length) evacLog.push(`✈🚢 島内移送: ${moved.join('／')}（宮古島着。本土便は翌日から）`);
+      if (blocked.length && evacAllowed) evacLog.push(`🚫 多良間→宮古 移送不可: ${blocked.join('／')}`);
     }
   }
 
@@ -2873,26 +2972,30 @@ export function executeDayPhase2(
   transport.jasdfRemaining += rein2.gain.jasdf;
 
   // --- 一時疲労の解除（避難完了）を「その日のうちに」反映 ---
-  // 多良間→宮古(=miyakoエリア)・波照間→石垣(竹富町各島=taketomiエリア)が無人になったら避難完了とみなし、
+  // 多良間→宮古（多良間島の孤立集落コマが0）・波照間→石垣(竹富町各島=taketomiエリアが無人)になったら避難完了とみなし、
   // 加算済みの一時疲労(*Applied)を当該エリアから差し引く（冪等・疲労死判定より前に戻す）。
-  const miyakoEmpty = areas.miyako.residents + areas.miyako.tourists + areas.miyako.vulnerable === 0;
+  // 多良間島の避難完了 = 多良間島の孤立集落コマ（🔵🔴）が全て宮古島へ渡った（または死亡した）
+  const taramaIsoEmpty = isolatedByOf(areas.miyako).tarama + isolatedByOf(areas.miyako).taramaVuln <= 0;
   const taketomiEmpty = areas.taketomi.residents + areas.taketomi.tourists + areas.taketomi.vulnerable + (areas.taketomi.isolatedPending ?? 0) === 0;
-  const taramaEvacDone = stateAfterEvents.taramaEvacDone || (stateAfterEvents.taramaPowerBroken && miyakoEmpty);
-  const haterumaEvacDone = stateAfterEvents.haterumaEvacDone || (stateAfterEvents.haterumaPowerBroken && taketomiEmpty);
+  let taramaEvacDone = stateAfterEvents.taramaEvacDone || taramaIsoEmpty;
+  let haterumaEvacDone = stateAfterEvents.haterumaEvacDone || (stateAfterEvents.haterumaPowerBroken && taketomiEmpty);
   let taramaTempApplied = stateAfterEvents.taramaTempApplied;
   let taramaTempFatigue = stateAfterEvents.taramaTempFatigue;
   let haterumaTempApplied = stateAfterEvents.haterumaTempApplied;
   let haterumaTempFatigue = stateAfterEvents.haterumaTempFatigue;
-  if (taramaEvacDone && taramaTempApplied > 0) {
-    areas.miyako.fatigue -= taramaTempApplied;
-    evacLog.push(`多良間→宮古 避難完了 → 一時疲労 -${taramaTempApplied}(宮古島・多良間)`);
-    taramaTempApplied = 0; taramaTempFatigue = 0;
-  }
-  if (haterumaEvacDone && haterumaTempApplied > 0) {
-    areas.taketomi.fatigue -= haterumaTempApplied;
-    evacLog.push(`波照間→石垣 避難完了 → 一時疲労 -${haterumaTempApplied}(竹富町各島)`);
-    haterumaTempApplied = 0; haterumaTempFatigue = 0;
-  }
+  const releaseTempFatigue = (why: string) => {
+    if (taramaEvacDone && taramaTempApplied > 0) {
+      areas.miyako.fatigue -= taramaTempApplied;
+      evacLog.push(`多良間→宮古 ${why} → 一時疲労 -${taramaTempApplied}(宮古島・多良間)`);
+      taramaTempApplied = 0; taramaTempFatigue = 0;
+    }
+    if (haterumaEvacDone && haterumaTempApplied > 0) {
+      areas.taketomi.fatigue -= haterumaTempApplied;
+      evacLog.push(`波照間→石垣 ${why} → 一時疲労 -${haterumaTempApplied}(竹富町各島)`);
+      haterumaTempApplied = 0; haterumaTempFatigue = 0;
+    }
+  };
+  releaseTempFatigue('避難完了');
   fixNegatives(areas);
 
   // --- 疲労死亡 ---
@@ -2929,11 +3032,20 @@ export function executeDayPhase2(
         const rTour = Math.min(r, areas[id].tourists); areas[id].tourists -= rTour; r -= rTour;
         const rVuln = Math.min(r, areas[id].vulnerable); areas[id].vulnerable -= rVuln; r -= rVuln;
         if (rVuln > 0) addBreakdown(ledger.dead, takeVulnerableBreakdown(areas[id], rVuln));
-        if (r > 0) takeIsolated(areas[id], r);
+        if (r > 0) takeIsolated(areas[id], r, ledger);
         toRemove -= removed;
       }
       for (const id of Object.keys(areas) as AreaId[]) areas[id].fatigue += 2;
     }
+  }
+
+  // 疲労死・期限死で多良間島/竹富町が無人になった場合も、その日のうちに一時疲労を解除する（翌日の手数に残さない）
+  {
+    const iso = isolatedByOf(areas.miyako);
+    if (!taramaEvacDone && iso.tarama + iso.taramaVuln <= 0) taramaEvacDone = true;
+    const tk = areas.taketomi;
+    if (!haterumaEvacDone && stateAfterEvents.haterumaPowerBroken && tk.residents + tk.tourists + tk.vulnerable + (tk.isolatedPending ?? 0) === 0) haterumaEvacDone = true;
+    releaseTempFatigue('無人化（死亡）');
   }
 
   // 輸送アセットリセット（翌日分）。海保便数はイベント後の(減便済み)coastGuardMaxPerDayでリセットする。
@@ -3363,9 +3475,11 @@ function fixNegatives(areas: Record<AreaId, AreaState>): void {
     areas[key].stagingVulnerable = Math.max(0, areas[key].stagingVulnerable ?? 0);
     areas[key].stagingAirport = Math.max(0, areas[key].stagingAirport);
     if (areas[key].isolatedPendingBy) {
-      const by = areas[key].isolatedPendingBy!;
+      const by = isolatedByOf(areas[key]);
       by.hatoma = Math.max(0, by.hatoma); by.funauki = Math.max(0, by.funauki);
-      areas[key].isolatedPending = by.hatoma + by.funauki;
+      by.tarama = Math.max(0, by.tarama); by.taramaVuln = Math.max(0, by.taramaVuln);
+      areas[key].isolatedPendingBy = by;
+      areas[key].isolatedPending = isolatedSum(by);
     } else {
       areas[key].isolatedPending = Math.max(0, areas[key].isolatedPending ?? 0);
     }
@@ -3387,19 +3501,23 @@ function removeFromArea(a: AreaState, n: number, ledger: VulnLedger): number {
   const sv = a.stagingVulnerable ?? 0;
   const rStgV = Math.min(r, sv); a.stagingVulnerable = sv - rStgV; r -= rStgV;
   if (rStgV > 0) addBreakdown(ledger.dead, takeFromBreakdown(ledger.inTransit, rStgV));
-  // 最後に孤立集落（鳩間→船浮の順）
-  if (r > 0) r -= takeIsolated(a, r);
+  // 最後に孤立集落（鳩間→船浮→多良間🔵→多良間🔴の順）
+  if (r > 0) r -= takeIsolated(a, r, ledger);
   return n - r;
 }
 
-// 孤立集落（鳩間島・船浮）の待機コマから n を取り出す（鳩間→船浮の順）。実際に取れた数を返し、内訳と合計を同期する。
-function takeIsolated(a: AreaState, n: number): number {
+// 孤立集落（鳩間島・船浮・多良間島）の待機コマから n を取り出す（鳩間→船浮→多良間🔵→多良間🔴の順）。
+// 実際に取れた数を返し、内訳と合計を同期する。多良間🔴の内訳は isolatedVulnBreakdown から ledger.dead へ移す。
+function takeIsolated(a: AreaState, n: number, ledger: VulnLedger): number {
   const by = isolatedByOf(a); // 旧state（内訳なし）でも合計を内訳へ正規化してから除去（死亡計上なしの消失を防ぐ）
   let r = Math.max(0, n);
   const h = Math.min(r, Math.max(0, by.hatoma)); by.hatoma -= h; r -= h;
   const f = Math.min(r, Math.max(0, by.funauki)); by.funauki -= f; r -= f;
+  const t = Math.min(r, Math.max(0, by.tarama)); by.tarama -= t; r -= t;
+  const tv = Math.min(r, Math.max(0, by.taramaVuln)); by.taramaVuln -= tv; r -= tv;
+  if (tv > 0) addBreakdown(ledger.dead, takeFromBreakdown(a.isolatedVulnBreakdown ??= allocateBreakdown(tv + by.taramaVuln), tv));
   a.isolatedPendingBy = by;
-  a.isolatedPending = Math.max(0, by.hatoma) + Math.max(0, by.funauki);
+  a.isolatedPending = isolatedSum(by);
   return n - r;
 }
 

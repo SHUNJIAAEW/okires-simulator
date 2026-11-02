@@ -61,7 +61,7 @@ export const AIRPORT_ALLOWED_WIND_DIRECTIONS: Record<string, number[]> = {
   shinIshigaki: [3, 6],   // 北東-南西: 北東(3) or 南西(6)
   miyako: [3, 6],         // 北東-南西: 北東(3) or 南西(6)
   hateruma: [1, 4],       // 波照間空港: 東西方向 西(1) or 東(4)
-  tarama: [2, 5],         // 多良間空港: 北西-南東 北西(2) or 南東(5)
+  tarama: [],             // 多良間空港: 強風は風向に関係なく一時閉鎖（マニュアル確認 2026-11-02）
 };
 
 // ===== 事前準備レベル別設定 =====
@@ -200,6 +200,10 @@ export function handsByFatigue(area: AreaId, fatigue: number): number {
 // ※ 鳩間港(1)・船浮港(0.5)は孤立集落→西表島の島内移送専用のため、石垣直行の合計からは除く（直行は最大10コマ/日）。
 // 機雷/閉鎖（同日24時まで）や船舶便攻撃（恒久停止）でその港の分を当日/以後の合計から除く。
 // funauki(船浮→白浜)は西表島内の移動（0.5）で石垣便合計には含めない。
+// 多良間島→宮古島の島内移送（有事のみ）。空路=多良間空港→宮古空港（50人×2便を多めに見て1便0.5コマ・🔵のみ）、
+// 海路=多良間港→平良港フェリー（0.5コマ・🔵🔴）
+export const TARAMA_TRANSFER_CAPACITY = { air: 0.5, sea: 0.5 } as const;
+
 export const TAKETOMI_PORT_CAPACITY: Record<TaketomiPortKey, number> = {
   ohara: 2, uehara: 2, kohama: 2, taketomi: 2, kuroshima: 1, hateruma: 1, hatoma: 1, funauki: 0.5,
 };

@@ -520,10 +520,11 @@ function WhoWasLeft({ state, strandedRows, deathRows, isMobile }: {
 }) {
   const { areas } = state;
   const total = state.evacuated + state.dead + Object.values(areas).reduce((s, a) => s + a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0) + (a.isolatedPending ?? 0), 0);
-  const residents = Object.values(areas).reduce((s, a) => s + a.residents + (a.isolatedPending ?? 0), 0); // 鳩間・船浮の移送待ちも住民
+  // 鳩間・船浮・多良間🔵の移送待ちも住民（多良間🔴は要援護者の内訳 isolatedVulnBreakdown で数える）
+  const residents = Object.values(areas).reduce((s, a) => s + a.residents + (a.isolatedPending ?? 0) - (a.isolatedPendingBy?.taramaVuln ?? 0), 0);
   const tourists = Object.values(areas).reduce((s, a) => s + a.tourists, 0);
   const stagingWhite = Object.values(areas).reduce((s, a) => s + a.stagingPort, 0);
-  const vulnHome = (c: (typeof VULNERABLE_CATEGORIES)[number]) => Object.values(areas).reduce((s, a) => s + (a.vulnerableBreakdown?.[c] ?? 0), 0);
+  const vulnHome = (c: (typeof VULNERABLE_CATEGORIES)[number]) => Object.values(areas).reduce((s, a) => s + (a.vulnerableBreakdown?.[c] ?? 0) + (a.isolatedVulnBreakdown?.[c] ?? 0), 0);
   const vulnWait = (c: (typeof VULNERABLE_CATEGORIES)[number]) => state.vulnerableInTransit?.[c] ?? 0;
   const vulnDead = (c: (typeof VULNERABLE_CATEGORIES)[number]) => state.vulnerableDead?.[c] ?? 0;
   const vulnDeadTotal = breakdownTotal(state.vulnerableDead);
@@ -531,7 +532,7 @@ function WhoWasLeft({ state, strandedRows, deathRows, isMobile }: {
   // 原因: 取り残しはエリア別原因（重複除去）、死亡は日別原因（重複除去）
   const strandedCauses = [...new Set(strandedRows.map(r => r.what))];
   const deathCauses = [...new Set(deathRows.map(r => r.what))];
-  const areasWithVuln = Object.values(areas).filter(a => a.vulnerable + (a.stagingVulnerable ?? 0) > 0).map(a => a.name);
+  const areasWithVuln = Object.values(areas).filter(a => a.vulnerable + (a.stagingVulnerable ?? 0) + (a.isolatedPendingBy?.taramaVuln ?? 0) > 0).map(a => a.name);
   const vulnCause = (left: number) => left > 0
     ? ['要援護者は海路のみ搭乗可（航空機不可）', ...(areasWithVuln.length ? [`残存エリア: ${areasWithVuln.join('・')}`] : []), ...strandedCauses].join('／')
     : '—';

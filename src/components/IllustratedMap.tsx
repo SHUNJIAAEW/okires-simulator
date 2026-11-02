@@ -127,6 +127,7 @@ const TCOLOR = { r: '#2f80ed', v: '#eb5757' } as const;
 const KOMA_COLOR: Record<string, string> = {
   r: '#2f80ed', // 住民
   h: '#2f80ed', // 住民 半コマ（孤立集落の 0.5コマ端数。小さく描く）
+  hv: '#eb5757', // 要援護者 半コマ（多良間🔴の 0.5コマ端数）
   t: '#e0a800', // 観光客
   v: '#eb5757', // 要援護者
   s: '#1b8a4b', // 待機
@@ -150,7 +151,7 @@ function PersonIcon({ color }: { color: string }) {
 }
 
 // 島の中に白マスを格子配置し、現在のコマを種別色で乗せる
-function buildCells(area: AreaState, blob: { cx: number; cy: number; rx: number; ry: number }, halfKoma = 0): Cell[] {
+function buildCells(area: AreaState, blob: { cx: number; cy: number; rx: number; ry: number }, halfKoma = 0, vulnHalfKoma = 0): Cell[] {
   // 小数（死亡0.5コマ等）や負値で Array() が落ちないよう整数化
   const ci = (x: number) => Math.max(0, Math.round(x));
   const kinds: string[] = [
@@ -159,6 +160,7 @@ function buildCells(area: AreaState, blob: { cx: number; cy: number; rx: number;
     ...Array(ci(area.vulnerable)).fill('v'),
     ...Array(ci(area.stagingPort + (area.stagingVulnerable ?? 0))).fill('s'),
     ...Array(ci(halfKoma)).fill('h'),
+    ...Array(ci(vulnHalfKoma)).fill('hv'),
   ];
   const n = kinds.length;
   if (n === 0) return [];
@@ -181,7 +183,7 @@ function buildCells(area: AreaState, blob: { cx: number; cy: number; rx: number;
     cells.push({
       x: blob.cx + (col - (cols - 1) / 2) * stepX + jx,
       y: blob.cy + (row - (rows - 1) / 2) * stepY + jy,
-      size: kinds[i] === 'h' ? size * 0.7 : size, kind: kinds[i],
+      size: kinds[i] === 'h' || kinds[i] === 'hv' ? size * 0.7 : size, kind: kinds[i],
     });
   }
   return cells;
@@ -240,7 +242,7 @@ export function IllustratedMap({ areas, infra, transport, closedToday = [], weat
     return out;
   }, [dayLogs]);
 
-  // 各島の白マス（現在のコマ配置）。按分は islands.ts の apportionArea（鳩間・船浮は isolatedPendingBy の実数、他は人口比按分）
+  // 各島の白マス（現在のコマ配置）。按分は islands.ts の apportionArea（鳩間・船浮・多良間は isolatedPendingBy の実数、他は人口比按分）
   const cellsByArea = useMemo(() => {
     const out: { id: string; cells: Cell[] }[] = [];
     (Object.keys(SUB_ISLANDS) as AreaId[]).forEach(id => {
@@ -253,7 +255,7 @@ export function IllustratedMap({ areas, infra, transport, closedToday = [], weat
           ...a, residents: c.res, tourists: c.tou, vulnerable: c.vul, stagingPort: c.stg, stagingVulnerable: 0,
           isolatedPending: 0, isolatedPendingBy: undefined,
         };
-        out.push({ id: `${id}-${si}`, cells: buildCells(subArea, s.blob, c.half ?? 0) });
+        out.push({ id: `${id}-${si}`, cells: buildCells(subArea, s.blob, c.half ?? 0, c.vulnHalf ?? 0) });
       });
     });
     return out;

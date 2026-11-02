@@ -41,7 +41,10 @@ export interface AreaState {
   // 西表島へ船で島内移送（鳩間港 1コマ/日・船浮港 0.5コマ/日）されるまで本土向けフェリーには乗れない。
   // 人口保存則の対象（残存 = residents + tourists + vulnerable + staging + isolatedPending）。
   isolatedPending?: number;
-  isolatedPendingBy?: { hatoma: number; funauki: number }; // 内訳（合計 = isolatedPending）
+  // 宮古エリアの多良間島も同じ孤立集落（有事のみ。多良間空港→宮古空港 0.5コマ/日・多良間港→平良港フェリー 0.5コマ/日）。
+  // tarama=住民🔵、taramaVuln=要援護者🔴（フェリーのみ。内訳は isolatedVulnBreakdown）
+  isolatedPendingBy?: { hatoma: number; funauki: number; tarama?: number; taramaVuln?: number }; // 内訳（合計 = isolatedPending）
+  isolatedVulnBreakdown?: VulnerableBreakdown; // 多良間島に残る要援護者のカテゴリ内訳（合計 = isolatedPendingBy.taramaVuln）
 }
 
 export interface InfraState {
@@ -334,6 +337,8 @@ export interface DayPhase1Result {
   evacRefusedToday: AreaId[];
   // 竹富町離島港の当日倍率（機雷/ボイコット=0、インフラ表=×1/1.5 等）。鳩間→西表・船浮→西表の島内移送容量に適用
   taketomiPortMultiplier?: Record<TaketomiPortKey, number>;
+  // 多良間島→宮古島の島内移送の当日倍率（インフラ表: 閉鎖=0 / コスト×f=1/f）。air=多良間空港、sea=多良間港
+  taramaRouteMultiplier?: { air: number; sea: number };
   // 午前(1時)の天候で使えない施設（weatherClosed と同形式）。日報の主要インフラ状況表で午前/午後を分けて表示する
   weatherClosedAm?: string[];
 }
