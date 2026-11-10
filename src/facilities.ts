@@ -17,6 +17,7 @@ export interface FacilityDef {
   wxKey?: string;         // 悪天候キー（省略時: sea→'sea' / air→air キー）。多良間空港は 'tarama'
   infra?: keyof InfraState; // 施設破壊フラグ
   minPrepLevel?: number;  // この Lv 未満は ❌（波照間空港=4）
+  needsInfra?: keyof InfraState; // この施設へ行くのに必要な橋など。落ちていれば 💥（下地島空港=伊良部大橋）
 }
 
 export interface FacilityContext {
@@ -32,7 +33,7 @@ export const FACILITY_COLUMNS: FacilityDef[] = [
   { key: 'yonaguniAirport', name: '与那国空港', kind: 'air', air: 'yonaguni', infra: 'yonagunAirport' },
   { key: 'shinIshigakiAirport', name: '新石垣空港', kind: 'air', air: 'shinIshigaki', infra: 'shinIshigakiAirport' },
   { key: 'miyakoAirport', name: '宮古空港', kind: 'air', air: 'miyako', infra: 'miyakoAirport' },
-  { key: 'shimojiAirport', name: '下地島空港', kind: 'air', air: 'shimoji', infra: 'shimojiAirport' },
+  { key: 'shimojiAirport', name: '下地島空港', kind: 'air', air: 'shimoji', infra: 'shimojiAirport', needsInfra: 'bridgeIrabu' },
   { key: 'haterumaAirport', name: '波照間空港', kind: 'air', air: 'hateruma', infra: 'haterumaAirport', minPrepLevel: 4 },
   { key: 'taramaAirport', name: '多良間空港', kind: 'air', wxKey: 'tarama', infra: 'taramaAirport' },
   { key: 'kuburaPort', name: '久部良港', kind: 'sea', ship: 'kubura', infra: 'kuburaPort' },
@@ -44,7 +45,8 @@ export const FACILITY_COLUMNS: FacilityDef[] = [
 
 export function facilityMark(f: FacilityDef, ctx: FacilityContext): FacilityMark | null {
   const { infra, transport, closedToday = [], weatherClosed = [], prepLevel = 6 } = ctx;
-  const destroyed = !!(f.infra && infra && infra[f.infra] === false);
+  // 下地島空港は伊良部大橋が落ちると到達できず使用不能（天候に関係なく 💥）
+  const destroyed = !!(f.infra && infra && infra[f.infra] === false) || !!(f.needsInfra && infra && infra[f.needsInfra] === false);
   const routeDown = !!((f.air && transport?.disabledAirRoutes?.[f.air]) || (f.ship && transport?.disabledShipRoutes?.[f.ship]));
   if (destroyed || routeDown) return '💥';
   if (f.minPrepLevel !== undefined && prepLevel < f.minPrepLevel) return '❌'; // 事前準備Lv不足で使用不可（破壊ではない）

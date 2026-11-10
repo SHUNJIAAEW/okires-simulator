@@ -60,8 +60,8 @@ export const AIRPORT_ALLOWED_WIND_DIRECTIONS: Record<string, number[]> = {
   shimoji: [2, 5],        // 北西-南東: 北西(2) or 南東(5)
   shinIshigaki: [3, 6],   // 北東-南西: 北東(3) or 南西(6)
   miyako: [3, 6],         // 北東-南西: 北東(3) or 南西(6)
-  hateruma: [1, 4],       // 波照間空港: 東西方向 西(1) or 東(4)
-  tarama: [],             // 多良間空港: 強風は風向に関係なく一時閉鎖（マニュアル確認 2026-11-02）
+  hateruma: [],           // 波照間空港: 閉鎖条件は海港と同じ（大雨、または強風なら風向に関係なく閉鎖。マニュアル改訂 2026-11-10）
+  tarama: [],             // 多良間空港: 閉鎖条件は海港と同じ（大雨、または強風なら風向に関係なく閉鎖）
 };
 
 // ===== 事前準備レベル別設定 =====
@@ -205,14 +205,15 @@ export function handsByFatigue(area: AreaId, fatigue: number): number {
 export const TARAMA_TRANSFER_CAPACITY = { air: 0.5, sea: 0.5 } as const;
 
 export const TAKETOMI_PORT_CAPACITY: Record<TaketomiPortKey, number> = {
-  ohara: 2, uehara: 2, kohama: 2, taketomi: 2, kuroshima: 1, hateruma: 1, hatoma: 1, funauki: 0.5,
+  // マニュアル図15: 大原・上原・小浜・竹富=1コマ×2便 / 黒島・鳩間=1コマ×1便 / 波照間・船浮=0.5コマ×1便（計11コマ/日）
+  ohara: 2, uehara: 2, kohama: 2, taketomi: 2, kuroshima: 1, hateruma: 0.5, hatoma: 1, funauki: 0.5,
 };
 export const TAKETOMI_PORT_JP: Record<TaketomiPortKey, string> = {
   ohara: '大原港', uehara: '上原港', kohama: '小浜港', taketomi: '竹富港', kuroshima: '黒島港', hateruma: '波照間港', hatoma: '鳩間港', funauki: '船浮港',
 };
 // 竹富町各島→石垣 (1日最大) = 石垣便を出す港（船浮以外）の合計 = 11
 export const TAKETOMI_TO_ISHIGAKI_FERRY_MAX = (Object.keys(TAKETOMI_PORT_CAPACITY) as TaketomiPortKey[])
-  .filter(k => k !== 'funauki').reduce((s, k) => s + TAKETOMI_PORT_CAPACITY[k], 0); // = 11 コマ/日
+  .filter(k => k !== 'funauki').reduce((s, k) => s + TAKETOMI_PORT_CAPACITY[k], 0); // = 10.5 コマ/日（船浮0.5を足して計11）
 
 // ===== 孤島集落の人口シェア（マニュアル(2026.9) A表 集落・市街地表の近似）=====
 // エンジンはエリア単位のため、孤島集落（祖納/船浮/鳩間/波照間/黒島/小浜/竹富/塩川/来間/池間）に当たった時は

@@ -372,7 +372,7 @@ export default function App() {
               ? { t: 'Lv3以上で可能', c: C.dim }
               : anyToday
                 ? { t: `本日交渉: 陸自${mark(rein.jgsdf)}/海自${mark(rein.jmsdf)}/空自${mark(rein.jasdf)}`, c: C.amber }
-                : { t: '待機(残0の手段で1日1回交渉)', c: C.dim };
+                : { t: '待機(残0かつ民間機が使えなくなってから交渉)', c: C.dim };
             // 増援交渉の手数ペナルティ（当日有効分。handPenalty には臨時増援交渉の1手消費のみ積まれる）
             const AREA_JP: Record<string, string> = { yonaguni: '与那国', taketomi: '竹富', ishigaki: '石垣', miyako: '宮古' };
             const landingPenalties = (Object.keys(gameState.handPenalty ?? {}) as AreaId[])

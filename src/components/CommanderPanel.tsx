@@ -74,7 +74,7 @@ function capacityBreakdown(c: DayCapacities): string {
   const air = c.yonaguniAirMax + c.haterumaAirMax + c.ishigakiAirMax + c.miyakoAirMax + c.shimojAirMax;
   // 海自輸送艦は1日1便（石垣/宮古の合算で1コマ）。空自も getDayCapacities 側で1日1便に上限済み
   const jsdf = c.ishigakiJasdfMax + Math.min(c.ishigakiJmsdfMax + c.miyakoJmsdfMax, c.jmsdfRemaining, 1);
-  const sea = c.yonaguniSeaMax + c.taketomiFerryMax + c.ishigakiCoastGuardMax + c.ishigakiFerryMax + c.miyakoCoastGuardMax + c.miyakoFerryMax;
+  const sea = c.yonaguniSeaMax + c.taketomiFerryMax + c.coastGuardTrips + c.ishigakiFerryMax + c.miyakoFerryMax;
   return `空路${fmt1(air)}／海路${fmt1(sea)}／自衛隊${fmt1(jsdf)}（直近日）`;
 }
 

@@ -8,7 +8,7 @@
 2. `npm run lint` と `npm run build` を通す
 3. **Codexでレビュー**して、各修正点が正しく実装され副作用が無いかを確認する：
    ```bash
-   codex exec --full-auto --sandbox read-only --cd "/Users/shunjiabe/名称未設定フォルダ/okires-simulator" \
+   codex exec --sandbox read-only --cd "/Users/shunjiabe/dev/clients/okires" \
      "<修正点を列挙>。各修正が正しく実装され副作用・抜け道が無いか確認してください。確認や質問は不要で具体的に指摘してください。"
    ```
 4. Codexが指摘した抜け道・見落としも修正し、再度Codexまたは実機で確認する
@@ -19,4 +19,6 @@
 
 ## メモ
 - ルールエンジン: `src/gameEngine.ts` / 定数: `src/constants.ts` / 型: `src/types.ts`
+- 便の時刻表: `src/timetable.ts` / マニュアル ver4.0 の文字起こし: `docs/manual-v4.0-transcript.md`
+- 検査（修正のたびに実行）: `npx tsx scripts/rules-check.mts` / `npx tsx scripts/sim-check.mts` / `npx tsx scripts/fuzz-check.mts`
 - 機密（.env/APIキー）はコミットしない。本番デプロイは `vercel --prod`。

@@ -124,7 +124,7 @@ function fatigueTable(dayLogs: DayLog[]): string {
   }).join('');
   return `<section class="ov"><h2>エリア別 疲労度・手数（日末）</h2>
     <table class="t ov"><thead>${head}</thead><tbody>${rows}</tbody></table>
-    <div class="note">疲労=日末の疲労度（抗堪性Lvで初期はマイナス） ／ 手数=疲労度から決まる当日の行動手数。括弧は「基本手数−臨時増援交渉で消費した1手」。実効手数0はその日の避難行動不可（基本手数0の場合が疲労限界）</div>
+    <div class="note">疲労=日末の疲労度（抗堪性Lvで初期はマイナス） ／ 手数=疲労度から決まる当日の行動手数。括弧は「基本手数−臨時増援交渉で消費した1手」。実効手数0はその日の避難行動不可。基本手数0（疲労度最大）のエリアは避難不能のため、残っているコマは死亡確定（マニュアル2.1）</div>
   </section>`;
 }
 

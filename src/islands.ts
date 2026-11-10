@@ -11,35 +11,37 @@ export type SubIsland = { key: string; name: string; blob: SubBlob; weight: numb
 export const ISOLATED_KEYS = ['hatoma', 'funauki', 'tarama'] as const;
 export type IsolatedKey = (typeof ISOLATED_KEYS)[number];
 
-// エリア内の個別島ごとのコマ配置領域（svg座標・楕円範囲）＋按分ウェイト
+// エリア内の個別島ごとのコマ配置領域（svg座標・cx±rx, cy±ry の範囲）＋按分ウェイト
+// blob の座標系は IllustratedMap の実地図（Webメルカトル, 東経122.8〜125.6・北緯23.9〜25.3 を 320×176 に投影）。
+// 小島は島の上/すぐ横、石垣島・宮古島・西表島は近くの海上の「コマ置き場」（トレー）の範囲を指す
 // 比率は SimulationMap のボード盤（公式マップ）由来:
 //  竹富町＝西表6/竹富2/波照間3/黒島2/小浜2(計15)、宮古は人口比で多良間・伊良部等にも配置
 // tourist: 観光客の配置ウェイト（ver4.0: 西表1・竹富1・石垣5・宮古島5 のみ。波照間・与那国・その他小島には置かない）
 export const SUB_ISLANDS: Record<AreaId, SubIsland[]> = {
   yonaguni: [
-    { key: 'yonaguni', name: '与那国島', blob: { cx: 36, cy: 104, rx: 14, ry: 8 }, weight: 1 }, // 観光客なし
+    { key: 'yonaguni', name: '与那国島', blob: { cx: 22, cy: 112.6, rx: 6, ry: 3 }, weight: 1 }, // 観光客なし
   ],
   taketomi: [
-    { key: 'iriomote', name: '西表島', blob: { cx: 86, cy: 131, rx: 18, ry: 10 }, weight: 6, tourist: 1 }, // 観光最大1
-    { key: 'taketomi', name: '竹富島', blob: { cx: 124, cy: 124, rx: 4, ry: 3 }, weight: 2, tourist: 1 },  // 観光最大1
-    { key: 'hateruma', name: '波照間島', blob: { cx: 100, cy: 159, rx: 5, ry: 4 }, weight: 3, max: 1 }, // 観光客なし。住民🔵+要援護者🔴 合計で最大1コマ
-    { key: 'kuroshima', name: '黒島', blob: { cx: 134, cy: 144, rx: 5, ry: 4 }, weight: 2 },
-    { key: 'kohama', name: '小浜島', blob: { cx: 114, cy: 106, rx: 4, ry: 3 }, weight: 2 },
+    { key: 'iriomote', name: '西表島', blob: { cx: 85, cy: 112, rx: 10, ry: 6.5 }, weight: 6, tourist: 1 }, // 観光最大1
+    { key: 'taketomi', name: '竹富島', blob: { cx: 147.2, cy: 127.6, rx: 7, ry: 3 }, weight: 2, tourist: 1 },  // 観光最大1
+    { key: 'hateruma', name: '波照間島', blob: { cx: 112.6, cy: 150.3, rx: 4.5, ry: 3 }, weight: 3, max: 1 }, // 観光客なし。住民🔵+要援護者🔴 合計で最大1コマ
+    { key: 'kuroshima', name: '黒島', blob: { cx: 143, cy: 134, rx: 5, ry: 3 }, weight: 2 },
+    { key: 'kohama', name: '小浜島', blob: { cx: 129.3, cy: 121.8, rx: 4.5, ry: 3 }, weight: 2 },
     // 鳩間島・船浮: 孤立集落（AreaState.isolatedPendingBy の実数を表示）。weight は按分に使わない
-    { key: 'hatoma', name: '鳩間島', blob: { cx: 79, cy: 102, rx: 4, ry: 3 }, weight: 1, isolated: true },
-    { key: 'funauki', name: '船浮', blob: { cx: 65, cy: 128, rx: 3, ry: 2.5 }, weight: 1, isolated: true },
+    { key: 'hatoma', name: '鳩間島', blob: { cx: 122.5, cy: 104.3, rx: 4.5, ry: 3 }, weight: 1, isolated: true },
+    { key: 'funauki', name: '船浮', blob: { cx: 100.5, cy: 125, rx: 4.5, ry: 3 }, weight: 1, isolated: true },
   ],
   ishigaki: [
-    { key: 'ishigaki', name: '石垣島', blob: { cx: 154, cy: 92, rx: 23, ry: 14 }, weight: 1, tourist: 1 }, // 観光最大5
+    { key: 'ishigaki', name: '石垣島', blob: { cx: 124.5, cy: 68, rx: 27.5, ry: 17.3 }, weight: 1, tourist: 1 }, // 観光最大5
   ],
   miyako: [
-    { key: 'miyako', name: '宮古島', blob: { cx: 246, cy: 95, rx: 18, ry: 11 }, weight: 85, tourist: 1 }, // 観光最大5
-    { key: 'irabu', name: '伊良部島', blob: { cx: 216, cy: 94, rx: 6, ry: 4 }, weight: 6 },
-    { key: 'shimoji', name: '下地島', blob: { cx: 203, cy: 96, rx: 4, ry: 3 }, weight: 1 },
+    { key: 'miyako', name: '宮古島', blob: { cx: 284.5, cy: 104.5, rx: 27.5, ry: 17.3 }, weight: 85, tourist: 1 }, // 観光最大5
+    { key: 'irabu', name: '伊良部島', blob: { cx: 260, cy: 53, rx: 9, ry: 3 }, weight: 6 },
+    { key: 'shimoji', name: '下地島', blob: { cx: 267.5, cy: 66.2, rx: 4.5, ry: 3 }, weight: 1 },
     // 多良間島: 孤立集落（isolatedPendingBy.tarama🔵 / taramaVuln🔴 の実数。初期1コマ）。weight は按分に使わない
-    { key: 'tarama', name: '多良間島', blob: { cx: 200, cy: 151, rx: 7, ry: 4 }, weight: 2, isolated: true },
-    { key: 'ikema', name: '池間島', blob: { cx: 240, cy: 65, rx: 4, ry: 3 }, weight: 1 },
-    { key: 'kurima', name: '来間島', blob: { cx: 236, cy: 119, rx: 4, ry: 3 }, weight: 1 },
+    { key: 'tarama', name: '多良間島', blob: { cx: 217, cy: 87.6, rx: 6, ry: 3 }, weight: 2, isolated: true },
+    { key: 'ikema', name: '池間島', blob: { cx: 286, cy: 45.8, rx: 4.5, ry: 3 }, weight: 1 },
+    { key: 'kurima', name: '来間島', blob: { cx: 274.5, cy: 72.4, rx: 4.5, ry: 3 }, weight: 1 },
   ],
 };
 

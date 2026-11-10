@@ -108,6 +108,8 @@ export interface TransportState {
   disabledShipRoutes: Partial<Record<ShipRouteKey, boolean>>;
   // 竹富町離島港（大原/上原）発の民間船舶便 恒久停止（B表 船舶便攻撃）。その港の容量を石垣便合計から恒久的に除く。旧stateでは undefined
   disabledTaketomiPorts?: Partial<Record<TaketomiPortKey, boolean>>;
+  // 当日、攻撃で失った自衛隊の便（海自輸送艦・空自輸送機は1日1便なので、失った日はもう使えない）。毎日リセット
+  sdfLostToday?: { jmsdf?: boolean; jasdf?: boolean; jgsdf?: boolean };
 }
 
 // 臨時増援交渉の対象手段（海保は対象外）
@@ -157,6 +159,8 @@ export interface EvacuationOrder {
   residents: number;
   tourists: number;
   vulnerable: number;
+  // 孤立集落（鳩間島・船浮・多良間島）から直接乗せるコマ。海保輸送船・海自輸送艦のみ（多良間🔵は空自輸送機も可）
+  isolated?: Partial<Record<'hatoma' | 'funauki' | 'tarama' | 'taramaVuln', number>>;
 }
 
 // UIに渡す1日の輸送容量
@@ -199,6 +203,21 @@ export interface DayCapacities {
   shuttleJasdfMax: number;      // 空自輸送機 1便3コマ（空港破壊時は応急修理後＝ハブ空港利用可なら）
   shuttleJgsdfMax: number;      // 陸自ヘリ 1便1コマ（通常）
   shuttleCivAirMax: number;     // 民間航空（往復先/送出側の空港が無事なら 1便3コマ）
+  // 2島間往復で両端が同じ時刻に使える時刻の一覧（便ごとの到着時刻に使う）。sea=海保・海自 / air=空自 / civ=民間航空 / heli=陸自ヘリ（大雨・強風でない時刻）
+  shuttleHours?: { sea: number[]; air: number[]; civ: number[]; heli: number[] };
+  // ===== 時刻表モデル（timetable.ts）=====
+  // 海保輸送船の当日便数（全エリア共通のプール。1便1コマ。海が開いている時間数が上限）
+  coastGuardTrips: number;
+  // 海保輸送船・海自輸送艦・空自輸送機を「そのエリアから」出せる当日のコマ数（モード・天候・占領・手数・イベント倍率を反映）。
+  // 海保・海自は破壊されていない全ての海港・漁港から、空自は空港から、24時間いつでも本土へ出せる（マニュアル4.6.3〜4.6.5）。
+  // 海保は有事と存立危機事態（与那国・竹富町のみ）、海自・空自は有事のみ。便は全エリア共通（海保=coastGuardTrips、海自・空自=1日1便）
+  cgFrom: Record<AreaId, number>;
+  jmsdfFrom: Record<AreaId, number>;
+  jasdfFrom: Record<AreaId, number>;
+  // 空自輸送機で多良間空港から直接出せるコマ数（多良間島の孤立コマ🔵用。宮古空港が破壊されていても可）
+  jasdfTarama: number;
+  // エリア別の1日の手数（毎時の手数 × 行動できる時間数）。1コマの島外避難＝島内移動1手＋出発1手
+  handBudget: Record<AreaId, number>;
 }
 
 // 半日（午前=1時 / 午後=13時）の天候・風・閉鎖の要約と、その時刻の天候ダイス
@@ -270,6 +289,8 @@ export interface GameState {
   isComplete: boolean;
   // 初期総人口（コマ）。createInitialState で固定。旧stateでは undefined（残存+避難+死亡で代用）
   initialTotal?: number;
+  // 強制イベント（検証用）。未指定なら通常どおりダイスで決まる
+  forcedEvents?: ForcedEvent[];
   // DMAT派遣の残回数（宮古/下地/石垣トータル）。空港/海港/市街地集落攻撃の死者発生時に1消費で追加死者+疲労を防ぐ。
   dmatRemaining: number;
   // 多良間島 一時疲労（0..2）。多良間電力破壊で宮古・多良間へ加算、多良間→宮古 避難完了で戻す。
@@ -309,6 +330,8 @@ export interface SetupConfig {
   shelterLevel: number;
   month: number;
   // 観光客・要援護者は createInitialState で毎回ランダム配置（島別上限内）
+  // 強制イベント（検証用）: 指定の日・時刻に地震／ABCDイベントを必ず発生させる
+  forcedEvents?: ForcedEvent[];
 }
 
 // フェーズ1完了後の中間状態（プレイヤーへの提示用）
@@ -341,4 +364,12 @@ export interface DayPhase1Result {
   taramaRouteMultiplier?: { air: number; sea: number };
   // 午前(1時)の天候で使えない施設（weatherClosed と同形式）。日報の主要インフラ状況表で午前/午後を分けて表示する
   weatherClosedAm?: string[];
+  // 当日の時刻表（便の出発時刻・午前/午後の天候・イベント発生時刻を反映した便数）
+  slots?: import('./timetable').DaySlots;
 }
+
+// ===== 強制イベント（検証用）=====
+// 「●日●時に レベル●の地震」「●日●時に ABCDイベントの●●」を必ず発生させる。day は X日=0（X-3=-3 … X+8=8）
+export type ForcedEvent =
+  | { kind: 'earthquake'; day: number; level: number }                                         // 地震は1時に判定
+  | { kind: 'event'; day: number; hour: number; table: 'A' | 'B' | 'C' | 'D'; col: number; row: number };

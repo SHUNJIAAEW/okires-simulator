@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import type { SetupConfig } from '../types';
+import type { SetupConfig, ForcedEvent } from '../types';
+import { forcedEventOptions } from '../gameEngine';
 import { TOURIST_MAX_BY_AREA, VULNERABLE_TOTAL_MAX, RESIDENT_TOTAL_BY_AREA } from '../constants';
 import { useWindowWidth } from '../hooks/useWindowWidth';
 import { C, FONT } from '../theme';
@@ -69,8 +70,30 @@ export function SetupScreen({ onStart }: Props) {
   const heavyRainSeason = month >= 7 && month <= 9;      // 大雨に届きやすい短いトラック
   const transitionSeason = [5, 6, 10, 11].includes(month); // 大雨まで遠い長いトラック
 
+  // 強制イベント（検証用）: 「●日●時に レベル●の地震」「ABCDイベントの●●」を必ず発生させる
+  const [forced, setForced] = useState<ForcedEvent[]>([]);
+  const [fKind, setFKind] = useState<'earthquake' | 'A' | 'B' | 'C' | 'D'>('earthquake');
+  const [fDay, setFDay] = useState(0);
+  const [fHour, setFHour] = useState(8);
+  const [fLevel, setFLevel] = useState(3);
+  const [fCell, setFCell] = useState('1-1');
+  const cellOptions = fKind === 'earthquake' ? [] : forcedEventOptions(fKind);
+  const dayJp = (d: number) => (d === 0 ? 'X日' : d > 0 ? `X+${d}日` : `X${d}日`);
+  const forcedJp = (f: ForcedEvent) => f.kind === 'earthquake'
+    ? `${dayJp(f.day)} 1時 ／ 規模${f.level}の地震`
+    : `${dayJp(f.day)} ${f.hour}時 ／ イベント${f.table}「${forcedEventOptions(f.table).find(o => o.col === f.col && o.row === f.row)?.label ?? ''}」`;
+  const addForced = () => {
+    if (fKind === 'earthquake') {
+      setForced(list => [...list.filter(f => !(f.kind === 'earthquake' && f.day === fDay)), { kind: 'earthquake', day: fDay, level: fLevel }]);
+      return;
+    }
+    const opt = cellOptions.find(o => `${o.col}-${o.row}` === fCell) ?? cellOptions[0];
+    if (!opt) return;
+    setForced(list => [...list.filter(f => !(f.kind === 'event' && f.day === fDay && f.hour === fHour)), { kind: 'event', day: fDay, hour: fHour, table: fKind, col: opt.col, row: opt.row }]);
+  };
+
   const handleStart = () => {
-    onStart({ prepLevel, shelterLevel, month });
+    onStart({ prepLevel, shelterLevel, month, forcedEvents: forced.length ? forced : undefined });
   };
 
   // 観光客は実行時ランダム。総コマ上限＝住民総数(109、要援護者9含む)＋観光客上限。
@@ -191,6 +214,53 @@ export function SetupScreen({ onStart }: Props) {
                 <span><strong>要援護者</strong>：合計 {VULNERABLE_TOTAL_MAX} コマを人口比で最適配置（<strong style={{ color: '#ff6b6b' }}>船のみ利用可</strong>）</span>
               </div>
             </div>
+          </Param>
+
+          {/* 強制イベント（検証用） */}
+          <Param index="05" title="強制イベント（検証用）" en="FORCED EVENTS" value={forced.length ? `${forced.length}件` : 'なし'} valueColor={forced.length ? C.amber : C.dim}>
+            <p style={styles.desc}>
+              指定した日・時刻に、地震やABCDイベントを<strong style={{ color: C.bright }}>必ず発生</strong>させます（判定のダイスは通常どおり振ります）。指定しなければ通常のランダムです。
+            </p>
+            <div style={styles.forcedRow}>
+              <select style={styles.select} value={fKind} onChange={e => { const k = e.target.value as typeof fKind; setFKind(k); if (k !== 'earthquake') { const o = forcedEventOptions(k)[0]; setFCell(`${o.col}-${o.row}`); } }}>
+                <option value="earthquake">地震</option>
+                <option value="A">イベントA</option>
+                <option value="B">イベントB</option>
+                <option value="C">イベントC</option>
+                <option value="D">イベントD</option>
+              </select>
+              <select style={styles.select} value={fDay} onChange={e => setFDay(Number(e.target.value))}>
+                {Array.from({ length: 12 }, (_, i) => i - 3).map(d => <option key={d} value={d}>{dayJp(d)}</option>)}
+              </select>
+              {fKind === 'earthquake' ? (
+                <>
+                  <span style={styles.forcedFixed}>1時</span>
+                  <select style={styles.select} value={fLevel} onChange={e => setFLevel(Number(e.target.value))}>
+                    {[1, 2, 3, 4, 5, 6].map(l => <option key={l} value={l}>規模{l}</option>)}
+                  </select>
+                </>
+              ) : (
+                <>
+                  <select style={styles.select} value={fHour} onChange={e => setFHour(Number(e.target.value))}>
+                    {Array.from({ length: 24 }, (_, i) => i + 1).map(h => <option key={h} value={h}>{h}時</option>)}
+                  </select>
+                  <select style={{ ...styles.select, flex: '1 1 220px' }} value={fCell} onChange={e => setFCell(e.target.value)}>
+                    {cellOptions.map(o => <option key={`${o.col}-${o.row}`} value={`${o.col}-${o.row}`}>{o.label}</option>)}
+                  </select>
+                </>
+              )}
+              <NoFocusButton style={styles.forcedAdd} onClick={addForced}>＋ 追加</NoFocusButton>
+            </div>
+            {forced.length > 0 && (
+              <div style={styles.randNote}>
+                {[...forced].sort((a, b) => a.day - b.day || (a.kind === 'event' ? a.hour : 1) - (b.kind === 'event' ? b.hour : 1)).map(f => (
+                  <div key={forcedJp(f)} style={styles.randRow}>
+                    <span style={{ flex: 1 }}>🎯 {forcedJp(f)}</span>
+                    <NoFocusButton style={styles.forcedDel} onClick={() => setForced(list => list.filter(x => x !== f))}>削除</NoFocusButton>
+                  </div>
+                ))}
+              </div>
+            )}
           </Param>
 
           {/* 初期配置概要 */}
@@ -318,6 +388,17 @@ const styles: Record<string, React.CSSProperties> = {
   vulnDot: { width: 8, height: 8, borderRadius: 2, flexShrink: 0 },
   randNote: { background: 'rgba(0,0,0,0.22)', border: `1px solid ${C.border}`, borderRadius: 4, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 },
   randRow: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: C.body, lineHeight: 1.5 },
+  forcedRow: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, margin: '10px 0' },
+  select: {
+    background: C.bgCard, color: C.bright, border: `1px solid ${C.borderHi}`, borderRadius: 4,
+    padding: '8px 10px', fontSize: 13, fontFamily: FONT.mono, minWidth: 0,
+  },
+  forcedFixed: { fontSize: 13, color: C.body, fontFamily: FONT.mono, padding: '0 4px' },
+  forcedAdd: {
+    padding: '8px 14px', borderRadius: 4, cursor: 'pointer', fontSize: 13, fontWeight: 700,
+    color: C.amber, border: `1px solid ${C.amber}`, background: 'rgba(255,179,0,0.08)',
+  },
+  forcedDel: { padding: '2px 10px', borderRadius: 4, cursor: 'pointer', fontSize: 12, color: C.dim, border: `1px solid ${C.border}` },
 
   readout: {
     marginTop: 22, background: 'rgba(0,0,0,0.25)', border: `1px solid ${C.border}`,
