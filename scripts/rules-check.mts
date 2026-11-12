@@ -1,5 +1,5 @@
 // 時刻表・強制イベントのルール検査（開発用）。実行: npx tsx scripts/rules-check.mts
-import { createInitialState, prepareDayPhase1, autoSelectOrders, executeDayPhase2, forcedEventOptions, isForceSureActive } from '../src/gameEngine';
+import { createInitialState, prepareDayPhase1, autoSelectOrders, executeDayPhase2, forcedEventOptions, isForceSureActive, occupiedWithVictims } from '../src/gameEngine';
 import { computeDaySlots, civFlightsBefore, type SlotInput } from '../src/timetable';
 import type { ForcedEvent, GameState, WeatherState, InfraState } from '../src/types';
 
@@ -121,6 +121,36 @@ for (let i = 0; i < 20; i++) {
     ok(`強制イベント(判定も必ず成立) ${label} が10/10成立`, all);
     if (label === '石垣島上陸') ok('占領がその日のエリア残員に記録される', snapOk);
   }
+}
+// 無人の島を占領された場合は「避難完了」表示（占領フラグは立つが、表示用の占領は false）。住民が残っていれば「占領」
+{
+  const o = forcedEventOptions('D').find(x => x.label === '石垣島上陸')!;
+  let tested = 0, good = true;
+  for (let k = 0; k < 20 && tested < 3; k++) {
+    let s = createInitialState({ prepLevel: 6, shelterLevel: 5, month: 4, forcedEvents: [{ kind: 'event', day: 8, hour: 24, table: 'D', col: o.col, row: o.row, sure: true }] });
+    let emptyBefore = false;
+    while (!s.isComplete) {
+      if (s.day === 8) { const a = s.areas.ishigaki; emptyBefore = a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0) + (a.isolatedPending ?? 0) === 0; }
+      const p = prepareDayPhase1(s); s = executeDayPhase2(s, p, autoSelectOrders(p, 'balanced')).newState;
+    }
+    if (!emptyBefore) continue;
+    tested++;
+    const snap = s.dayLogs[s.dayLogs.length - 1].areaSnapshots.ishigaki;
+    if (!s.occupied.ishigaki || occupiedWithVictims(s).ishigaki || snap.occupied) good = false;
+  }
+  ok('無人の石垣島を占領 → 占領フラグは立つが表示は避難完了（占領表示しない）', tested > 0 && good, `tested=${tested}`);
+  let s = createInitialState({ prepLevel: 3, shelterLevel: 3, month: 5, forcedEvents: [{ kind: 'event', day: -2, hour: 8, table: 'D', col: o.col, row: o.row, sure: true }] });
+  while (s.day <= -2) { const p = prepareDayPhase1(s); s = executeDayPhase2(s, p, autoSelectOrders(p, 'balanced')).newState; }
+  ok('住民が残る石垣島を占領 → 占領表示・死者を記録', occupiedWithVictims(s).ishigaki && (s.occupiedVictims?.ishigaki ?? 0) > 0);
+}
+// 旧state（occupiedVictims 無し）で占領済みのエリアは、翌日へ進めても「占領」表示が保たれる
+{
+  let s = createInitialState({ prepLevel: 3, shelterLevel: 3, month: 5 });
+  for (let i = 0; i < 4; i++) { const p = prepareDayPhase1(s); s = executeDayPhase2(s, p, autoSelectOrders(p, 'balanced')).newState; }
+  const legacy = { ...s, occupied: { ...s.occupied, ishigaki: true }, occupiedVictims: undefined } as GameState;
+  const before = occupiedWithVictims(legacy).ishigaki;
+  const p = prepareDayPhase1(legacy); const n = executeDayPhase2(legacy, p, autoSelectOrders(p, 'balanced')).newState;
+  ok('旧stateの占領は翌日も占領表示（地図・スナップショット）', before && occupiedWithVictims(n).ishigaki && !!n.dayLogs[n.dayLogs.length - 1].areaSnapshots.ishigaki.occupied);
 }
 // sure の漏れ検査: 乱数を固定（出目は常に1＝判定は通常なら不成立）し、sure:true 直後の sure:false が通常判定に戻ることを確認
 {

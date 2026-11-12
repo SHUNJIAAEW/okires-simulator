@@ -245,7 +245,7 @@ export interface DayLog {
     vulnerable: number;
     staging: number;
     isolated?: number;  // 鳩間・船浮の島内移送待ちコマ（total に含む。旧stateでは undefined）
-    occupied?: boolean; // 日末時点で占領済み（上陸/ヘリボーン成立・X+3期限超過）
+    occupied?: boolean; // 日末時点で「住民が残ったまま」占領された（上陸/ヘリボーン成立・X+3期限超過）。無人の島の占領は false（避難完了扱い）
     fatigue: number;
     hands?: number;     // 日末の実効手数（疲労による手数 − 増援交渉の1手消費。旧stateでは undefined）
     handsBase?: number; // 疲労による手数（ペナルティ控除前）
@@ -316,6 +316,8 @@ export interface GameState {
   airportLandings?: AirportLanding[];
   // ver4.0 6.4.2/3: 上陸・ヘリボーン成立で当該エリアは「占領」状態（残存コマ全滅・以後の攻撃/避難注文は無効）
   occupied: Record<AreaId, boolean>;
+  // 占領時に残っていて死亡したコマ数（表示用）。0＝無人の島を占領された＝表示は「避難完了」。旧stateでは undefined
+  occupiedVictims?: Partial<Record<AreaId, number>>;
   // ver4.0 4.12: PAC3 撤収・再配備（片方ハブの避難完了後、もう一方へ全数移動）。一度だけ。
   pac3Relocated: boolean;
   // マップ表示用: 当日限りの使用不能施設（空港=空路キー / 港='ship:'+海路キー）

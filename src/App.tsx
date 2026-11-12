@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import type { GameState, SetupConfig, AreaId, EvacPolicy } from './types';
-import { createInitialState, prepareDayPhase1, executeDayPhase2, autoSelectOrders, activeHandPenalty, airportLandingFactor, eventPhase } from './gameEngine';
+import { createInitialState, prepareDayPhase1, executeDayPhase2, autoSelectOrders, activeHandPenalty, airportLandingFactor, eventPhase, occupiedWithVictims } from './gameEngine';
 import { runDay, analyzeDay } from './commander';
 import { CommanderPanel, CommanderKpiBar } from './components/CommanderPanel';
 import { COMMANDER_ENABLED } from './features';
@@ -253,7 +253,7 @@ export default function App() {
         <div style={styles.leftCol}>
           <IllustratedMap
             areas={gameState.areas}
-            occupied={gameState.occupied}
+            occupied={occupiedWithVictims(gameState)}
             senkakuOccupied={gameState.military.senkakuOccupied}
             shelterLevel={gameState.shelterLevel}
             month={gameState.month}

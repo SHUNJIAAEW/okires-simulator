@@ -439,6 +439,16 @@ export function effectiveHands(state: GameState, area: AreaId, fatigue?: number,
 // ===== イベント発生判定式①（ver4.0 6.5）=====
 // サイバー攻撃・観光客大乱闘・ボイコット(A)、空港障害物/海上民兵/機雷/臨検/軍民錯綜(B)、不時着(B/C) は
 // セルを引いた後にダイス1回: 1〜事前準備Lv(Lv6は5として計算) → 発生しない ／ Lv+1〜6 → 発生する。
+/** 表示用: 住民が残ったまま占領されたエリア（無人の島の占領は「避難完了」として扱うため false）。旧state（occupiedVictims 無し）は occupied をそのまま使う */
+export function occupiedWithVictims(state: Pick<GameState, 'occupied' | 'occupiedVictims'>): Record<AreaId, boolean> {
+  const out = { yonaguni: false, taketomi: false, ishigaki: false, miyako: false } as Record<AreaId, boolean>;
+  for (const id of Object.keys(out) as AreaId[]) {
+    const occ = !!state.occupied?.[id];
+    out[id] = occ && (state.occupiedVictims === undefined || (state.occupiedVictims[id] ?? 0) > 0);
+  }
+  return out;
+}
+
 // 強制イベントの「判定も必ず成立」: 処理中だけ true。判定式①は必ず発生、3/4/2ダイスの計算値は 40 として扱う
 let forceSure = false;
 function sureCalc(v: number): number { return forceSure ? 40 : v; }
@@ -2544,12 +2554,17 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
 
   // 7b'''. 上陸・ヘリボーンによる占領（ver4.0 6.4.2/3）: 当該エリアの残存コマ（死者除去後）を全滅させ0にする。
   let occupationDead = 0;
+  // 旧state（occupiedVictims 無し）で既に占領済みのエリアは犠牲者数不明 → 従来の表示（占領）を保つため 1 として引き継ぐ
+  const occupiedVictims: Partial<Record<AreaId, number>> = state.occupiedVictims
+    ? { ...state.occupiedVictims }
+    : Object.fromEntries((Object.keys(state.occupied ?? {}) as AreaId[]).filter(id => state.occupied[id]).map(id => [id, 1]));
   for (const id of Object.keys(eventResult.occupiedToday) as AreaId[]) {
     if (!eventResult.occupiedToday[id]) continue;
     occupied[id] = true;
     const a = areasAfterEvents[id];
     const wiped = a.residents + a.tourists + a.vulnerable + a.stagingPort + (a.stagingVulnerable ?? 0) + (a.isolatedPending ?? 0) + a.stagingAirport;
     occupationDead += wiped;
+    occupiedVictims[id] = (occupiedVictims[id] ?? 0) + wiped;
     // 要援護者内訳も全滅→死亡へ（自宅分は内訳から、ハブ待機分は台帳から）
     addBreakdown(ledger.dead, takeVulnerableBreakdown(a, a.vulnerable));
     addBreakdown(ledger.dead, takeFromBreakdown(ledger.inTransit, a.stagingVulnerable ?? 0));
@@ -2691,6 +2706,7 @@ export function prepareDayPhase1(state: GameState): DayPhase1Result {
       senkakuOccupied: newMilitary.senkakuOccupied || eventResult.senkakuOccupied || eventResult.military.senkakuOccupied,
     },
     occupied,
+    occupiedVictims,
     pac3Relocated,
     earthquakeDay, earthquakeLevel,
     handPenalty,
@@ -3309,6 +3325,7 @@ export function executeDayPhase2(
   // X+3日24時までに避難が終わらなかった与那国島・竹富町全島の住民は死亡（占領）扱い。全4エリア疲労+2（避難完了なら発生しない）。
   let deadlineDeaths = 0;
   const occupiedOut: Record<AreaId, boolean> = { ...(stateAfterEvents.occupied ?? { yonaguni: false, taketomi: false, ishigaki: false, miyako: false }) };
+  const victimsOut: Partial<Record<AreaId, number>> = { ...(stateAfterEvents.occupiedVictims ?? {}) };
   if (day === 3) {
     const parts: string[] = [];
     for (const id of ['yonaguni', 'taketomi'] as AreaId[]) {
@@ -3318,6 +3335,7 @@ export function executeDayPhase2(
       const removed = removeFromArea(a, left, ledger);
       deadlineDeaths += removed;
       occupiedOut[id] = true;
+      victimsOut[id] = (victimsOut[id] ?? 0) + removed;
       parts.push(`${a.name} ${removed}コマ`);
     }
     if (deadlineDeaths > 0) {
@@ -3356,7 +3374,7 @@ export function executeDayPhase2(
       vulnerable: a.vulnerable,
       staging: a.stagingPort + (a.stagingVulnerable ?? 0),
       isolated: a.isolatedPending ?? 0, // 鳩間・船浮の島内移送待ち（total に含む）
-      occupied: !!occupiedOut[id as AreaId],
+      occupied: !!occupiedOut[id as AreaId] && (victimsOut[id as AreaId] ?? 0) > 0, // 無人の島の占領は「避難完了」表示
       fatigue: a.fatigue,
       handsBase: handsByFatigue(a.id, a.fatigue),
       hands: Math.max(0, handsByFatigue(a.id, a.fatigue) - activeHandPenalty(stateAfterEvents, a.id, day)),
@@ -3437,6 +3455,7 @@ export function executeDayPhase2(
     evacuated: newEvacuated,
     dead: newDead,
     occupied: occupiedOut, // X+3日の期限で占領扱いになった与那国島・竹富町全島を含む
+    occupiedVictims: victimsOut,
     dayLogs: [...originalState.dayLogs, dLog],
     isComplete,
     // 地震は prepareDayPhase1 で記録（翌日の持ち越し停止判定に使う）
