@@ -36,7 +36,7 @@ function dayBlock(log: DayLog, prevEvac: number, prevDead: number): string {
   const snaps = `<table class="t"><tr><th>エリア</th><th>残</th><th>住</th><th>観</th><th>要</th><th>待</th><th>孤立</th><th>疲労</th></tr>${
     (Object.keys(AREA_JP) as AreaId[]).map(id => {
       const s = log.areaSnapshots[id];
-      return `<tr><td>${AREA_JP[id]}</td><td class="r">${s.total}</td><td class="r">${s.residents}</td><td class="r">${s.tourists}</td><td class="r">${s.vulnerable}</td><td class="r">${s.staging}</td><td class="r">${s.isolated ?? 0}</td><td class="r">${s.fatigue >= 0 ? '+' : ''}${s.fatigue.toFixed(1)}</td></tr>`;
+      return `<tr><td>${AREA_JP[id]}${s.occupied ? ' 🚩占領' : ''}</td><td class="r">${s.total}</td><td class="r">${s.residents}</td><td class="r">${s.tourists}</td><td class="r">${s.vulnerable}</td><td class="r">${s.staging}</td><td class="r">${s.isolated ?? 0}</td><td class="r">${s.fatigue >= 0 ? '+' : ''}${s.fatigue.toFixed(1)}</td></tr>`;
     }).join('')
   }</table>`;
 

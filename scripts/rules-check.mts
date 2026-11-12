@@ -1,5 +1,5 @@
 // 時刻表・強制イベントのルール検査（開発用）。実行: npx tsx scripts/rules-check.mts
-import { createInitialState, prepareDayPhase1, autoSelectOrders, executeDayPhase2, forcedEventOptions } from '../src/gameEngine';
+import { createInitialState, prepareDayPhase1, autoSelectOrders, executeDayPhase2, forcedEventOptions, isForceSureActive } from '../src/gameEngine';
 import { computeDaySlots, civFlightsBefore, type SlotInput } from '../src/timetable';
 import type { ForcedEvent, GameState, WeatherState, InfraState } from '../src/types';
 
@@ -105,6 +105,46 @@ for (let i = 0; i < 20; i++) {
   ]);
   const after = res.newState.areas.ishigaki;
   ok('不正なコマ数（0.5000001・負数・0.25）の注文は無効', res.log.evacuations.filter(e => e.method === '新石垣空港(民間)').length === 0 && after.tourists === before.tourists, JSON.stringify(res.log.evacuations));
+}
+// 強制イベント「判定も必ず成立」: 上陸・尖閣占領が必ず成立し、占領がスナップショットに記録される
+{
+  for (const label of ['石垣島上陸', '尖閣諸島占領']) {
+    const o = forcedEventOptions('D').find(x => x.label === label)!;
+    let all = true, snapOk = true;
+    for (let k = 0; k < 10; k++) {
+      let s = createInitialState({ prepLevel: 5, shelterLevel: 5, month: 5, forcedEvents: [{ kind: 'event', day: 1, hour: 8, table: 'D', col: o.col, row: o.row, sure: true }] });
+      while (s.day <= 1 && !s.isComplete) { const p = prepareDayPhase1(s); s = executeDayPhase2(s, p, autoSelectOrders(p, 'balanced')).newState; }
+      const hit = label === '石垣島上陸' ? s.occupied.ishigaki : s.military.senkakuOccupied;
+      if (!hit) all = false;
+      if (label === '石垣島上陸' && !s.dayLogs[s.dayLogs.length - 1].areaSnapshots.ishigaki.occupied) snapOk = false;
+    }
+    ok(`強制イベント(判定も必ず成立) ${label} が10/10成立`, all);
+    if (label === '石垣島上陸') ok('占領がその日のエリア残員に記録される', snapOk);
+  }
+}
+// sure の漏れ検査: 乱数を固定（出目は常に1＝判定は通常なら不成立）し、sure:true 直後の sure:false が通常判定に戻ることを確認
+{
+  const rnd = Math.random;
+  Math.random = () => 0;
+  try {
+    const A = (l: string) => forcedEventOptions('A').find(x => x.label === l)!;
+    const D = (l: string) => forcedEventOptions('D').find(x => x.label === l)!;
+    const fe: ForcedEvent[] = [
+      { kind: 'event', day: -3, hour: 8, table: 'A', col: A('石垣港 サイバー攻撃').col, row: A('石垣港 サイバー攻撃').row, sure: true },
+      { kind: 'event', day: -3, hour: 9, table: 'A', col: A('平良港 サイバー攻撃').col, row: A('平良港 サイバー攻撃').row, sure: false },
+      { kind: 'event', day: -1, hour: 8, table: 'A', col: A('新石垣空港 サイバー攻撃').col, row: A('新石垣空港 サイバー攻撃').row, sure: true }, // 最後が sure:true でも後続の通常イベントへ漏れない
+      { kind: 'event', day: -2, hour: 8, table: 'D', col: D('石垣島上陸').col, row: D('石垣島上陸').row, sure: true },
+      { kind: 'event', day: -2, hour: 9, table: 'D', col: D('宮古島上陸').col, row: D('宮古島上陸').row, sure: false },
+    ];
+    let s = createInitialState({ prepLevel: 3, shelterLevel: 3, month: 5, forcedEvents: fe });
+    const logs: string[] = [];
+    while (s.day <= -1) { const p = prepareDayPhase1(s); const r = executeDayPhase2(s, p, autoSelectOrders(p, 'balanced')); logs.push(JSON.stringify(r.log)); s = r.newState; }
+    ok('sure の強制成立フラグが処理後に残らない（通常イベントへ漏れない）', !isForceSureActive());
+    ok('sure:true の判定式①は必ず発生', /判定式①\(サイバー攻撃[^)]*\): 🎯強制/.test(logs[0]) || logs[0].includes('判定成立扱い'), '');
+    ok('直後の sure:false の判定式①は通常判定（出目1で発生せず）', /1≤3 発生せず/.test(logs[0]));
+    ok('sure:true の上陸は成立', s.occupied.ishigaki);
+    ok('直後の sure:false の上陸は通常判定（出目1で不成立）', !s.occupied.miyako);
+  } finally { Math.random = rnd; }
 }
 console.log(fail ? `\n${fail} 件 NG` : '\n全て ok');
 process.exit(fail ? 1 : 0);

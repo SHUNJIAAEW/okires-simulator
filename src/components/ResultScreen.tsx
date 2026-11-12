@@ -461,8 +461,8 @@ export function ResultScreen({ state, onRestart, commanderRecords = [] }: Props)
               <div key={region.id} style={{ ...styles.regionBlock, borderLeft: `3px solid ${region.color}` }}>
                 <div style={styles.regionHeader}>
                   <span style={{ color: region.color, fontWeight: 800, fontSize: 15 }}>{region.icon} {region.name}</span>
-                  <span style={{ ...styles.regionResult, color: remaining === 0 ? C.green : C.amber }}>
-                    {remaining === 0 ? '✅ 避難完了' : `⚠ ${remaining}コマ残存`}
+                  <span style={{ ...styles.regionResult, color: state.occupied?.[region.id] ? C.red : remaining === 0 ? C.green : C.amber }}>
+                    {state.occupied?.[region.id] ? '🚩 占領' : remaining === 0 ? '✅ 避難完了' : `⚠ ${remaining}コマ残存`}
                   </span>
                 </div>
                 <div style={styles.regionSubtitle}>🔍 シミュレーションに含まれていない盲点</div>

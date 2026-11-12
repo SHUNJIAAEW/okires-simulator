@@ -245,6 +245,7 @@ export interface DayLog {
     vulnerable: number;
     staging: number;
     isolated?: number;  // 鳩間・船浮の島内移送待ちコマ（total に含む。旧stateでは undefined）
+    occupied?: boolean; // 日末時点で占領済み（上陸/ヘリボーン成立・X+3期限超過）
     fatigue: number;
     hands?: number;     // 日末の実効手数（疲労による手数 − 増援交渉の1手消費。旧stateでは undefined）
     handsBase?: number; // 疲労による手数（ペナルティ控除前）
@@ -372,4 +373,4 @@ export interface DayPhase1Result {
 // 「●日●時に レベル●の地震」「●日●時に ABCDイベントの●●」を必ず発生させる。day は X日=0（X-3=-3 … X+8=8）
 export type ForcedEvent =
   | { kind: 'earthquake'; day: number; level: number }                                         // 地震は1時に判定
-  | { kind: 'event'; day: number; hour: number; table: 'A' | 'B' | 'C' | 'D'; col: number; row: number };
+  | { kind: 'event'; day: number; hour: number; table: 'A' | 'B' | 'C' | 'D'; col: number; row: number; sure?: boolean }; // sure: 判定（判定式①・撃墜/上陸/施設破壊等の計算値）も必ず成立させる（計算値40扱い）

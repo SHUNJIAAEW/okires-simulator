@@ -10,6 +10,11 @@ import { facilityMark as facilityMarkShared, type FacilityDef } from '../facilit
 
 interface Props {
   areas: Record<AreaId, AreaState>;
+  occupied?: Partial<Record<AreaId, boolean>>; // 占領されたエリア（【占領】表示）
+  senkakuOccupied?: boolean;    // 尖閣諸島の占領
+  shelterLevel?: number;        // 地図左上の設定表示（スクショ用）
+  month?: number;
+  dayLabel?: string;
   infra?: InfraState;
   transport?: TransportState;   // 路線別の恒久停止（💥表示）
   closedToday?: string[];       // 当日限りの使用不能施設（🚫表示）
@@ -127,7 +132,7 @@ const FACILITIES: Fac[] = [
   { lat: 24.805, lng: 125.277, kind: 'sea', name: '平良港', lab: 'r', ship: 'hiraraPort', infra: 'hiraraPort' },
   { lat: 24.8267, lng: 125.1447, kind: 'air', name: '下地島空港', lab: 'l', air: 'shimoji', infra: 'shimojiAirport' },
   { lat: 24.6539, lng: 124.6753, kind: 'air', name: '多良間空港', lab: 'l', infra: 'taramaAirport' },
-  { lat: 24.6755, lng: 124.7035, kind: 'sea', name: '多良間港', lab: 'r' }, // 多良間港（前泊地区）
+  { lat: 24.6475, lng: 124.7085, kind: 'sea', name: '多良間港', lab: 'b' }, // 多良間港（南岸・普天間地区。宮古フェリーの発着港）
 ];
 
 // ── 橋（宮古衛星島）: a=宮古島側 / b=離島側 の実位置。ラベルは (ldx, ldy) だけずらす ──
@@ -152,6 +157,8 @@ const ISLAND_CENTER: Record<AreaId, { x: number; y: number }> = {
   miyako: project(24.79, 125.31),
 };
 const HUB = ISLAND_CENTER.ishigaki;
+// 尖閣諸島（実際は石垣島の北約170km＝地図範囲外。地図上端付近に模式的に置く）
+const SENKAKU = project(25.2, 123.62);
 // 本土到着トークンの積み上げ中心（方向表示のすぐ下）
 const MAINLAND_DEST: Record<AreaId, { x: number; y: number }> = {
   yonaguni: { x: 44, y: 25 },
@@ -177,7 +184,7 @@ const BADGE_POS: Record<AreaId, { x: number; y: number; name: string }> = {
   miyako: { x: 302, y: 85.6, name: '宮古' },
 };
 
-interface Tok { id: string; x0: number; y0: number; x1: number; y1: number; kind: 'r' | 'v'; delay: number; last: boolean }
+interface Tok { id: string; x0: number; y0: number; x1: number; y1: number; kind: 'r' | 'v'; delay: number; last: boolean; half: boolean } // half: 0.5コマの移動（小さく描く）
 const TCOLOR = { r: '#2f80ed', v: '#eb5757' } as const;
 
 // 島別のコマ配置領域・按分ウェイト・按分ロジックは src/islands.ts（日報PDFの島別残存表と共通）
@@ -262,7 +269,7 @@ const LABEL_POS: Record<Fac['lab'], React.CSSProperties> = {
   r: { left: '100%', top: '50%', transform: 'translateY(-50%)', marginLeft: '0.25em' },
 };
 
-export function IllustratedMap({ areas, infra, transport, closedToday = [], weatherClosed = [], prepLevel = 6, evacuated = 0, dead = 0, dayLogs }: Props) {
+export function IllustratedMap({ areas, occupied, senkakuOccupied = false, shelterLevel, month, dayLabel, infra, transport, closedToday = [], weatherClosed = [], prepLevel = 6, evacuated = 0, dead = 0, dayLogs }: Props) {
   const [layer, setLayer] = useState<Layer>('pale');
   // 狭い画面では地図を横スクロールにする（文字が潰れないよう最小幅を確保）。初期位置は中央付近（石垣島）
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -308,7 +315,10 @@ export function IllustratedMap({ areas, infra, transport, closedToday = [], weat
         const hubPos = mv.to === '宮古島' ? ISLAND_CENTER.miyako : HUB;
         const destBase = isHub ? hubPos : MAINLAND_DEST[mv.from];
         const destKey = isHub ? `hub-${mv.to}` : (MAINLAND_DEST[mv.from] === MAINLAND_DEST.miyako ? 'kg' : 'main') + mv.from;
-        const n = Math.max(1, Math.min(mv.count, 6));
+        // 1コマ＝1トークン。0.5コマ端数は半分の大きさのトークン1つで描く（1.5コマを2つに水増ししない）
+        const full = Math.min(Math.floor(mv.count + 1e-9), 6);
+        const hasHalf = mv.count - Math.floor(mv.count + 1e-9) > 1e-9 && full < 6;
+        const n = full + (hasHalf ? 1 : 0);
         for (let k = 0; k < n; k++) {
           const c = (pileCount[destKey] = (pileCount[destKey] ?? 0) + 1);
           // 到達点で格子状にばらけて積み上がる
@@ -322,6 +332,7 @@ export function IllustratedMap({ areas, infra, transport, closedToday = [], weat
             kind: mv.isVulnerable ? 'v' : 'r',
             delay: i * 70 + k * 50,
             last: log.day === lastDay,
+            half: hasHalf && k === n - 1,
           });
         }
       });
@@ -377,6 +388,10 @@ export function IllustratedMap({ areas, infra, transport, closedToday = [], weat
             </button>
           ))}
         </div>
+        {/* 設定表示（地図の左上）: スクショだけで条件が分かるように */}
+        <span style={styles.settingBox}>
+          事前準備Lv{prepLevel}{shelterLevel !== undefined ? `／抗堪性Lv${shelterLevel}` : ''}{month !== undefined ? `／${month}月` : ''}{dayLabel ? `／${dayLabel}` : ''}
+        </span>
         {scrollable && <span style={styles.scrollHint}>↔ 横にスクロール</span>}
         <span style={styles.liveBadges}>
           <span style={{ ...styles.liveBadge, color: '#1b8a4b' }}>避難 {evacuated}</span>
@@ -463,7 +478,7 @@ export function IllustratedMap({ areas, infra, transport, closedToday = [], weat
 
             {/* 移動トークン（蓄積して消えない）。移動中(最新日)は大きく光らせて見やすく */}
             {tokens.map(t => {
-              const sz = cq(t.last ? 13 : 8);
+              const sz = cq((t.last ? 13 : 8) * (t.half ? 0.62 : 1));
               return (
                 <div key={t.id} style={{
                   position: 'absolute',
@@ -538,12 +553,28 @@ export function IllustratedMap({ areas, infra, transport, closedToday = [], weat
               const total = totalKoma(a); const done = total === 0;
               return (
                 <div key={id} style={{ position: 'absolute', left: px(c.x), top: py(c.y), transform: 'translate(-50%,-50%)', zIndex: 6 }}>
-                  <span style={{ ...styles.komaBadge, background: done ? '#1b8a4b' : '#ef7d00' }}>
-                    {c.name} {done ? '✓完了' : `残${total}`}
+                  <span style={{ ...styles.komaBadge, background: occupied?.[id] ? '#c0392b' : done ? '#1b8a4b' : '#ef7d00' }}>
+                    {c.name} {occupied?.[id] ? '🚩占領' : done ? '✓完了' : `残${total}`}
                   </span>
                 </div>
               );
             })}
+
+            {/* 尖閣諸島（模式位置） */}
+            <div style={{ position: 'absolute', left: px(SENKAKU.x), top: py(SENKAKU.y), transform: 'translate(-50%,-50%)', zIndex: 6, textAlign: 'center' }}>
+              <span style={{ ...styles.islandLabel, fontSize: cq(9) }}>▲ 尖閣諸島</span>
+              <span style={{ display: 'block', fontFamily: FONT.jp, fontSize: cq(6.5), fontWeight: 700, color: '#33526e', whiteSpace: 'nowrap', textShadow: HALO }}>※実際は石垣島の北 約170km</span>
+            </div>
+
+            {/* 占領スタンプ（与那国・竹富町・石垣・宮古・尖閣） */}
+            {[
+              ...(Object.keys(ISLAND_CENTER) as AreaId[]).filter(id => occupied?.[id]).map(id => ({ key: id, x: ISLAND_CENTER[id].x, y: ISLAND_CENTER[id].y })),
+              ...(senkakuOccupied ? [{ key: 'senkaku', x: SENKAKU.x, y: SENKAKU.y + 9 }] : []), // 尖閣は名前ラベルを隠さないよう少し下に
+            ].map(o => (
+              <div key={`occ-${o.key}`} style={{ position: 'absolute', left: px(o.x), top: py(o.y), transform: 'translate(-50%,-50%) rotate(-12deg)', zIndex: 10, pointerEvents: 'none' }}>
+                <span style={styles.occupiedStamp}>🚩【占領】</span>
+              </div>
+            ))}
 
             {/* 本土（避難先）＝地図範囲外への方向表示 */}
             {DESTS.map(d => (
@@ -574,7 +605,7 @@ export function IllustratedMap({ areas, infra, transport, closedToday = [], weat
       </div>
 
       <div style={styles.caption}>
-        コマ：<b style={{ color: '#2f80ed' }}>●青＝住民</b> ／ <b style={{ color: '#c98f00' }}>●黄＝観光客</b> ／ <b style={{ color: '#eb5757' }}>●赤＝要援護者</b> ／ <b style={{ color: '#1b8a4b' }}>●緑＝待機（石垣ハブ等に集結し避難手段を待つ避難民）</b>。小さいコマ＝0.5コマ。
+        コマ：<b style={{ color: '#2f80ed' }}>●青＝住民</b> ／ <b style={{ color: '#c98f00' }}>●黄＝観光客</b> ／ <b style={{ color: '#eb5757' }}>●赤＝要援護者</b> ／ <b style={{ color: '#1b8a4b' }}>●緑＝待機（石垣ハブ等に集結し避難手段を待つ避難民）</b>。小さいコマ・小さい移動●＝0.5コマ（例：与那国の2コマが「空路1.5コマ＋石垣行きフェリー0.5コマ」で動くと、大●1・小●2 になります）。
         石垣島・宮古島・西表島のコマは実縮尺の島に収まらないため、近くの海上の「コマ置き場」（白い枠）に並べています。
         施設：🟡空港 ／ 🔵海港 ／ 茶色の線＝橋（崩落で🚧赤破線＝該当島は避難不可） ／ 🚫＝当日使用不能（乱闘・サイバー・障害物散布・海上民兵・ボイコット等） ／ 💥＝使用不能（破壊・撃墜/撃沈・運航拒否） ／ ❌＝事前準備Lv不足で使用不可（波照間空港はLv4以上） ／ ⛈️＝大雨で使用不能 ／ 💨＝強風で使用不能。
         本土（那覇・福岡・鹿児島）は地図の範囲外のため上端に方向（↗）で示します。自動再生中、避難したコマは上端の本土へ移動して積み上がり、死亡は右下の枠に入ります。
@@ -591,8 +622,10 @@ const DOT: React.CSSProperties = {
 
 const styles: Record<string, React.CSSProperties> = {
   frame: { borderRadius: 14, overflow: 'hidden', border: '3px solid #fffaf0', boxShadow: '0 10px 30px rgba(10,60,90,0.3)', background: '#fffaf0' },
-  titleBar: { display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'linear-gradient(90deg,#3aa0b8,#5cc0d0)' },
+  titleBar: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'linear-gradient(90deg,#3aa0b8,#5cc0d0)' },
   scrollHint: { fontFamily: FONT.jp, fontWeight: 700, fontSize: 10.5, color: '#fffaf0', whiteSpace: 'nowrap' },
+  occupiedStamp: { display: 'block', fontFamily: FONT.jp, fontWeight: 900, fontSize: cq(17), lineHeight: 1.2, color: '#fff', background: 'rgba(192,57,43,0.92)', border: `${cq(2)} solid #fff`, borderRadius: cq(6), padding: `0 ${cq(7)}`, whiteSpace: 'nowrap', boxShadow: '0 2px 6px rgba(0,0,0,0.45)', letterSpacing: '0.04em' },
+  settingBox: { background: '#fffaf0', color: '#0c4a5c', borderRadius: 10, padding: '2px 10px', fontFamily: FONT.mono, fontWeight: 800, fontSize: 12.5, minWidth: 0, maxWidth: '100%', overflowWrap: 'anywhere' },
   liveBadges: { marginLeft: 'auto', display: 'flex', gap: 8 },
   liveBadge: { background: '#fffaf0', borderRadius: 10, padding: '2px 9px', fontFamily: FONT.mono, fontWeight: 800, fontSize: 12 },
   layerToggle: { display: 'inline-flex', borderRadius: 8, overflow: 'hidden', border: '1.5px solid #fffaf0', background: 'rgba(255,250,240,0.25)' },

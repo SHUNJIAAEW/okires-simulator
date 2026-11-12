@@ -253,6 +253,11 @@ export default function App() {
         <div style={styles.leftCol}>
           <IllustratedMap
             areas={gameState.areas}
+            occupied={gameState.occupied}
+            senkakuOccupied={gameState.military.senkakuOccupied}
+            shelterLevel={gameState.shelterLevel}
+            month={gameState.month}
+            dayLabel={gameState.dayLogs[gameState.dayLogs.length - 1]?.dayLabel ?? `${gameState.day === 0 ? 'X' : gameState.day > 0 ? `X+${gameState.day}` : `X${gameState.day}`}日 開始前`}
             infra={gameState.infra}
             transport={gameState.transport}
             closedToday={gameState.dayLogs[gameState.dayLogs.length - 1]?.closedFacilities ?? []}

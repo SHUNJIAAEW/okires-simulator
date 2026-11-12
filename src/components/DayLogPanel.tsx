@@ -127,7 +127,7 @@ export function DayLogPanel({ logs }: Props) {
                         id === 'ishigaki' ? '石垣' : '宮古'
                       }</div>
                       <div style={{ ...styles.snapTotal, color: snap.total === 0 ? C.green : C.bright }}>
-                        {snap.total === 0 ? '✓完了' : `${snap.total}コマ`}
+                        {snap.occupied ? '🚩占領' : snap.total === 0 ? '✓完了' : `${snap.total}コマ`}
                       </div>
                       {snap.total > 0 && (
                         <div style={styles.snapBreakdown}>

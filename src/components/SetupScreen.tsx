@@ -77,11 +77,12 @@ export function SetupScreen({ onStart }: Props) {
   const [fHour, setFHour] = useState(8);
   const [fLevel, setFLevel] = useState(3);
   const [fCell, setFCell] = useState('1-1');
+  const [fSure, setFSure] = useState(true);
   const cellOptions = fKind === 'earthquake' ? [] : forcedEventOptions(fKind);
   const dayJp = (d: number) => (d === 0 ? 'X日' : d > 0 ? `X+${d}日` : `X${d}日`);
   const forcedJp = (f: ForcedEvent) => f.kind === 'earthquake'
     ? `${dayJp(f.day)} 1時 ／ 規模${f.level}の地震`
-    : `${dayJp(f.day)} ${f.hour}時 ／ イベント${f.table}「${forcedEventOptions(f.table).find(o => o.col === f.col && o.row === f.row)?.label ?? ''}」`;
+    : `${dayJp(f.day)} ${f.hour}時 ／ イベント${f.table}「${forcedEventOptions(f.table).find(o => o.col === f.col && o.row === f.row)?.label ?? ''}」${f.sure ? '（判定も必ず成立）' : '（判定はダイス）'}`;
   const addForced = () => {
     if (fKind === 'earthquake') {
       setForced(list => [...list.filter(f => !(f.kind === 'earthquake' && f.day === fDay)), { kind: 'earthquake', day: fDay, level: fLevel }]);
@@ -89,7 +90,7 @@ export function SetupScreen({ onStart }: Props) {
     }
     const opt = cellOptions.find(o => `${o.col}-${o.row}` === fCell) ?? cellOptions[0];
     if (!opt) return;
-    setForced(list => [...list.filter(f => !(f.kind === 'event' && f.day === fDay && f.hour === fHour)), { kind: 'event', day: fDay, hour: fHour, table: fKind, col: opt.col, row: opt.row }]);
+    setForced(list => [...list.filter(f => !(f.kind === 'event' && f.day === fDay && f.hour === fHour)), { kind: 'event', day: fDay, hour: fHour, table: fKind, col: opt.col, row: opt.row, sure: fSure }]);
   };
 
   const handleStart = () => {
@@ -219,7 +220,7 @@ export function SetupScreen({ onStart }: Props) {
           {/* 強制イベント（検証用） */}
           <Param index="05" title="強制イベント（検証用）" en="FORCED EVENTS" value={forced.length ? `${forced.length}件` : 'なし'} valueColor={forced.length ? C.amber : C.dim}>
             <p style={styles.desc}>
-              指定した日・時刻に、地震やABCDイベントを<strong style={{ color: C.bright }}>必ず発生</strong>させます（判定のダイスは通常どおり振ります）。指定しなければ通常のランダムです。
+              指定した日・時刻に、地震やABCDイベントを<strong style={{ color: C.bright }}>必ず発生</strong>させます。上陸・撃墜・施設破壊などの成否は、「判定も必ず成立」にチェックすると計算値40扱い（判定式①は必ず発生）で必ず成立します。外すと通常どおりダイスで判定します。どちらの場合も、その時刻より前に出発した便が無ければ撃墜等はセーフです。指定しなければ通常のランダムです。
             </p>
             <div style={styles.forcedRow}>
               <select style={styles.select} value={fKind} onChange={e => { const k = e.target.value as typeof fKind; setFKind(k); if (k !== 'earthquake') { const o = forcedEventOptions(k)[0]; setFCell(`${o.col}-${o.row}`); } }}>
@@ -247,6 +248,9 @@ export function SetupScreen({ onStart }: Props) {
                   <select style={{ ...styles.select, flex: '1 1 220px' }} value={fCell} onChange={e => setFCell(e.target.value)}>
                     {cellOptions.map(o => <option key={`${o.col}-${o.row}`} value={`${o.col}-${o.row}`}>{o.label}</option>)}
                   </select>
+                  <label style={styles.forcedFixed}>
+                    <input type="checkbox" checked={fSure} onChange={e => setFSure(e.target.checked)} /> 判定も必ず成立（計算値40扱い）
+                  </label>
                 </>
               )}
               <NoFocusButton style={styles.forcedAdd} onClick={addForced}>＋ 追加</NoFocusButton>

@@ -439,7 +439,13 @@ export function effectiveHands(state: GameState, area: AreaId, fatigue?: number,
 // ===== イベント発生判定式①（ver4.0 6.5）=====
 // サイバー攻撃・観光客大乱闘・ボイコット(A)、空港障害物/海上民兵/機雷/臨検/軍民錯綜(B)、不時着(B/C) は
 // セルを引いた後にダイス1回: 1〜事前準備Lv(Lv6は5として計算) → 発生しない ／ Lv+1〜6 → 発生する。
+// 強制イベントの「判定も必ず成立」: 処理中だけ true。判定式①は必ず発生、3/4/2ダイスの計算値は 40 として扱う
+let forceSure = false;
+function sureCalc(v: number): number { return forceSure ? 40 : v; }
+/** 検査用: 強制成立フラグが残っていないか（通常イベントへの漏れ検出） */
+export function isForceSureActive(): boolean { return forceSure; }
 function rollOccurrence(prepLevel: number, log: string[], label: string): boolean {
+  if (forceSure) { log.push(`  判定式①(${label}): 🎯強制（判定成立扱い）→ 発生`); return true; }
   const threshold = Math.min(prepLevel, 5);
   const die = rollDie();
   const occurs = die > threshold;
@@ -852,8 +858,10 @@ export function generateDailyEvents(
     // 強制イベント（検証用）: この日・この時刻に指定があれば、ダイスに関係なく指定の表・セルを発生させる
     const forcedNow = forced.find(f => f.kind === 'event' && f.day === day && f.hour === hour);
     if (forcedNow && forcedNow.kind === 'event') {
-      result.log.push(`🎯 強制イベント: ${hour}時に イベント${forcedNow.table}（1投目${forcedNow.col}・2投目${forcedNow.row}）を発生させる`);
-      const outcome = processEvent(forcedNow.table, state, result, military, hour, forcedNow.col, forcedNow.row);
+      result.log.push(`🎯 強制イベント: ${hour}時に イベント${forcedNow.table}（1投目${forcedNow.col}・2投目${forcedNow.row}）を発生させる${forcedNow.sure ? '（判定も必ず成立：計算値40扱い）' : ''}`);
+      forceSure = !!forcedNow.sure;
+      let outcome: string;
+      try { outcome = processEvent(forcedNow.table, state, result, military, hour, forcedNow.col, forcedNow.row); } finally { forceSure = false; }
       result.hourlyRolls.push({ hour, roll, isEventSpace: true, eventType: forcedNow.table, outcome });
       continue;
     }
@@ -901,7 +909,7 @@ function resolveInterdiction(military: MilitaryState): { calcValue: number; thre
   const diceSum = sumDice(3);
   const chinaTotal = military.chineseSea + military.chineseAir;
   const jsdfTotal = military.jsdfSea + military.jsdfAir;
-  const calcValue = diceSum + chinaTotal - jsdfTotal;
+  const calcValue = sureCalc(diceSum + chinaTotal - jsdfTotal);
   const threshold = military.senkakuOccupied ? 12 : 15;
   return { calcValue, threshold, hit: calcValue >= threshold, diceSum };
 }
@@ -1169,7 +1177,7 @@ function resolveFacilityMissile(military: MilitaryState, area: AreaId, routeKey?
   const jsdfTotal = military.jsdfSea + military.jsdfAir;
   const pac3 = pac3For(area, military, routeKey);
   const threshold = military.senkakuOccupied ? 14 : 17;
-  const calcValue = diceSum + chinaTotal - (jsdfTotal + pac3);
+  const calcValue = sureCalc(diceSum + chinaTotal - (jsdfTotal + pac3));
   const detail = `ダイス${diceSum}+中${chinaTotal}-(自${jsdfTotal}+PAC3${pac3})=計${calcValue} / 閾値${threshold}${military.senkakuOccupied ? '(尖閣占領)' : ''}`;
   return { calcValue, threshold, hit: calcValue >= threshold, detail };
 }
@@ -1845,7 +1853,7 @@ function processEventCell(
       const jsdfTotal = military.jsdfSea + military.jsdfAir;
       const pac3 = pac3For(targetArea, military);
       const diceSum = sumDice(3);
-      const calcValue = diceSum + chinaTotal - (jsdfTotal + pac3) - 3 * state.shelterLevel;
+      const calcValue = sureCalc(diceSum + chinaTotal - (jsdfTotal + pac3) - 3 * state.shelterLevel);
       result.log.push(`${head} 【${cell.jp}ミサイル攻撃】死傷者計算数: ダイス${diceSum}+中${chinaTotal}-(自${jsdfTotal}+PAC3${pac3})-抗堪${state.shelterLevel}×3=計${calcValue}`);
       if (calcValue >= 11) {
         result.log.push(`  ⚠️ 計${calcValue}≥11 → 0.5コマ死亡・${areaName}疲労+1・DMAT対象（未派遣ならさらに0.5コマ死亡・疲労+1）`);
@@ -1897,7 +1905,7 @@ function processEventCell(
       const chinaTotal = military.chineseSea + military.chineseAir;
       const jsdfTotal = military.jsdfSea + military.jsdfAir;
       const diceSum = sumDice(3);
-      const calcValue = diceSum + chinaTotal - jsdfTotal;
+      const calcValue = sureCalc(diceSum + chinaTotal - jsdfTotal);
       const threshold = military.senkakuOccupied ? 12 : 15;
       result.log.push(`${head} 【${cell.jp}】${areaName}: ダイス${diceSum}+中${chinaTotal}-自${jsdfTotal}=計${calcValue} / 閾値${threshold}${military.senkakuOccupied ? '(尖閣占領)' : ''}`);
       if (calcValue < threshold) return `【${cell.jp}】${areaName} 計${calcValue}<${threshold} 撃退`;
@@ -1924,7 +1932,7 @@ function processEventCell(
       const jsdfTotal = military.jsdfSea + military.jsdfAir;
       const jp = cell.target === 'sea' ? '海上自衛隊海空警護' : '航空自衛隊空域警護';
       const diceSum = sumDice(2);
-      const calcValue = diceSum + chinaTotal - jsdfTotal;
+      const calcValue = sureCalc(diceSum + chinaTotal - jsdfTotal);
       const threshold = military.senkakuOccupied ? 11 : 13;
       result.log.push(`${head} 【${jp}喪失-1】ダイス${diceSum}+中${chinaTotal}-自${jsdfTotal}=計${calcValue} / 閾値${threshold}${military.senkakuOccupied ? '(尖閣占領)' : ''}`);
       if (calcValue < threshold) return `【${jp}喪失回避】計${calcValue}<${threshold}`;
@@ -1946,7 +1954,7 @@ function processEventCell(
       const chinaTotal = military.chineseSea + military.chineseAir;
       const jsdfTotal = military.jsdfSea + military.jsdfAir;
       const diceSum = sumDice(3);
-      const calcValue = diceSum + chinaTotal - jsdfTotal;
+      const calcValue = sureCalc(diceSum + chinaTotal - jsdfTotal);
       const threshold = 15;
       result.log.push(`${head} 【尖閣諸島占領判定】ダイス${diceSum}+中${chinaTotal}-自${jsdfTotal}=計${calcValue} / 閾値${threshold}`);
       if (calcValue >= threshold) {
@@ -3348,6 +3356,7 @@ export function executeDayPhase2(
       vulnerable: a.vulnerable,
       staging: a.stagingPort + (a.stagingVulnerable ?? 0),
       isolated: a.isolatedPending ?? 0, // 鳩間・船浮の島内移送待ち（total に含む）
+      occupied: !!occupiedOut[id as AreaId],
       fatigue: a.fatigue,
       handsBase: handsByFatigue(a.id, a.fatigue),
       hands: Math.max(0, handsByFatigue(a.id, a.fatigue) - activeHandPenalty(stateAfterEvents, a.id, day)),
