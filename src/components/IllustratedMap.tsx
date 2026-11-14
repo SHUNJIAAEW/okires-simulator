@@ -124,7 +124,7 @@ const FACILITIES: Fac[] = [
   { lat: 24.337, lng: 123.73, kind: 'sea', name: '船浮港', lab: 'r' },
   { lat: 24.275, lng: 123.8815, kind: 'sea', name: '大原港', lab: 'b' },
   { lat: 24.0589, lng: 123.8056, kind: 'air', name: '波照間空港', lab: 'r', air: 'hateruma', infra: 'haterumaAirport' },
-  { lat: 24.0683, lng: 123.7672, kind: 'sea', name: '波照間港', lab: 'l' },
+  { lat: 24.0683, lng: 123.7672, kind: 'sea', name: '波照間港', lab: 't' }, // 左は波照間発電所があるため上に
   { lat: 24.346, lng: 123.9935, kind: 'sea', name: '小浜港', lab: 'b' },
   { lat: 24.3964, lng: 124.245, kind: 'air', name: '新石垣空港', lab: 'r', air: 'shinIshigaki', infra: 'shinIshigakiAirport' },
   { lat: 24.3375, lng: 124.156, kind: 'sea', name: '石垣港', lab: 'r', ship: 'ishigakiPort', infra: 'ishigakiPort' },
@@ -133,6 +133,15 @@ const FACILITIES: Fac[] = [
   { lat: 24.8267, lng: 125.1447, kind: 'air', name: '下地島空港', lab: 'l', air: 'shimoji', infra: 'shimojiAirport' },
   { lat: 24.6539, lng: 124.6753, kind: 'air', name: '多良間空港', lab: 'l', infra: 'taramaAirport' },
   { lat: 24.6475, lng: 124.7085, kind: 'sea', name: '多良間港', lab: 'b' }, // 多良間港（南岸・普天間地区。宮古フェリーの発着港）
+];
+
+// ── 発電所（マニュアル6.3.2の5か所）: 🏭。破壊で ❌（マニュアルの「電力設備破壊×」マーカー）。位置は各島の発電所付近の概略 ──
+const POWER_PLANTS: { key: keyof InfraState; name: string; lat: number; lng: number; lab: Fac['lab'] }[] = [
+  { key: 'powerYonaguni', name: '与那国発電所', lat: 24.457, lng: 123.014, lab: 'r' },
+  { key: 'powerHateruma', name: '波照間発電所', lat: 24.052, lng: 123.736, lab: 'l' },
+  { key: 'powerIshigaki', name: '石垣島発電所', lat: 24.392, lng: 124.135, lab: 'l' },
+  { key: 'powerTarama', name: '多良間発電所', lat: 24.679, lng: 124.703, lab: 'r' },
+  { key: 'powerMiyako', name: '宮古島発電所', lat: 24.748, lng: 125.292, lab: 'r' },
 ];
 
 // ── 橋（宮古衛星島）: a=宮古島側 / b=離島側 の実位置。ラベルは (ldx, ldy) だけずらす ──
@@ -517,6 +526,21 @@ export function IllustratedMap({ areas, occupied, senkakuOccupied = false, shelt
               );
             })}
 
+            {/* 発電所（🏭。破壊されると ❌ と「停電」） */}
+            {infra && POWER_PLANTS.map(pp => {
+              const ok = infra[pp.key] !== false;
+              const p = project(pp.lat, pp.lng);
+              return (
+                <div key={pp.key} style={{ position: 'absolute', left: px(p.x), top: py(p.y), transform: 'translate(-50%,-50%)', zIndex: 7 }}>
+                  <span style={{ position: 'relative', display: 'inline-flex' }}>
+                    <span style={{ ...styles.powerDot, ...(ok ? null : styles.powerDotBroken) }} title={ok ? pp.name : `${pp.name}（破壊・停電）`}>🏭</span>
+                    {!ok && <span style={styles.facMark} title="電力設備破壊（停電）">❌</span>}
+                  </span>
+                  <span style={{ ...styles.facLabel, ...LABEL_POS[pp.lab], color: ok ? '#5a3b12' : '#c0392b' }}>{pp.name}{ok ? '' : '（停電）'}</span>
+                </div>
+              );
+            })}
+
             {/* 橋ラベル */}
             {infra && BRIDGES.map(b => {
               const ok = infra[b.key] as boolean;
@@ -607,7 +631,7 @@ export function IllustratedMap({ areas, occupied, senkakuOccupied = false, shelt
       <div style={styles.caption}>
         コマ：<b style={{ color: '#2f80ed' }}>●青＝住民</b> ／ <b style={{ color: '#c98f00' }}>●黄＝観光客</b> ／ <b style={{ color: '#eb5757' }}>●赤＝要援護者</b> ／ <b style={{ color: '#1b8a4b' }}>●緑＝待機（石垣ハブ等に集結し避難手段を待つ避難民）</b>。小さいコマ・小さい移動●＝0.5コマ（例：与那国の2コマが「空路1.5コマ＋石垣行きフェリー0.5コマ」で動くと、大●1・小●2 になります）。🚩【占領】＝住民が残ったまま占領された島（残っていたコマは死亡。X+3日を過ぎて逃げ遅れた与那国・竹富町も同じ）。全員避難した後に占領された島は「✓完了」のまま。尖閣諸島は無人ですが、占領されると以後の判定が不利になるため【占領】を表示します。
         石垣島・宮古島・西表島のコマは実縮尺の島に収まらないため、近くの海上の「コマ置き場」（白い枠）に並べています。
-        施設：🟡空港 ／ 🔵海港 ／ 茶色の線＝橋（崩落で🚧赤破線＝該当島は避難不可） ／ 🚫＝当日使用不能（乱闘・サイバー・障害物散布・海上民兵・ボイコット等） ／ 💥＝使用不能（破壊・撃墜/撃沈・運航拒否） ／ ❌＝事前準備Lv不足で使用不可（波照間空港はLv4以上） ／ ⛈️＝大雨で使用不能 ／ 💨＝強風で使用不能。
+        施設：🟡空港 ／ 🔵海港 ／ 🏭発電所（破壊で❌・停電） ／ 茶色の線＝橋（崩落で🚧赤破線＝該当島は避難不可） ／ 🚫＝当日使用不能（乱闘・サイバー・障害物散布・海上民兵・ボイコット等） ／ 💥＝使用不能（破壊・撃墜/撃沈・運航拒否） ／ ❌＝事前準備Lv不足で使用不可（波照間空港はLv4以上） ／ ⛈️＝大雨で使用不能 ／ 💨＝強風で使用不能。
         本土（那覇・福岡・鹿児島）は地図の範囲外のため上端に方向（↗）で示します。自動再生中、避難したコマは上端の本土へ移動して積み上がり、死亡は右下の枠に入ります。
       </div>
     </div>
@@ -640,6 +664,8 @@ const styles: Record<string, React.CSSProperties> = {
   overlay: { position: 'absolute', inset: 0, pointerEvents: 'none' },
 
   airDot: { ...DOT, background: '#ffd633', borderColor: '#8f6a00', color: '#3d2c00', boxShadow: '0 0 0 1px #fff, 0 1px 3px rgba(0,0,0,0.45)' },
+  powerDot: { ...DOT, background: '#fff4e0', borderColor: '#8a5a1c', color: '#000', boxShadow: '0 0 0 1px #fff, 0 1px 3px rgba(0,0,0,0.45)' },
+  powerDotBroken: { filter: 'grayscale(1)', opacity: 0.75, borderColor: '#c0392b' },
   seaDot: { ...DOT, background: '#3b9eff', borderColor: '#0f4f8f', color: '#fff', boxShadow: '0 0 0 1px #fff, 0 1px 3px rgba(0,0,0,0.45)' },
   facMark: { position: 'absolute', left: '50%', bottom: '55%', transform: 'translateX(-50%)', fontSize: cq(12), lineHeight: 1, zIndex: 9, filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.5))', pointerEvents: 'none' },
   facLabel: { position: 'absolute', fontFamily: FONT.jp, fontSize: cq(7.6), lineHeight: 1.15, color: '#173a17', fontWeight: 800, whiteSpace: 'nowrap', textShadow: HALO },
