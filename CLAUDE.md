@@ -6,9 +6,9 @@
 
 1. 修正を実装する
 2. `npm run lint` と `npm run build` を通す
-3. **Codexでレビュー**して、各修正点が正しく実装され副作用が無いかを確認する：
+3. **Codexでレビュー**して、各修正点が正しく実装され副作用が無いかを確認する（モデルは GPT-6.2 Astra。`codex exec` は `.codex/config.toml` の `review_model` を使わないため `--model` で指定する）：
    ```bash
-   codex exec --sandbox read-only --cd "/Users/shunjiabe/dev/clients/okires" \
+   codex exec --model gpt-6.2-astra --sandbox read-only --cd "/Users/shunjiabe/dev/clients/okires" \
      "<修正点を列挙>。各修正が正しく実装され副作用・抜け道が無いか確認してください。確認や質問は不要で具体的に指摘してください。"
    ```
 4. Codexが指摘した抜け道・見落としも修正し、再度Codexまたは実機で確認する
